@@ -5,6 +5,8 @@ Calculate the real-world cost of GitHub pull requests with detailed breakdowns o
 ## Example
 
 ```
+$ prcost https://github.com/chainguard-dev/apko/pull/1860
+
 PULL REQUEST COST ANALYSIS
 ==========================
 
@@ -51,14 +53,6 @@ TOTAL COST                  $  11907.58
 
 ```bash
 go install github.com/codeGROOVE-dev/prcost/cmd/prcost@latest
-```
-
-Or build from source:
-
-```bash
-git clone https://github.com/codeGROOVE-dev/prcost
-cd prcost
-go build -o prcost ./cmd/prcost
 ```
 
 ## Usage
