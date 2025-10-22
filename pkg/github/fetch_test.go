@@ -66,7 +66,7 @@ func TestParsePRURL(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			owner, repo, number, err := parsePRURL(tt.url)
+			parts, err := parsePRURL(tt.url)
 
 			if (err != nil) != tt.wantErr {
 				t.Errorf("parsePRURL() error = %v, wantErr %v", err, tt.wantErr)
@@ -74,14 +74,14 @@ func TestParsePRURL(t *testing.T) {
 			}
 
 			if !tt.wantErr {
-				if owner != tt.wantOwner {
-					t.Errorf("parsePRURL() owner = %v, want %v", owner, tt.wantOwner)
+				if parts.owner != tt.wantOwner {
+					t.Errorf("parsePRURL() owner = %v, want %v", parts.owner, tt.wantOwner)
 				}
-				if repo != tt.wantRepo {
-					t.Errorf("parsePRURL() repo = %v, want %v", repo, tt.wantRepo)
+				if parts.repo != tt.wantRepo {
+					t.Errorf("parsePRURL() repo = %v, want %v", parts.repo, tt.wantRepo)
 				}
-				if number != tt.wantNumber {
-					t.Errorf("parsePRURL() number = %v, want %v", number, tt.wantNumber)
+				if parts.number != tt.wantNumber {
+					t.Errorf("parsePRURL() number = %v, want %v", parts.number, tt.wantNumber)
 				}
 			}
 		})
@@ -187,7 +187,7 @@ func TestPRDataFromPRX(t *testing.T) {
 		},
 	}
 
-	costData := PRDataFromPRX(prxData)
+	costData := PRDataFromPRX(&prxData)
 
 	// Validate basic fields
 	if costData.Author != "test-author" {
@@ -240,7 +240,7 @@ func TestPRDataFromPRXExternalContributor(t *testing.T) {
 		},
 	}
 
-	costData := PRDataFromPRX(prxData)
+	costData := PRDataFromPRX(&prxData)
 
 	// External contributor should not have write access
 	if costData.AuthorHasWriteAccess {
@@ -260,7 +260,7 @@ func TestPRDataFromPRXWithRealData(t *testing.T) {
 		t.Fatalf("Failed to parse PR data: %v", err)
 	}
 
-	costData := PRDataFromPRX(prxData)
+	costData := PRDataFromPRX(&prxData)
 
 	// PR 1891 specific validations
 	if costData.Author != "markusthoemmes" {

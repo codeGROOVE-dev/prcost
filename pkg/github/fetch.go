@@ -3,6 +3,7 @@ package github
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"strconv"
@@ -20,7 +21,7 @@ import (
 //
 // Returns:
 //   - cost.PRData with all information needed for cost calculation
-func PRDataFromPRX(prData prx.PullRequestData) cost.PRData {
+func PRDataFromPRX(prData *prx.PullRequestData) cost.PRData {
 	pr := prData.PullRequest
 
 	// Extract all human events with timestamps (exclude bots)
@@ -53,7 +54,7 @@ func PRDataFromPRX(prData prx.PullRequestData) cost.PRData {
 //   - cost.PRData with all information needed for cost calculation
 func FetchPRData(ctx context.Context, prURL string, token string) (cost.PRData, error) {
 	// Parse the PR URL to extract owner, repo, and PR number
-	owner, repo, prNumber, err := parsePRURL(prURL)
+	parts, err := parsePRURL(prURL)
 	if err != nil {
 		return cost.PRData{}, fmt.Errorf("invalid PR URL: %w", err)
 	}
@@ -62,42 +63,51 @@ func FetchPRData(ctx context.Context, prURL string, token string) (cost.PRData, 
 	client := prx.NewClient(token)
 
 	// Fetch PR data using prx
-	prData, err := client.PullRequest(ctx, owner, repo, prNumber)
+	prData, err := client.PullRequest(ctx, parts.owner, parts.repo, parts.number)
 	if err != nil {
 		return cost.PRData{}, fmt.Errorf("failed to fetch PR data: %w", err)
 	}
 
 	// Convert to cost.PRData
-	return PRDataFromPRX(*prData), nil
+	return PRDataFromPRX(prData), nil
+}
+
+// prParts holds the parsed components of a GitHub PR URL.
+type prParts struct {
+	owner  string
+	repo   string
+	number int
 }
 
 // parsePRURL extracts owner, repo, and PR number from a GitHub PR URL.
 // Expected format: https://github.com/owner/repo/pull/123
-func parsePRURL(prURL string) (owner, repo string, prNumber int, err error) {
+func parsePRURL(prURL string) (prParts, error) {
 	// Remove protocol prefix
 	prURL = strings.TrimPrefix(prURL, "https://")
 	prURL = strings.TrimPrefix(prURL, "http://")
 
 	// Remove github.com prefix
 	if !strings.HasPrefix(prURL, "github.com/") {
-		return "", "", 0, fmt.Errorf("URL must be from github.com")
+		return prParts{}, errors.New("URL must be from github.com")
 	}
 	prURL = strings.TrimPrefix(prURL, "github.com/")
 
 	// Split by /
 	parts := strings.Split(prURL, "/")
 	if len(parts) < 4 || parts[2] != "pull" {
-		return "", "", 0, fmt.Errorf("expected format: https://github.com/owner/repo/pull/123")
+		return prParts{}, errors.New("expected format: https://github.com/owner/repo/pull/123")
 	}
 
-	owner = parts[0]
-	repo = parts[1]
-	prNumber, err = strconv.Atoi(parts[3])
+	number, err := strconv.Atoi(parts[3])
 	if err != nil {
-		return "", "", 0, fmt.Errorf("invalid PR number: %w", err)
+		return prParts{}, fmt.Errorf("invalid PR number: %w", err)
 	}
 
-	return owner, repo, prNumber, nil
+	return prParts{
+		owner:  parts[0],
+		repo:   parts[1],
+		number: number,
+	}, nil
 }
 
 // FetchPRDataWithDefaults is a convenience function that uses environment variables
@@ -113,7 +123,7 @@ func FetchPRDataWithDefaults(ctx context.Context, prURL string) (cost.PRData, er
 	// Get GitHub token from environment
 	token := os.Getenv("GITHUB_TOKEN")
 	if token == "" {
-		return cost.PRData{}, fmt.Errorf("GITHUB_TOKEN environment variable not set")
+		return cost.PRData{}, errors.New("GITHUB_TOKEN environment variable not set")
 	}
 
 	return FetchPRData(ctx, prURL, token)
@@ -131,7 +141,8 @@ func FetchPRDataWithDefaults(ctx context.Context, prURL string) (cost.PRData, er
 func extractParticipantEvents(events []prx.Event) []cost.ParticipantEvent {
 	var participantEvents []cost.ParticipantEvent
 
-	for _, event := range events {
+	for i := range events {
+		event := &events[i]
 		// Skip bots and GitHub's own automation
 		if event.Bot || event.Actor == "github" {
 			continue

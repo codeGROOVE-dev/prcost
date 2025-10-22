@@ -3,8 +3,9 @@
 package cost
 
 import (
+	"cmp"
 	"math"
-	"sort"
+	"slices"
 	"time"
 
 	"github.com/codeGROOVE-dev/prcost/pkg/cocomo"
@@ -64,7 +65,7 @@ func DefaultConfig() Config {
 }
 
 // HourlyRate calculates the hourly rate from annual salary including benefits.
-// Formula: (salary × benefits_multiplier) / hours_per_year
+// Formula: (salary × benefits_multiplier) / hours_per_year.
 func (c Config) HourlyRate() float64 {
 	totalCompensation := c.AnnualSalary * c.BenefitsMultiplier
 	return totalCompensation / c.HoursPerYear
@@ -78,22 +79,17 @@ type ParticipantEvent struct {
 
 // PRData contains all information needed to calculate PR costs.
 type PRData struct {
-	// Lines of code added by the author
-	LinesAdded int
-
+	// When the PR was opened
+	CreatedAt time.Time
+	// When the PR was last updated
+	UpdatedAt time.Time
 	// PR author's username
 	Author string
-
 	// All human events (reviews, comments, commits, etc.) with timestamps
 	// Excludes bot events
 	Events []ParticipantEvent
-
-	// When the PR was opened
-	CreatedAt time.Time
-
-	// When the PR was last updated
-	UpdatedAt time.Time
-
+	// Lines of code added by the author
+	LinesAdded int
 	// Whether the author has write access (false means external contributor)
 	AuthorHasWriteAccess bool
 }
@@ -149,25 +145,29 @@ type DelayCostDetail struct {
 
 // Breakdown shows fully itemized costs for a pull request.
 type Breakdown struct {
-	// Author costs (person who opened the PR)
-	Author AuthorCostDetail
-
 	// Participant costs (everyone except the author)
 	Participants []ParticipantCostDetail
 
+	// Author costs (person who opened the PR)
+	Author AuthorCostDetail
+
 	// Delay cost with itemized breakdown
-	DelayCost       float64
 	DelayCostDetail DelayCostDetail
+
+	// Delay cost with itemized breakdown
+	DelayCost float64
 
 	// Supporting details for delay cost
 	DelayHours         float64
-	DelayCapped        bool // True if project delay was capped at 60 days (2 months)
 	HourlyRate         float64
 	AnnualSalary       float64
 	BenefitsMultiplier float64
 
 	// Total cost (sum of all components)
 	TotalCost float64
+
+	// True if project delay was capped at 60 days (2 months)
+	DelayCapped bool
 }
 
 // Calculate computes the total cost of a pull request with detailed breakdowns.
@@ -185,20 +185,20 @@ func Calculate(data PRData, cfg Config) Breakdown {
 	delayDays := delayHours / 24.0
 
 	// Cap Project Delay at configured maximum (default: 60 days / 2 months)
-	maxProjectDelayHours := cfg.MaxProjectDelay.Hours()
-	var projectDelayCapped bool
-	var cappedProjectDelayHours float64
+	maxHrs := cfg.MaxProjectDelay.Hours()
+	var capped bool
+	var cappedHrs float64
 
-	if delayHours > maxProjectDelayHours {
-		projectDelayCapped = true
-		cappedProjectDelayHours = maxProjectDelayHours
+	if delayHours > maxHrs {
+		capped = true
+		cappedHrs = maxHrs
 	} else {
-		cappedProjectDelayHours = delayHours
+		cappedHrs = delayHours
 	}
 
 	// 1. Project Delay: Configured percentage (default 20%) of engineer time
-	projectDelayCost := hourlyRate * cappedProjectDelayHours * cfg.DelayCostFactor
-	projectDelayHours := cappedProjectDelayHours
+	projectDelayCost := hourlyRate * cappedHrs * cfg.DelayCostFactor
+	projectDelayHours := cappedHrs
 
 	// 2. Code Updates (Rework): Probability-based drift formula
 	//
@@ -302,7 +302,7 @@ func Calculate(data PRData, cfg Config) Breakdown {
 		DelayCost:          delayCost,
 		DelayCostDetail:    delayCostDetail,
 		DelayHours:         delayHours,
-		DelayCapped:        projectDelayCapped,
+		DelayCapped:        capped,
 		HourlyRate:         hourlyRate,
 		AnnualSalary:       cfg.AnnualSalary,
 		BenefitsMultiplier: cfg.BenefitsMultiplier,
@@ -382,8 +382,8 @@ func calculateParticipantCosts(data PRData, cfg Config, hourlyRate float64) []Pa
 	}
 
 	// Sort by total cost descending for consistent output
-	sort.Slice(participantCosts, func(i, j int) bool {
-		return participantCosts[i].TotalCost > participantCosts[j].TotalCost
+	slices.SortFunc(participantCosts, func(a, b ParticipantCostDetail) int {
+		return cmp.Compare(b.TotalCost, a.TotalCost)
 	})
 
 	return participantCosts
@@ -404,68 +404,68 @@ func calculateParticipantCosts(data PRData, cfg Config, hourlyRate float64) []Pa
 // - Event 1: 20 (context in) + 20 (event) + 5 (gap) = 45 min
 // - Event 2: 5 (gap) + 20 (event) + 5 (gap) = 30 min
 // - Event 3: 5 (gap) + 20 (event) + 20 (context out) = 45 min
-// - Total: 120 minutes (60 GitHub, 40 context, 20 gaps)
+// - Total: 120 minutes (60 GitHub, 40 context, 20 gaps).
 func calculateSessionCosts(events []ParticipantEvent, cfg Config) (githubHours, contextHours float64, sessions int) {
 	if len(events) == 0 {
 		return 0, 0, 0
 	}
 
 	// Sort events by timestamp
-	sortedEvents := make([]ParticipantEvent, len(events))
-	copy(sortedEvents, events)
-	sort.Slice(sortedEvents, func(i, j int) bool {
-		return sortedEvents[i].Timestamp.Before(sortedEvents[j].Timestamp)
+	sorted := make([]ParticipantEvent, len(events))
+	copy(sorted, events)
+	slices.SortFunc(sorted, func(a, b ParticipantEvent) int {
+		return a.Timestamp.Compare(b.Timestamp)
 	})
 
-	sessionGapDuration := cfg.SessionGapThreshold
-	contextSwitchDuration := cfg.ContextSwitchDuration
-	eventDuration := cfg.EventDuration
+	gapThreshold := cfg.SessionGapThreshold
+	contextSwitch := cfg.ContextSwitchDuration
+	eventDur := cfg.EventDuration
 
-	var totalGitHubTime time.Duration
-	var totalContextTime time.Duration
-	sessionCount := 0
+	var githubTime time.Duration
+	var contextTime time.Duration
+	count := 0
 
 	i := 0
-	for i < len(sortedEvents) {
+	for i < len(sorted) {
 		// Start a new session
-		sessionCount++
-		sessionStart := i
+		count++
+		start := i
 
 		// Find the end of this session (events within SessionGapThreshold)
-		sessionEnd := sessionStart
-		for sessionEnd+1 < len(sortedEvents) {
-			gap := sortedEvents[sessionEnd+1].Timestamp.Sub(sortedEvents[sessionEnd].Timestamp)
-			if gap > sessionGapDuration {
+		end := start
+		for end+1 < len(sorted) {
+			gap := sorted[end+1].Timestamp.Sub(sorted[end].Timestamp)
+			if gap > gapThreshold {
 				break // New session starts
 			}
-			sessionEnd++
+			end++
 		}
 
 		// Calculate costs for this session
 		// Context switch in at the start
-		totalContextTime += contextSwitchDuration
+		contextTime += contextSwitch
 
-		for j := sessionStart; j <= sessionEnd; j++ {
+		for j := start; j <= end; j++ {
 			// Each event costs EventTime
-			totalGitHubTime += eventDuration
+			githubTime += eventDur
 
 			// Add gap time to next event (if within session)
-			if j < sessionEnd {
-				gap := sortedEvents[j+1].Timestamp.Sub(sortedEvents[j].Timestamp)
-				totalGitHubTime += gap
+			if j < end {
+				gap := sorted[j+1].Timestamp.Sub(sorted[j].Timestamp)
+				githubTime += gap
 			}
 		}
 
 		// Context switch out at the end
-		totalContextTime += contextSwitchDuration
+		contextTime += contextSwitch
 
 		// Move to next session
-		i = sessionEnd + 1
+		i = end + 1
 	}
 
-	githubHours = totalGitHubTime.Hours()
-	contextHours = totalContextTime.Hours()
-	sessions = sessionCount
+	githubHours = githubTime.Hours()
+	contextHours = contextTime.Hours()
+	sessions = count
 
 	return githubHours, contextHours, sessions
 }

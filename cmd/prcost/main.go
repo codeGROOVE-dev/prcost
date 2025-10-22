@@ -4,6 +4,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"log"
@@ -26,13 +27,15 @@ func main() {
 
 	flag.Usage = func() {
 		fmt.Fprintf(os.Stderr, "Usage: %s [options] <PR_URL>\n\n", os.Args[0])
-		fmt.Fprintf(os.Stderr, "Calculate the real-world cost of a GitHub pull request.\n\n")
-		fmt.Fprintf(os.Stderr, "Options:\n")
+		fmt.Fprint(os.Stderr, "Calculate the real-world cost of a GitHub pull request.\n\n")
+		fmt.Fprint(os.Stderr, "Options:\n")
 		flag.PrintDefaults()
-		fmt.Fprintf(os.Stderr, "\nExamples:\n")
+		fmt.Fprint(os.Stderr, "\nExamples:\n")
 		fmt.Fprintf(os.Stderr, "  %s https://github.com/owner/repo/pull/123\n", os.Args[0])
 		fmt.Fprintf(os.Stderr, "  %s --salary 300000 --benefits 1.4 https://github.com/owner/repo/pull/123\n", os.Args[0])
-		fmt.Fprintf(os.Stderr, "  %s --salary 200000 --benefits 1.25 --event-minutes 30 --format json https://github.com/owner/repo/pull/123\n", os.Args[0])
+		fmt.Fprintf(os.Stderr,
+			"  %s --salary 200000 --benefits 1.25 --event-minutes 30 --format json https://github.com/owner/repo/pull/123\n",
+			os.Args[0])
 	}
 
 	flag.Parse()
@@ -47,7 +50,7 @@ func main() {
 
 	// Validate PR URL format
 	if !strings.HasPrefix(prURL, "https://github.com/") || !strings.Contains(prURL, "/pull/") {
-		log.Fatalf("Invalid PR URL. Expected format: https://github.com/owner/repo/pull/123")
+		log.Fatal("Invalid PR URL. Expected format: https://github.com/owner/repo/pull/123")
 	}
 
 	// Create cost configuration from flags
@@ -57,9 +60,9 @@ func main() {
 	cfg.EventDuration = time.Duration(*eventMinutes) * time.Minute
 	cfg.DelayCostFactor = *overheadFactor
 
-	// Get GitHub token from gh CLI
+	// Retrieve GitHub token from gh CLI
 	ctx := context.Background()
-	token, err := getGitHubToken(ctx)
+	token, err := authToken(ctx)
 	if err != nil {
 		log.Fatalf("Failed to get GitHub token: %v\nPlease ensure 'gh' is installed and authenticated (run 'gh auth login')", err)
 	}
@@ -76,16 +79,18 @@ func main() {
 	// Output in requested format
 	switch *format {
 	case "human":
-		printHumanReadable(breakdown, prURL)
+		printHumanReadable(&breakdown, prURL)
 	case "json":
-		printJSON(breakdown)
+		if err := printJSON(&breakdown); err != nil {
+			log.Fatalf("Failed to output results: %v", err)
+		}
 	default:
 		log.Fatalf("Unknown format: %s (must be human or json)", *format)
 	}
 }
 
-// getGitHubToken retrieves a GitHub token using the gh CLI.
-func getGitHubToken(ctx context.Context) (string, error) {
+// authToken retrieves a GitHub token using the gh CLI.
+func authToken(ctx context.Context) (string, error) {
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 
@@ -93,7 +98,7 @@ func getGitHubToken(ctx context.Context) (string, error) {
 	output, err := cmd.Output()
 	if err != nil {
 		if ctx.Err() == context.DeadlineExceeded {
-			return "", fmt.Errorf("timeout getting auth token")
+			return "", errors.New("timeout getting auth token")
 		}
 		return "", fmt.Errorf("failed to get auth token (is 'gh' installed and authenticated?): %w", err)
 	}
@@ -103,31 +108,32 @@ func getGitHubToken(ctx context.Context) (string, error) {
 }
 
 // printHumanReadable outputs a detailed itemized bill in human-readable format.
-func printHumanReadable(b cost.Breakdown, prURL string) {
-	fmt.Printf("PULL REQUEST COST ANALYSIS\n")
-	fmt.Printf("==========================\n\n")
+func printHumanReadable(breakdown *cost.Breakdown, prURL string) {
+	fmt.Println("PULL REQUEST COST ANALYSIS")
+	fmt.Println("==========================")
+	fmt.Println()
 	fmt.Printf("PR URL:      %s\n", prURL)
 	fmt.Printf("Hourly Rate: $%.2f ($%.0f salary * %.1fX total benefits multiplier)\n\n",
-		b.HourlyRate, b.AnnualSalary, b.BenefitsMultiplier)
+		breakdown.HourlyRate, breakdown.AnnualSalary, breakdown.BenefitsMultiplier)
 
 	// Author Costs
-	fmt.Printf("AUTHOR COSTS\n")
+	fmt.Println("AUTHOR COSTS")
 	fmt.Printf("  Code Cost (COCOMO)          $%10.2f   (%d LOC, %.2f hrs)\n",
-		b.Author.CodeCost, b.Author.LinesAdded, b.Author.CodeHours)
+		breakdown.Author.CodeCost, breakdown.Author.LinesAdded, breakdown.Author.CodeHours)
 	fmt.Printf("  Code Context Switching      $%10.2f   (%.2f hrs)\n",
-		b.Author.CodeContextCost, b.Author.CodeContextHours)
+		breakdown.Author.CodeContextCost, breakdown.Author.CodeContextHours)
 	fmt.Printf("  GitHub Time                 $%10.2f   (%d events, %.2f hrs)\n",
-		b.Author.GitHubCost, b.Author.Events, b.Author.GitHubHours)
+		breakdown.Author.GitHubCost, breakdown.Author.Events, breakdown.Author.GitHubHours)
 	fmt.Printf("  GitHub Context Switching    $%10.2f   (%d sessions, %.2f hrs)\n",
-		b.Author.GitHubContextCost, b.Author.Sessions, b.Author.GitHubContextHours)
-	fmt.Printf("  ---\n")
+		breakdown.Author.GitHubContextCost, breakdown.Author.Sessions, breakdown.Author.GitHubContextHours)
+	fmt.Println("  ---")
 	fmt.Printf("  Author Subtotal             $%10.2f   (%.2f hrs total)\n\n",
-		b.Author.TotalCost, b.Author.TotalHours)
+		breakdown.Author.TotalCost, breakdown.Author.TotalHours)
 
 	// Participant Costs
-	if len(b.Participants) > 0 {
-		fmt.Printf("PARTICIPANT COSTS\n")
-		for _, p := range b.Participants {
+	if len(breakdown.Participants) > 0 {
+		fmt.Println("PARTICIPANT COSTS")
+		for _, p := range breakdown.Participants {
 			fmt.Printf("  %s\n", p.Actor)
 			fmt.Printf("    Event Time                $%10.2f   (%d events, %.2f hrs)\n",
 				p.GitHubCost, p.Events, p.GitHubHours)
@@ -140,53 +146,51 @@ func printHumanReadable(b cost.Breakdown, prURL string) {
 		// Sum all participant costs
 		var totalParticipantCost float64
 		var totalParticipantHours float64
-		for _, p := range b.Participants {
+		for _, p := range breakdown.Participants {
 			totalParticipantCost += p.TotalCost
 			totalParticipantHours += p.TotalHours
 		}
-		fmt.Printf("  ---\n")
+		fmt.Println("  ---")
 		fmt.Printf("  Participants Subtotal       $%10.2f   (%.2f hrs total)\n\n",
 			totalParticipantCost, totalParticipantHours)
 	}
 
 	// Delay Cost
-	fmt.Printf("DELAY COST\n")
-	if b.DelayCapped {
+	fmt.Println("DELAY COST")
+	if breakdown.DelayCapped {
 		fmt.Printf("  %-32s $%10.2f   (%.0f hrs, capped at 60 days)\n",
-			"Project Delay (20%)", b.DelayCostDetail.ProjectDelayCost, b.DelayCostDetail.ProjectDelayHours)
+			"Project Delay (20%)", breakdown.DelayCostDetail.ProjectDelayCost, breakdown.DelayCostDetail.ProjectDelayHours)
 	} else {
 		fmt.Printf("  %-32s $%10.2f   (%.2f hrs)\n",
-			"Project Delay (20%)", b.DelayCostDetail.ProjectDelayCost, b.DelayCostDetail.ProjectDelayHours)
+			"Project Delay (20%)", breakdown.DelayCostDetail.ProjectDelayCost, breakdown.DelayCostDetail.ProjectDelayHours)
 	}
 
-	if b.DelayCostDetail.ReworkPercentage > 0 {
-		label := fmt.Sprintf("Code Updates (%.0f%% rework)", b.DelayCostDetail.ReworkPercentage)
+	if breakdown.DelayCostDetail.ReworkPercentage > 0 {
+		label := fmt.Sprintf("Code Updates (%.0f%% rework)", breakdown.DelayCostDetail.ReworkPercentage)
 		fmt.Printf("  %-32s $%10.2f   (%.2f hrs)\n",
-			label, b.DelayCostDetail.CodeUpdatesCost, b.DelayCostDetail.CodeUpdatesHours)
+			label, breakdown.DelayCostDetail.CodeUpdatesCost, breakdown.DelayCostDetail.CodeUpdatesHours)
 	}
 
 	fmt.Printf("  %-32s $%10.2f   (%.2f hrs)\n",
-		"Future GitHub (3 events)", b.DelayCostDetail.FutureGitHubCost, b.DelayCostDetail.FutureGitHubHours)
-	fmt.Printf("  ---\n")
+		"Future GitHub (3 events)", breakdown.DelayCostDetail.FutureGitHubCost, breakdown.DelayCostDetail.FutureGitHubHours)
+	fmt.Println("  ---")
 
-	if b.DelayCapped {
+	if breakdown.DelayCapped {
 		fmt.Printf("  Total Delay Cost            $%10.2f   (actual: %.0f hours open)\n\n",
-			b.DelayCost, b.DelayHours)
+			breakdown.DelayCost, breakdown.DelayHours)
 	} else {
-		fmt.Printf("  Total Delay Cost            $%10.2f\n\n", b.DelayCost)
+		fmt.Printf("  Total Delay Cost            $%10.2f\n\n", breakdown.DelayCost)
 	}
 
 	// Total
-	fmt.Printf("==========================\n")
-	fmt.Printf("TOTAL COST                  $%10.2f\n", b.TotalCost)
-	fmt.Printf("==========================\n")
+	fmt.Println("==========================")
+	fmt.Printf("TOTAL COST                  $%10.2f\n", breakdown.TotalCost)
+	fmt.Println("==========================")
 }
 
 // printJSON outputs the cost breakdown in JSON format.
-func printJSON(b cost.Breakdown) {
+func printJSON(breakdown *cost.Breakdown) error {
 	encoder := json.NewEncoder(os.Stdout)
 	encoder.SetIndent("", "  ")
-	if err := encoder.Encode(b); err != nil {
-		log.Fatalf("Failed to encode JSON: %v", err)
-	}
+	return encoder.Encode(breakdown)
 }

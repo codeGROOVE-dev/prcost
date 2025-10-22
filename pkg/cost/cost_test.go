@@ -187,8 +187,8 @@ func TestCalculateWithRealPRData(t *testing.T) {
 		PullRequest struct {
 			CreatedAt         string `json:"created_at"`
 			UpdatedAt         string `json:"updated_at"`
-			Additions         int    `json:"additions"`
 			Author            string `json:"author"`
+			Additions         int    `json:"additions"`
 			AuthorWriteAccess int    `json:"author_write_access"`
 		} `json:"pull_request"`
 	}
@@ -203,15 +203,24 @@ func TestCalculateWithRealPRData(t *testing.T) {
 		if e.Bot {
 			continue
 		}
-		ts, _ := time.Parse(time.RFC3339, e.Timestamp)
+		ts, err := time.Parse(time.RFC3339, e.Timestamp)
+		if err != nil {
+			t.Fatalf("Failed to parse timestamp: %v", err)
+		}
 		events = append(events, ParticipantEvent{
 			Timestamp: ts,
 			Actor:     e.Actor,
 		})
 	}
 
-	createdAt, _ := time.Parse(time.RFC3339, prxData.PullRequest.CreatedAt)
-	updatedAt, _ := time.Parse(time.RFC3339, prxData.PullRequest.UpdatedAt)
+	createdAt, err := time.Parse(time.RFC3339, prxData.PullRequest.CreatedAt)
+	if err != nil {
+		t.Fatalf("Failed to parse created_at: %v", err)
+	}
+	updatedAt, err := time.Parse(time.RFC3339, prxData.PullRequest.UpdatedAt)
+	if err != nil {
+		t.Fatalf("Failed to parse updated_at: %v", err)
+	}
 
 	prData := PRData{
 		LinesAdded:           prxData.PullRequest.Additions,
@@ -449,8 +458,8 @@ func TestCalculateWithRealPR13(t *testing.T) {
 		PullRequest struct {
 			CreatedAt         string `json:"created_at"`
 			UpdatedAt         string `json:"updated_at"`
-			Additions         int    `json:"additions"`
 			Author            string `json:"author"`
+			Additions         int    `json:"additions"`
 			AuthorWriteAccess int    `json:"author_write_access"`
 		} `json:"pull_request"`
 	}
@@ -465,15 +474,24 @@ func TestCalculateWithRealPR13(t *testing.T) {
 		if e.Bot {
 			continue
 		}
-		ts, _ := time.Parse(time.RFC3339, e.Timestamp)
+		ts, err := time.Parse(time.RFC3339, e.Timestamp)
+		if err != nil {
+			t.Fatalf("Failed to parse timestamp: %v", err)
+		}
 		events = append(events, ParticipantEvent{
 			Timestamp: ts,
 			Actor:     e.Actor,
 		})
 	}
 
-	createdAt, _ := time.Parse(time.RFC3339, prxData.PullRequest.CreatedAt)
-	updatedAt, _ := time.Parse(time.RFC3339, prxData.PullRequest.UpdatedAt)
+	createdAt, err := time.Parse(time.RFC3339, prxData.PullRequest.CreatedAt)
+	if err != nil {
+		t.Fatalf("Failed to parse created_at: %v", err)
+	}
+	updatedAt, err := time.Parse(time.RFC3339, prxData.PullRequest.UpdatedAt)
+	if err != nil {
+		t.Fatalf("Failed to parse updated_at: %v", err)
+	}
 
 	prData := PRData{
 		LinesAdded:           prxData.PullRequest.Additions,
