@@ -8,6 +8,7 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"log/slog"
 	"os"
 	"os/exec"
 	"strings"
@@ -18,6 +19,12 @@ import (
 )
 
 func main() {
+	// Setup structured logging to stderr (stdout is for results)
+	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{
+		Level: slog.LevelInfo,
+	}))
+	slog.SetDefault(logger)
+
 	// Define command-line flags
 	salary := flag.Float64("salary", 250000, "Annual salary for cost calculation")
 	benefits := flag.Float64("benefits", 1.3, "Benefits multiplier (1.3 = 30% benefits)")
@@ -53,6 +60,8 @@ func main() {
 		log.Fatal("Invalid PR URL. Expected format: https://github.com/owner/repo/pull/123")
 	}
 
+	slog.Info("Starting PR cost analysis", "pr_url", prURL, "format", *format)
+
 	// Create cost configuration from flags
 	cfg := cost.DefaultConfig()
 	cfg.AnnualSalary = *salary
@@ -60,21 +69,38 @@ func main() {
 	cfg.EventDuration = time.Duration(*eventMinutes) * time.Minute
 	cfg.DelayCostFactor = *overheadFactor
 
+	slog.Debug("Configuration",
+		"salary", cfg.AnnualSalary,
+		"benefits_multiplier", cfg.BenefitsMultiplier,
+		"event_minutes", *eventMinutes,
+		"delay_cost_factor", cfg.DelayCostFactor)
+
 	// Retrieve GitHub token from gh CLI
 	ctx := context.Background()
+	slog.Info("Retrieving GitHub authentication token")
 	token, err := authToken(ctx)
 	if err != nil {
+		slog.Error("Failed to get GitHub token", "error", err)
 		log.Fatalf("Failed to get GitHub token: %v\nPlease ensure 'gh' is installed and authenticated (run 'gh auth login')", err)
 	}
+	slog.Debug("Successfully retrieved GitHub token")
 
 	// Fetch PR data
+	slog.Info("Fetching PR data from GitHub")
 	prData, err := github.FetchPRData(ctx, prURL, token)
 	if err != nil {
+		slog.Error("Failed to fetch PR data", "error", err)
 		log.Fatalf("Failed to fetch PR data: %v", err)
 	}
+	slog.Info("Successfully fetched PR data",
+		"lines_added", prData.LinesAdded,
+		"author", prData.Author,
+		"events", len(prData.Events))
 
 	// Calculate costs
+	slog.Info("Calculating PR costs")
 	breakdown := cost.Calculate(prData, cfg)
+	slog.Info("Cost calculation complete", "total_cost", breakdown.TotalCost)
 
 	// Output in requested format
 	switch *format {

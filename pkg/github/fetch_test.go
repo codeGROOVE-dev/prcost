@@ -66,7 +66,7 @@ func TestParsePRURL(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			parts, err := parsePRURL(tt.url)
+			owner, repo, number, err := parsePRURL(tt.url)
 
 			if (err != nil) != tt.wantErr {
 				t.Errorf("parsePRURL() error = %v, wantErr %v", err, tt.wantErr)
@@ -74,14 +74,14 @@ func TestParsePRURL(t *testing.T) {
 			}
 
 			if !tt.wantErr {
-				if parts.owner != tt.wantOwner {
-					t.Errorf("parsePRURL() owner = %v, want %v", parts.owner, tt.wantOwner)
+				if owner != tt.wantOwner {
+					t.Errorf("parsePRURL() owner = %v, want %v", owner, tt.wantOwner)
 				}
-				if parts.repo != tt.wantRepo {
-					t.Errorf("parsePRURL() repo = %v, want %v", parts.repo, tt.wantRepo)
+				if repo != tt.wantRepo {
+					t.Errorf("parsePRURL() repo = %v, want %v", repo, tt.wantRepo)
 				}
-				if parts.number != tt.wantNumber {
-					t.Errorf("parsePRURL() number = %v, want %v", parts.number, tt.wantNumber)
+				if number != tt.wantNumber {
+					t.Errorf("parsePRURL() number = %v, want %v", number, tt.wantNumber)
 				}
 			}
 		})

@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"os"
 	"strconv"
 	"strings"
@@ -54,60 +55,63 @@ func PRDataFromPRX(prData *prx.PullRequestData) cost.PRData {
 //   - cost.PRData with all information needed for cost calculation
 func FetchPRData(ctx context.Context, prURL string, token string) (cost.PRData, error) {
 	// Parse the PR URL to extract owner, repo, and PR number
-	parts, err := parsePRURL(prURL)
+	owner, repo, number, err := parsePRURL(prURL)
 	if err != nil {
+		slog.Error("Failed to parse PR URL", "url", prURL, "error", err)
 		return cost.PRData{}, fmt.Errorf("invalid PR URL: %w", err)
 	}
+
+	slog.Debug("Parsed PR URL", "owner", owner, "repo", repo, "number", number)
 
 	// Create prx client
 	client := prx.NewClient(token)
 
-	// Fetch PR data using prx
-	prData, err := client.PullRequest(ctx, parts.owner, parts.repo, parts.number)
+	// Fetch PR data using prx (prx has built-in retry logic)
+	slog.Debug("Calling GitHub API via prx", "owner", owner, "repo", repo, "pr", number)
+	prData, err := client.PullRequest(ctx, owner, repo, number)
 	if err != nil {
+		slog.Error("GitHub API call failed", "owner", owner, "repo", repo, "pr", number, "error", err)
 		return cost.PRData{}, fmt.Errorf("failed to fetch PR data: %w", err)
 	}
 
-	// Convert to cost.PRData
-	return PRDataFromPRX(prData), nil
-}
+	slog.Debug("GitHub API call successful",
+		"additions", prData.PullRequest.Additions,
+		"author", prData.PullRequest.Author,
+		"total_events", len(prData.Events))
 
-// prParts holds the parsed components of a GitHub PR URL.
-type prParts struct {
-	owner  string
-	repo   string
-	number int
+	// Convert to cost.PRData
+	result := PRDataFromPRX(prData)
+	slog.Debug("Converted PR data", "human_events", len(result.Events))
+	return result, nil
 }
 
 // parsePRURL extracts owner, repo, and PR number from a GitHub PR URL.
 // Expected format: https://github.com/owner/repo/pull/123
-func parsePRURL(prURL string) (prParts, error) {
+//
+//nolint:revive // Four return values is simpler than creating a struct wrapper
+func parsePRURL(prURL string) (owner, repo string, number int, err error) {
 	// Remove protocol prefix
 	prURL = strings.TrimPrefix(prURL, "https://")
 	prURL = strings.TrimPrefix(prURL, "http://")
 
 	// Remove github.com prefix
 	if !strings.HasPrefix(prURL, "github.com/") {
-		return prParts{}, errors.New("URL must be from github.com")
+		return "", "", 0, errors.New("URL must be from github.com")
 	}
 	prURL = strings.TrimPrefix(prURL, "github.com/")
 
 	// Split by /
 	parts := strings.Split(prURL, "/")
 	if len(parts) < 4 || parts[2] != "pull" {
-		return prParts{}, errors.New("expected format: https://github.com/owner/repo/pull/123")
+		return "", "", 0, errors.New("expected format: https://github.com/owner/repo/pull/123")
 	}
 
-	number, err := strconv.Atoi(parts[3])
+	number, err = strconv.Atoi(parts[3])
 	if err != nil {
-		return prParts{}, fmt.Errorf("invalid PR number: %w", err)
+		return "", "", 0, fmt.Errorf("invalid PR number: %w", err)
 	}
 
-	return prParts{
-		owner:  parts[0],
-		repo:   parts[1],
-		number: number,
-	}, nil
+	return parts[0], parts[1], number, nil
 }
 
 // FetchPRDataWithDefaults is a convenience function that uses environment variables

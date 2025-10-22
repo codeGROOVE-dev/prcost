@@ -64,13 +64,6 @@ func DefaultConfig() Config {
 	}
 }
 
-// HourlyRate calculates the hourly rate from annual salary including benefits.
-// Formula: (salary × benefits_multiplier) / hours_per_year.
-func (c Config) HourlyRate() float64 {
-	totalCompensation := c.AnnualSalary * c.BenefitsMultiplier
-	return totalCompensation / c.HoursPerYear
-}
-
 // ParticipantEvent represents a single event by a participant.
 type ParticipantEvent struct {
 	Timestamp time.Time
@@ -172,7 +165,11 @@ type Breakdown struct {
 
 // Calculate computes the total cost of a pull request with detailed breakdowns.
 func Calculate(data PRData, cfg Config) Breakdown {
-	hourlyRate := cfg.HourlyRate()
+	// Defensive check: avoid division by zero
+	if cfg.HoursPerYear == 0 {
+		cfg.HoursPerYear = 2080 // Standard full-time hours per year
+	}
+	hourlyRate := (cfg.AnnualSalary * cfg.BenefitsMultiplier) / cfg.HoursPerYear
 
 	// Calculate author costs
 	authorCost := calculateAuthorCost(data, cfg, hourlyRate)
@@ -182,6 +179,10 @@ func Calculate(data PRData, cfg Config) Breakdown {
 
 	// Calculate delay cost with itemized breakdown (always shown)
 	delayHours := data.UpdatedAt.Sub(data.CreatedAt).Hours()
+	// Defensive check: if UpdatedAt is before CreatedAt (bad data), treat as zero delay
+	if delayHours < 0 {
+		delayHours = 0
+	}
 	delayDays := delayHours / 24.0
 
 	// Cap Project Delay at configured maximum (default: 60 days / 2 months)
@@ -327,7 +328,12 @@ func calculateAuthorCost(data PRData, cfg Config, hourlyRate float64) AuthorCost
 	codeContextCost := codeContextHours * hourlyRate
 
 	// 3. GitHub Cost + GitHub Context Cost: Based on author's events
-	authorEvents := filterEventsByActor(data.Events, data.Author)
+	var authorEvents []ParticipantEvent
+	for _, event := range data.Events {
+		if event.Actor == data.Author {
+			authorEvents = append(authorEvents, event)
+		}
+	}
 	githubHours, githubContextHours, sessions := calculateSessionCosts(authorEvents, cfg)
 	githubCost := githubHours * hourlyRate
 	githubContextCost := githubContextHours * hourlyRate
@@ -355,7 +361,12 @@ func calculateAuthorCost(data PRData, cfg Config, hourlyRate float64) AuthorCost
 // calculateParticipantCosts computes costs for all participants except the author.
 func calculateParticipantCosts(data PRData, cfg Config, hourlyRate float64) []ParticipantCostDetail {
 	// Group events by actor
-	eventsByActor := groupEventsByActor(data.Events, data.Author)
+	eventsByActor := make(map[string][]ParticipantEvent)
+	for _, event := range data.Events {
+		if event.Actor != data.Author {
+			eventsByActor[event.Actor] = append(eventsByActor[event.Actor], event)
+		}
+	}
 
 	var participantCosts []ParticipantCostDetail
 
@@ -468,26 +479,4 @@ func calculateSessionCosts(events []ParticipantEvent, cfg Config) (githubHours, 
 	sessions = count
 
 	return githubHours, contextHours, sessions
-}
-
-// filterEventsByActor returns events for a specific actor.
-func filterEventsByActor(events []ParticipantEvent, actor string) []ParticipantEvent {
-	var filtered []ParticipantEvent
-	for _, event := range events {
-		if event.Actor == actor {
-			filtered = append(filtered, event)
-		}
-	}
-	return filtered
-}
-
-// groupEventsByActor groups events by actor, excluding the specified author.
-func groupEventsByActor(events []ParticipantEvent, excludeAuthor string) map[string][]ParticipantEvent {
-	grouped := make(map[string][]ParticipantEvent)
-	for _, event := range events {
-		if event.Actor != excludeAuthor {
-			grouped[event.Actor] = append(grouped[event.Actor], event)
-		}
-	}
-	return grouped
 }

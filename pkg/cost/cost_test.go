@@ -42,7 +42,7 @@ func TestDefaultConfig(t *testing.T) {
 
 func TestHourlyRate(t *testing.T) {
 	cfg := DefaultConfig()
-	hourlyRate := cfg.HourlyRate()
+	hourlyRate := (cfg.AnnualSalary * cfg.BenefitsMultiplier) / cfg.HoursPerYear
 
 	// $250,000 * 1.3 / 2080 = $156.25/hr
 	expectedRate := 156.25
