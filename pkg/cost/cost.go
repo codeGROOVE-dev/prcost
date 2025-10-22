@@ -36,8 +36,12 @@ type Config struct {
 	// This represents the opportunity cost of having a PR open
 	DelayCostFactor float64
 
-	// Maximum duration for project delay cost calculation (default: 60 days / 2 months)
-	// Project delay is capped at this duration to avoid unrealistic costs
+	// Maximum time after last event to count for project delay (default: 14 days / 2 weeks)
+	// Only counts delay costs up to this many days after the last event on the PR
+	MaxDelayAfterLastEvent time.Duration
+
+	// Maximum total project delay duration (default: 90 days / 3 months)
+	// Absolute cap on project delay costs regardless of PR age
 	MaxProjectDelay time.Duration
 
 	// Maximum duration for code drift calculation (default: 90 days / 3 months)
@@ -51,16 +55,17 @@ type Config struct {
 // DefaultConfig returns reasonable defaults for cost calculation.
 func DefaultConfig() Config {
 	return Config{
-		AnnualSalary:          250000.0,
-		BenefitsMultiplier:    1.3,
-		HoursPerYear:          2080.0,
-		EventDuration:         20 * time.Minute,
-		ContextSwitchDuration: 20 * time.Minute,
-		SessionGapThreshold:   60 * time.Minute,
-		DelayCostFactor:       0.20,
-		MaxProjectDelay:       60 * 24 * time.Hour, // 60 days
-		MaxCodeDrift:          90 * 24 * time.Hour, // 90 days
-		COCOMO:                cocomo.DefaultConfig(),
+		AnnualSalary:           250000.0,
+		BenefitsMultiplier:     1.3,
+		HoursPerYear:           2080.0,
+		EventDuration:          20 * time.Minute,
+		ContextSwitchDuration:  20 * time.Minute,
+		SessionGapThreshold:    60 * time.Minute,
+		DelayCostFactor:        0.20,
+		MaxDelayAfterLastEvent: 14 * 24 * time.Hour, // 14 days (2 weeks) after last event
+		MaxProjectDelay:        90 * 24 * time.Hour, // 90 days absolute max
+		MaxCodeDrift:           90 * 24 * time.Hour, // 90 days
+		COCOMO:                 cocomo.DefaultConfig(),
 	}
 }
 
@@ -159,7 +164,7 @@ type Breakdown struct {
 	// Total cost (sum of all components)
 	TotalCost float64
 
-	// True if project delay was capped at 60 days (2 months)
+	// True if project delay was capped (either by 2 weeks after last event or 90 days total)
 	DelayCapped bool
 }
 
@@ -185,16 +190,52 @@ func Calculate(data PRData, cfg Config) Breakdown {
 	}
 	delayDays := delayHours / 24.0
 
-	// Cap Project Delay at configured maximum (default: 60 days / 2 months)
-	maxHrs := cfg.MaxProjectDelay.Hours()
+	// Find the last event timestamp to determine time since last activity
+	var lastEventTime time.Time
+	if len(data.Events) > 0 {
+		// Find the most recent event
+		lastEventTime = data.Events[0].Timestamp
+		for _, event := range data.Events {
+			if event.Timestamp.After(lastEventTime) {
+				lastEventTime = event.Timestamp
+			}
+		}
+	} else {
+		// No events, use CreatedAt
+		lastEventTime = data.CreatedAt
+	}
+
+	// Calculate time since last event
+	timeSinceLastEvent := data.UpdatedAt.Sub(lastEventTime).Hours()
+	if timeSinceLastEvent < 0 {
+		timeSinceLastEvent = 0
+	}
+
+	// Cap Project Delay in two ways:
+	// 1. Only count up to MaxDelayAfterLastEvent (default: 14 days) after the last event
+	// 2. Absolute maximum of MaxProjectDelay (default: 90 days) total
 	var capped bool
 	var cappedHrs float64
 
-	if delayHours > maxHrs {
+	cappedHrs = delayHours
+
+	// First, apply the "2 weeks after last event" cap
+	maxAfterEvent := cfg.MaxDelayAfterLastEvent.Hours()
+	if timeSinceLastEvent > maxAfterEvent {
+		// Reduce delay by the excess time since last event
+		excessHours := timeSinceLastEvent - maxAfterEvent
+		cappedHrs = delayHours - excessHours
+		if cappedHrs < 0 {
+			cappedHrs = 0
+		}
 		capped = true
-		cappedHrs = maxHrs
-	} else {
-		cappedHrs = delayHours
+	}
+
+	// Second, apply the absolute maximum cap
+	maxTotal := cfg.MaxProjectDelay.Hours()
+	if cappedHrs > maxTotal {
+		cappedHrs = maxTotal
+		capped = true
 	}
 
 	// 1. Project Delay: Configured percentage (default 20%) of engineer time

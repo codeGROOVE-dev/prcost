@@ -184,7 +184,7 @@ func printHumanReadable(breakdown *cost.Breakdown, prURL string) {
 	// Delay Cost
 	fmt.Println("DELAY COST")
 	if breakdown.DelayCapped {
-		fmt.Printf("  %-32s $%10.2f   (%.0f hrs, capped at 60 days)\n",
+		fmt.Printf("  %-32s $%10.2f   (%.0f hrs, capped)\n",
 			"Project Delay (20%)", breakdown.DelayCostDetail.ProjectDelayCost, breakdown.DelayCostDetail.ProjectDelayHours)
 	} else {
 		fmt.Printf("  %-32s $%10.2f   (%.2f hrs)\n",

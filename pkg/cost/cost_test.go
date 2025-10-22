@@ -31,8 +31,12 @@ func TestDefaultConfig(t *testing.T) {
 		t.Errorf("Expected delay cost factor 0.20, got %.2f", cfg.DelayCostFactor)
 	}
 
-	if cfg.MaxProjectDelay != 60*24*time.Hour {
-		t.Errorf("Expected 60 days max project delay, got %v", cfg.MaxProjectDelay)
+	if cfg.MaxDelayAfterLastEvent != 14*24*time.Hour {
+		t.Errorf("Expected 14 days max delay after last event, got %v", cfg.MaxDelayAfterLastEvent)
+	}
+
+	if cfg.MaxProjectDelay != 90*24*time.Hour {
+		t.Errorf("Expected 90 days max project delay, got %v", cfg.MaxProjectDelay)
 	}
 
 	if cfg.MaxCodeDrift != 90*24*time.Hour {
