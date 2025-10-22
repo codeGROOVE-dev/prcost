@@ -48,13 +48,11 @@ This model is based on early research combining COCOMO II effort estimation with
 
 ### Delay Costs
 
-**Project Delay (20%)**: Opportunity cost of blocked engineer time: `hourly_rate × duration_hours × 0.20`.
+**Project Delay (20%)**: Opportunity cost of blocked engineer time: `hourly_rate × duration_hours × 0.20`. Capped at 60 days (2 months).
 
-**Code Updates**: Rework cost from code drift. Power-law formula: `driftMultiplier = 1 + (0.03 × days^0.7)`, calibrated to 4% weekly churn. Applies to PRs open 3+ days, capped at 90 days. Based on Windows Vista analysis (Nagappan et al., Microsoft Research, 2008).
+**Code Updates**: Rework cost from code drift. Probability-based formula: `drift = 1 - (0.96)^(days/7)`, modeling the cumulative probability that code becomes stale with 4% weekly churn. Applies to PRs open 3+ days, capped at 90 days (~41% max drift). Based on Windows Vista analysis (Nagappan et al., Microsoft Research, 2008).
 
 **Future GitHub**: Cost for 3 future events (push, review, merge) with full context switching.
-
-External contributors (no write access) receive 50% delay cost reduction.
 
 ## Session-Based Time Tracking
 

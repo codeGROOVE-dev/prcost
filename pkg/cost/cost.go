@@ -21,19 +21,27 @@ type Config struct {
 	// Hours per year for calculating hourly rate (default: 2080)
 	HoursPerYear float64
 
-	// Minutes per GitHub event (default: 20 minutes)
-	MinutesPerEvent float64
+	// Time per GitHub event (default: 20 minutes)
+	EventDuration time.Duration
 
-	// Minutes for context switching in/out (default: 20 minutes)
-	ContextSwitchMinutes float64
+	// Time for context switching in/out (default: 20 minutes)
+	ContextSwitchDuration time.Duration
 
-	// Session gap threshold in minutes (default: 60 minutes)
+	// Session gap threshold (default: 60 minutes)
 	// Events within this gap are considered part of the same session
-	SessionGapMinutes float64
+	SessionGapThreshold time.Duration
 
-	// Delay cost factor as percentage of hourly rate (default: 0.25 = 25%)
+	// Delay cost factor as percentage of hourly rate (default: 0.20 = 20%)
 	// This represents the opportunity cost of having a PR open
 	DelayCostFactor float64
+
+	// Maximum duration for project delay cost calculation (default: 60 days / 2 months)
+	// Project delay is capped at this duration to avoid unrealistic costs
+	MaxProjectDelay time.Duration
+
+	// Maximum duration for code drift calculation (default: 90 days / 3 months)
+	// Code drift is capped at this duration (affects rework percentage)
+	MaxCodeDrift time.Duration
 
 	// COCOMO configuration for estimating code writing effort
 	COCOMO cocomo.Config
@@ -42,14 +50,16 @@ type Config struct {
 // DefaultConfig returns reasonable defaults for cost calculation.
 func DefaultConfig() Config {
 	return Config{
-		AnnualSalary:         250000.0,
-		BenefitsMultiplier:   1.3,
-		HoursPerYear:         2080.0,
-		MinutesPerEvent:      20.0,
-		ContextSwitchMinutes: 20.0,
-		SessionGapMinutes:    60.0,
-		DelayCostFactor:      0.25,
-		COCOMO:               cocomo.DefaultConfig(),
+		AnnualSalary:          250000.0,
+		BenefitsMultiplier:    1.3,
+		HoursPerYear:          2080.0,
+		EventDuration:         20 * time.Minute,
+		ContextSwitchDuration: 20 * time.Minute,
+		SessionGapThreshold:   60 * time.Minute,
+		DelayCostFactor:       0.20,
+		MaxProjectDelay:       60 * 24 * time.Hour, // 60 days
+		MaxCodeDrift:          90 * 24 * time.Hour, // 90 days
+		COCOMO:                cocomo.DefaultConfig(),
 	}
 }
 
@@ -151,7 +161,7 @@ type Breakdown struct {
 
 	// Supporting details for delay cost
 	DelayHours         float64
-	DelayCapped        bool // True if delay was capped at 90 days
+	DelayCapped        bool // True if project delay was capped at 60 days (2 months)
 	HourlyRate         float64
 	AnnualSalary       float64
 	BenefitsMultiplier float64
@@ -174,40 +184,43 @@ func Calculate(data PRData, cfg Config) Breakdown {
 	delayHours := data.UpdatedAt.Sub(data.CreatedAt).Hours()
 	delayDays := delayHours / 24.0
 
-	// Cap at 90 days
-	const maxDelayDays = 90.0
-	var capped bool
-	var cappedDelayHours float64
+	// Cap Project Delay at configured maximum (default: 60 days / 2 months)
+	maxProjectDelayHours := cfg.MaxProjectDelay.Hours()
+	var projectDelayCapped bool
+	var cappedProjectDelayHours float64
 
-	if delayDays > maxDelayDays {
-		capped = true
-		cappedDelayHours = maxDelayDays * 24.0
+	if delayHours > maxProjectDelayHours {
+		projectDelayCapped = true
+		cappedProjectDelayHours = maxProjectDelayHours
 	} else {
-		cappedDelayHours = delayHours
+		cappedProjectDelayHours = delayHours
 	}
 
-	// 1. Project Delay: 20% of engineer time
-	projectDelayCost := hourlyRate * cappedDelayHours * 0.20
-	projectDelayHours := cappedDelayHours
+	// 1. Project Delay: Configured percentage (default 20%) of engineer time
+	projectDelayCost := hourlyRate * cappedProjectDelayHours * cfg.DelayCostFactor
+	projectDelayHours := cappedProjectDelayHours
 
-	// 2. Code Updates (Rework): Power-law drift formula based on empirical research
+	// 2. Code Updates (Rework): Probability-based drift formula
 	//
 	// Research basis:
 	// - Windows Vista: 4-8% weekly code churn (Nagappan et al., Microsoft Research, 2008)
 	// - Using 4% weekly baseline for active repositories
-	// - Daily churn rate: (1.04)^(1/7) - 1 ≈ 0.57% per day (compounding)
-	// - Code drift accelerates non-linearly over time (power law behavior)
 	//
-	// Formula: driftMultiplier = 1 + (0.03 × days^0.7)
-	//          reworkPercentage = driftMultiplier - 1
+	// Formula: Probability that a line becomes stale over time
+	//   drift = 1 - (1 - weeklyChurn)^(weeks)
+	//   drift = 1 - (0.96)^(days/7)
 	//
-	// Calibration to 4% weekly churn gives us:
-	// - 1 day: ~3% drift
-	// - 3 days: ~5% drift
-	// - 7 days: ~7% drift (slightly above 4% to account for non-linearity)
-	// - 14 days: ~12% drift
-	// - 30 days: ~19% drift
-	// - 90 days: ~35% drift (days capped at 90)
+	// This models the cumulative probability that any given line in the PR needs rework
+	// due to codebase changes. Unlike compounding formulas, this accounts for the fact
+	// that the same code areas often change multiple times.
+	//
+	// Expected drift percentages:
+	// -  3 days: ~2% drift
+	// -  7 days: ~4% drift (matches weekly churn)
+	// - 14 days: ~8% drift
+	// - 30 days: ~16% drift
+	// - 60 days: ~29% drift
+	// - 90 days: ~41% drift (days capped at 90)
 	//
 	// Reference:
 	// Nagappan, N., Murphy, B., & Basili, V. (2008). The Influence of Organizational
@@ -223,15 +236,16 @@ func Calculate(data PRData, cfg Config) Breakdown {
 		reworkLOC = 0
 		reworkPercentage = 0.0
 	} else {
-		// Cap days at 90 for drift calculation
+		// Cap days at configured maximum for drift calculation (default: 90 days)
+		maxDriftDays := cfg.MaxCodeDrift.Hours() / 24.0
 		driftDays := delayDays
-		if driftDays > 90.0 {
-			driftDays = 90.0
+		if driftDays > maxDriftDays {
+			driftDays = maxDriftDays
 		}
 
-		// Power-law drift: driftMultiplier = 1 + (0.03 × days^0.7)
-		driftMultiplier := 1.0 + (0.03 * math.Pow(driftDays, 0.7))
-		reworkPercentage = driftMultiplier - 1.0
+		// Probability-based drift: 1 - (1 - 0.04)^(days/7)
+		weeks := driftDays / 7.0
+		reworkPercentage = 1.0 - math.Pow(0.96, weeks)
 
 		reworkLOC = int(float64(data.LinesAdded) * reworkPercentage)
 
@@ -255,9 +269,9 @@ func Calculate(data PRData, cfg Config) Breakdown {
 	}
 
 	// 3. Future GitHub time: 3 events with full context switching
-	// Each event: context in (20) + event time (20) + context out (20) = 60 minutes
-	// 3 events = 180 minutes = 3 hours
-	futureGitHubHours := 3.0 * (cfg.ContextSwitchMinutes + cfg.MinutesPerEvent + cfg.ContextSwitchMinutes) / 60.0
+	// Each event: context in + event time + context out
+	futureGitHubDuration := 3 * (cfg.ContextSwitchDuration + cfg.EventDuration + cfg.ContextSwitchDuration)
+	futureGitHubHours := futureGitHubDuration.Hours()
 	futureGitHubCost := futureGitHubHours * hourlyRate
 
 	// Total delay cost
@@ -271,7 +285,7 @@ func Calculate(data PRData, cfg Config) Breakdown {
 		ProjectDelayHours: projectDelayHours,
 		CodeUpdatesHours:  codeUpdatesHours,
 		FutureGitHubHours: futureGitHubHours,
-		ReworkPercentage:  reworkPercentage * 100.0, // Store as percentage (0-30)
+		ReworkPercentage:  reworkPercentage * 100.0, // Store as percentage (0-100 scale, e.g., 41.0 = 41%)
 		TotalDelayCost:    delayCost,
 		TotalDelayHours:   totalDelayHours,
 	}
@@ -288,7 +302,7 @@ func Calculate(data PRData, cfg Config) Breakdown {
 		DelayCost:          delayCost,
 		DelayCostDetail:    delayCostDetail,
 		DelayHours:         delayHours,
-		DelayCapped:        capped,
+		DelayCapped:        projectDelayCapped,
 		HourlyRate:         hourlyRate,
 		AnnualSalary:       cfg.AnnualSalary,
 		BenefitsMultiplier: cfg.BenefitsMultiplier,
@@ -378,7 +392,7 @@ func calculateParticipantCosts(data PRData, cfg Config, hourlyRate float64) []Pa
 // calculateSessionCosts computes GitHub and context switching costs based on event sessions.
 //
 // Session Logic:
-// - Events within SessionGapMinutes (default 60 min) are part of the same session
+// - Events within SessionGapThreshold (default 60 min) are part of the same session
 // - Events >60 min apart start a new session
 //
 // Time Calculation per Session:
@@ -403,9 +417,9 @@ func calculateSessionCosts(events []ParticipantEvent, cfg Config) (githubHours, 
 		return sortedEvents[i].Timestamp.Before(sortedEvents[j].Timestamp)
 	})
 
-	sessionGapDuration := time.Duration(cfg.SessionGapMinutes * float64(time.Minute))
-	contextSwitchDuration := time.Duration(cfg.ContextSwitchMinutes * float64(time.Minute))
-	eventDuration := time.Duration(cfg.MinutesPerEvent * float64(time.Minute))
+	sessionGapDuration := cfg.SessionGapThreshold
+	contextSwitchDuration := cfg.ContextSwitchDuration
+	eventDuration := cfg.EventDuration
 
 	var totalGitHubTime time.Duration
 	var totalContextTime time.Duration
@@ -417,7 +431,7 @@ func calculateSessionCosts(events []ParticipantEvent, cfg Config) (githubHours, 
 		sessionCount++
 		sessionStart := i
 
-		// Find the end of this session (events within SessionGapMinutes)
+		// Find the end of this session (events within SessionGapThreshold)
 		sessionEnd := sessionStart
 		for sessionEnd+1 < len(sortedEvents) {
 			gap := sortedEvents[sessionEnd+1].Timestamp.Sub(sortedEvents[sessionEnd].Timestamp)

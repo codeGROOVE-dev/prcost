@@ -54,7 +54,7 @@ func main() {
 	cfg := cost.DefaultConfig()
 	cfg.AnnualSalary = *salary
 	cfg.BenefitsMultiplier = *benefits
-	cfg.MinutesPerEvent = *eventMinutes
+	cfg.EventDuration = time.Duration(*eventMinutes) * time.Minute
 	cfg.DelayCostFactor = *overheadFactor
 
 	// Get GitHub token from gh CLI
@@ -152,20 +152,21 @@ func printHumanReadable(b cost.Breakdown, prURL string) {
 	// Delay Cost
 	fmt.Printf("DELAY COST\n")
 	if b.DelayCapped {
-		fmt.Printf("  Project Delay (20%%)         $%10.2f   (%.0f hrs, capped at 90 days)\n",
-			b.DelayCostDetail.ProjectDelayCost, b.DelayCostDetail.ProjectDelayHours)
+		fmt.Printf("  %-32s $%10.2f   (%.0f hrs, capped at 60 days)\n",
+			"Project Delay (20%)", b.DelayCostDetail.ProjectDelayCost, b.DelayCostDetail.ProjectDelayHours)
 	} else {
-		fmt.Printf("  Project Delay (20%%)         $%10.2f   (%.2f hrs)\n",
-			b.DelayCostDetail.ProjectDelayCost, b.DelayCostDetail.ProjectDelayHours)
+		fmt.Printf("  %-32s $%10.2f   (%.2f hrs)\n",
+			"Project Delay (20%)", b.DelayCostDetail.ProjectDelayCost, b.DelayCostDetail.ProjectDelayHours)
 	}
 
 	if b.DelayCostDetail.ReworkPercentage > 0 {
-		fmt.Printf("  Code Updates (%.0f%% rework)  $%10.2f   (%.2f hrs)\n",
-			b.DelayCostDetail.ReworkPercentage*100, b.DelayCostDetail.CodeUpdatesCost, b.DelayCostDetail.CodeUpdatesHours)
+		label := fmt.Sprintf("Code Updates (%.0f%% rework)", b.DelayCostDetail.ReworkPercentage)
+		fmt.Printf("  %-32s $%10.2f   (%.2f hrs)\n",
+			label, b.DelayCostDetail.CodeUpdatesCost, b.DelayCostDetail.CodeUpdatesHours)
 	}
 
-	fmt.Printf("  Future GitHub (3 events)    $%10.2f   (%.2f hrs)\n",
-		b.DelayCostDetail.FutureGitHubCost, b.DelayCostDetail.FutureGitHubHours)
+	fmt.Printf("  %-32s $%10.2f   (%.2f hrs)\n",
+		"Future GitHub (3 events)", b.DelayCostDetail.FutureGitHubCost, b.DelayCostDetail.FutureGitHubHours)
 	fmt.Printf("  ---\n")
 
 	if b.DelayCapped {
