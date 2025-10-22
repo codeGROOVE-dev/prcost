@@ -1,6 +1,51 @@
 # prcost
 
-Calculate the real-world cost of GitHub pull requests with detailed breakdowns of author effort, participant contributions, and delay costs.
+Calculate the real-world cost of GitHub pull requests with detailed breakdowns of author effort, participant contributions, and delay costs. 
+
+## Example
+
+```
+PULL REQUEST COST ANALYSIS
+==========================
+
+PR URL:      https://github.com/chainguard-dev/apko/pull/1860
+Hourly Rate: $156.25 ($250000 salary * 1.3X total benefits multiplier)
+
+AUTHOR COSTS
+  Code Cost (COCOMO)          $   7531.93   (132 LOC, 48.20 hrs)
+  Code Context Switching      $    547.30   (3.50 hrs)
+  GitHub Time                 $    161.50   (3 events, 1.03 hrs)
+  GitHub Context Switching    $    208.33   (2 sessions, 1.33 hrs)
+  ---
+  Author Subtotal             $   8449.06   (54.07 hrs total)
+
+PARTICIPANT COSTS
+  philroche
+    Event Time                $     52.08   (1 events, 0.33 hrs)
+    Context Switching         $    104.17   (1 sessions, 0.67 hrs)
+    Subtotal                  $    156.25   (1.00 hrs total)
+  justinvreeland
+    Event Time                $     52.08   (1 events, 0.33 hrs)
+    Context Switching         $    104.17   (1 sessions, 0.67 hrs)
+    Subtotal                  $    156.25   (1.00 hrs total)
+  ---
+  Participants Subtotal       $    312.50   (2.00 hrs total)
+
+DELAY COST
+  Project Delay (20%)              $   2677.27   (68.54 hrs)
+  Future GitHub (3 events)         $    468.75   (3.00 hrs)
+  ---
+  Total Delay Cost            $   3146.02
+
+==========================
+TOTAL COST                  $  11907.58
+==========================
+```
+
+## Caveats
+
+* Due to limited input, results may not be accurate for single PRs, but should be accurate on average across a larger sample size of PRs
+* Real-world project delay costs depend on the revenue importance of the code involved. It attempts to include the opportunity cost, but for high-impact PRs, it will underestimate the true cost of a delay.
 
 ## Installation
 
