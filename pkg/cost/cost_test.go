@@ -19,12 +19,12 @@ func TestDefaultConfig(t *testing.T) {
 		t.Errorf("Expected benefits multiplier 1.3, got %.2f", cfg.BenefitsMultiplier)
 	}
 
-	if cfg.EventDuration != 20*time.Minute {
-		t.Errorf("Expected 20 minutes per event, got %v", cfg.EventDuration)
+	if cfg.EventDuration != 10*time.Minute {
+		t.Errorf("Expected 10 minutes per event, got %v", cfg.EventDuration)
 	}
 
-	if cfg.SessionGapThreshold != 60*time.Minute {
-		t.Errorf("Expected 60 minute session gap, got %v", cfg.SessionGapThreshold)
+	if cfg.SessionGapThreshold != 20*time.Minute {
+		t.Errorf("Expected 20 minute session gap, got %v", cfg.SessionGapThreshold)
 	}
 
 	if cfg.DeliveryDelayFactor != 0.15 {

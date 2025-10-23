@@ -221,10 +221,10 @@ func printHumanReadable(breakdown *cost.Breakdown, prURL string) {
 	fmt.Println("  ──────")
 	fmt.Printf("    Development Effort        %12s    %d LOC • %s\n",
 		formatCurrency(breakdown.Author.CodeCost), breakdown.Author.LinesAdded, formatTimeUnit(breakdown.Author.CodeHours))
-	fmt.Printf("    GitHub Activity           %12s    %d events • %s\n",
-		formatCurrency(breakdown.Author.GitHubCost), breakdown.Author.Events, formatTimeUnit(breakdown.Author.GitHubHours))
-	fmt.Printf("    GitHub Context Switching  %12s    %d sessions • %s\n",
-		formatCurrency(breakdown.Author.GitHubContextCost), breakdown.Author.Sessions, formatTimeUnit(breakdown.Author.GitHubContextHours))
+	fmt.Printf("    GitHub Activity           %12s    %d sessions • %s\n",
+		formatCurrency(breakdown.Author.GitHubCost), breakdown.Author.Sessions, formatTimeUnit(breakdown.Author.GitHubHours))
+	fmt.Printf("    GitHub Context Switching  %12s    %s\n",
+		formatCurrency(breakdown.Author.GitHubContextCost), formatTimeUnit(breakdown.Author.GitHubContextHours))
 	fmt.Println("                              ────────────")
 	fmt.Printf("    Subtotal                  %12s    %s\n",
 		formatCurrency(breakdown.Author.TotalCost), formatTimeUnit(breakdown.Author.TotalHours))
@@ -244,10 +244,10 @@ func printHumanReadable(breakdown *cost.Breakdown, prURL string) {
 		fmt.Println("  ────────────")
 		for _, p := range breakdown.Participants {
 			fmt.Printf("    %s\n", p.Actor)
-			fmt.Printf("      Review Activity         %12s    %d events • %s\n",
-				formatCurrency(p.GitHubCost), p.Events, formatTimeUnit(p.GitHubHours))
-			fmt.Printf("      Context Switching       %12s    %d sessions • %s\n",
-				formatCurrency(p.GitHubContextCost), p.Sessions, formatTimeUnit(p.GitHubContextHours))
+			fmt.Printf("      Review Activity         %12s    %d sessions • %s\n",
+				formatCurrency(p.GitHubCost), p.Sessions, formatTimeUnit(p.GitHubHours))
+			fmt.Printf("      Context Switching       %12s    %s\n",
+				formatCurrency(p.GitHubContextCost), formatTimeUnit(p.GitHubContextHours))
 		}
 		fmt.Println("                              ────────────")
 		fmt.Printf("    Subtotal                  %12s    %s\n",

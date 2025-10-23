@@ -7,41 +7,47 @@ Calculate the real-world cost of GitHub pull requests with detailed breakdowns o
 ```
 $ prcost https://github.com/chainguard-dev/apko/pull/1860
 
-PULL REQUEST COST ANALYSIS
-==========================
+  https://github.com/chainguard-dev/apko/pull/1860
+  Rate: $156.25/hr  •  Salary: $250,000.00  •  Benefits: 1.3x
 
-PR URL:      https://github.com/chainguard-dev/apko/pull/1860
-Hourly Rate: $156.25 ($250000 salary * 1.3X total benefits multiplier)
+  Author
+  ──────
+    Development Effort           $7,531.93    132 LOC • 2.0 days
+    GitHub Activity                $156.25    2 sessions • 1.0 hrs
+    GitHub Context Switching       $208.33    1.3 hrs
+                              ────────────
+    Subtotal                     $7,896.51    2.1 days
 
-AUTHOR COSTS
-  Code Cost (COCOMO)          $   7531.93   (132 LOC, 48.20 hrs)
-  Code Context Switching      $    547.30   (3.50 hrs)
-  GitHub Time                 $    161.50   (3 events, 1.03 hrs)
-  GitHub Context Switching    $    208.33   (2 sessions, 1.33 hrs)
-  ---
-  Author Subtotal             $   8449.06   (54.07 hrs total)
+  Participants
+  ────────────
+    philroche
+      Review Activity               $75.00    1 sessions • 29 min
+      Context Switching            $104.17    40 min
+    justinvreeland
+      Review Activity               $75.00    1 sessions • 29 min
+      Context Switching            $104.17    40 min
+                              ────────────
+    Subtotal                       $358.33    2.3 hrs
 
-PARTICIPANT COSTS
-  philroche
-    Event Time                $     52.08   (1 events, 0.33 hrs)
-    Context Switching         $    104.17   (1 sessions, 0.67 hrs)
-    Subtotal                  $    156.25   (1.00 hrs total)
-  justinvreeland
-    Event Time                $     52.08   (1 events, 0.33 hrs)
-    Context Switching         $    104.17   (1 sessions, 0.67 hrs)
-    Subtotal                  $    156.25   (1.00 hrs total)
-  ---
-  Participants Subtotal       $    312.50   (2.00 hrs total)
+  Merge Delay
+  ───────────
+    Cost of Delay              $9,481.36    2.5 days (capped)
+    Cognitive Load             $3,160.45    20.2 hrs (capped)
+                              ────────────
+    Subtotal                  $12,641.81    3.4 days
 
-DELAY COST
-  Project Delay (20%)              $   2677.27   (68.54 hrs)
-  Future GitHub (3 events)         $    468.75   (3.00 hrs)
-  ---
-  Total Delay Cost            $   3146.02
+  Future Costs
+  ────────────
+    Code Churn (18% drift)    $1,155.39    7.4 hrs
+    Review                        $75.00    29 min
+    Merge                         $52.08    20 min
+    Context Switching            $208.33    1.3 hrs
+                              ────────────
+    Subtotal                   $1,490.81    9.5 hrs
 
-==========================
-TOTAL COST                  $  11907.58
-==========================
+  ═══════════════════════════════════════════════════════════════
+  Total                         $22,387.47    6.0 days
+
 ```
 
 ## Caveats

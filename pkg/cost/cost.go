@@ -73,9 +73,9 @@ func DefaultConfig() Config {
 		AnnualSalary:           250000.0,
 		BenefitsMultiplier:     1.3,
 		HoursPerYear:           2080.0,
-		EventDuration:          20 * time.Minute,
-		ContextSwitchDuration:  20 * time.Minute,
-		SessionGapThreshold:    60 * time.Minute,
+		EventDuration:          10 * time.Minute, // 10 minutes per GitHub event
+		ContextSwitchDuration:  20 * time.Minute, // 20 minutes to context switch in/out
+		SessionGapThreshold:    20 * time.Minute, // Events within 20 min are same session
 		DeliveryDelayFactor:    0.15,  // 15% opportunity cost
 		CoordinationFactor:     0.05,  // 5% mental overhead
 		MaxDelayAfterLastEvent: 14 * 24 * time.Hour, // 14 days (2 weeks) after last event
@@ -592,19 +592,25 @@ func calculateParticipantCosts(data PRData, cfg Config, hourlyRate float64) []Pa
 // calculateSessionCosts computes GitHub and context switching costs based on event sessions.
 //
 // Session Logic:
-// - Events within SessionGapThreshold (default 60 min) are part of the same session
-// - Events >60 min apart start a new session
+// - Events within SessionGapThreshold (default 20 min) are part of the same session
+// - Events >20 min apart start a new session
 //
-// Time Calculation per Session:
-// - First event: ContextSwitchIn + EventTime + GapToNext (or ContextSwitchOut if last)
-// - Middle events: GapFromPrev + EventTime + GapToNext
-// - Last event: GapFromPrev + EventTime + ContextSwitchOut
+// GitHub Time Calculation:
+// - Each event counts as EventDuration (default 10 min)
+// - Gaps between events within a session don't add time (assumed to be part of the work)
 //
-// Example: 3 events 5 minutes apart
-// - Event 1: 20 (context in) + 20 (event) + 5 (gap) = 45 min
-// - Event 2: 5 (gap) + 20 (event) + 5 (gap) = 30 min
-// - Event 3: 5 (gap) + 20 (event) + 20 (context out) = 45 min
-// - Total: 120 minutes (60 GitHub, 40 context, 20 gaps).
+// Context Switching:
+// - First session: ContextSwitchDuration (20 min) at start
+// - Between sessions: min(2 × ContextSwitchDuration, gap) to avoid double-counting
+//   - If gap >= 40 min: full 20 min out + 20 min in
+//   - If gap < 40 min: split gap evenly (gap/2 out, gap/2 in)
+// - Last session: ContextSwitchDuration (20 min) at end
+//
+// Example: 3 events in one session, then 1 event 30 min later
+// - Session 1: 20 (context in) + 3×10 (events) + 20 (context out, but see gap)
+// - Gap: 30 min (< 40), so context overhead = 30 min total (15 out, 15 in)
+// - Session 2: (15 context in from gap) + 1×10 (event) + 20 (context out)
+// - Total context: 20 + 30 + 20 = 70 min
 func calculateSessionCosts(events []ParticipantEvent, cfg Config) (githubHours, contextHours float64, sessions int) {
 	if len(events) == 0 {
 		return 0, 0, 0
@@ -621,18 +627,19 @@ func calculateSessionCosts(events []ParticipantEvent, cfg Config) (githubHours, 
 	contextSwitch := cfg.ContextSwitchDuration
 	eventDur := cfg.EventDuration
 
-	var githubTime time.Duration
-	var contextTime time.Duration
-	count := 0
+	// Group events into sessions
+	type session struct {
+		start int
+		end   int
+	}
+	var sessionGroups []session
 
 	i := 0
 	for i < len(sorted) {
-		// Start a new session
-		count++
 		start := i
+		end := start
 
 		// Find the end of this session (events within SessionGapThreshold)
-		end := start
 		for end+1 < len(sorted) {
 			gap := sorted[end+1].Timestamp.Sub(sorted[end].Timestamp)
 			if gap > gapThreshold {
@@ -641,35 +648,49 @@ func calculateSessionCosts(events []ParticipantEvent, cfg Config) (githubHours, 
 			end++
 		}
 
-		// Calculate costs for this session
-		// Context switch in at the start
-		contextTime += contextSwitch
-
-		// First event: use default duration (we don't know how long it took)
-		githubTime += eventDur
-
-		// Subsequent events within the session:
-		// - If gap <= eventDur (20 min): use actual gap (we know they stayed engaged)
-		// - If gap > eventDur: use eventDur (we don't know what they did during the gap)
-		for j := start; j < end; j++ {
-			gap := sorted[j+1].Timestamp.Sub(sorted[j].Timestamp)
-			if gap <= eventDur {
-				githubTime += gap
-			} else {
-				githubTime += eventDur
-			}
-		}
-
-		// Context switch out at the end
-		contextTime += contextSwitch
-
-		// Move to next session
+		sessionGroups = append(sessionGroups, session{start: start, end: end})
 		i = end + 1
 	}
 
+	// Calculate GitHub time (simple: eventDur per event)
+	var githubTime time.Duration
+	for _, sess := range sessionGroups {
+		eventsInSession := sess.end - sess.start + 1
+		githubTime += time.Duration(eventsInSession) * eventDur
+	}
+
+	// Calculate context switching with gap awareness
+	var contextTime time.Duration
+
+	if len(sessionGroups) == 0 {
+		return 0, 0, 0
+	}
+
+	// First session: context in
+	contextTime += contextSwitch
+
+	// Between sessions: context out + context in, capped by gap
+	for i := 0; i < len(sessionGroups)-1; i++ {
+		lastEventOfSession := sorted[sessionGroups[i].end].Timestamp
+		firstEventOfNextSession := sorted[sessionGroups[i+1].start].Timestamp
+		gap := firstEventOfNextSession.Sub(lastEventOfSession)
+
+		// Maximum context switch is 2 × contextSwitch (out + in)
+		maxContextSwitch := 2 * contextSwitch
+		if gap >= maxContextSwitch {
+			contextTime += maxContextSwitch
+		} else {
+			// Cap at gap (implicitly split as gap/2 out + gap/2 in)
+			contextTime += gap
+		}
+	}
+
+	// Last session: context out
+	contextTime += contextSwitch
+
 	githubHours = githubTime.Hours()
 	contextHours = contextTime.Hours()
-	sessions = count
+	sessionCount := len(sessionGroups)
 
-	return githubHours, contextHours, sessions
+	return githubHours, contextHours, sessionCount
 }
