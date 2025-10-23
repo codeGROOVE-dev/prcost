@@ -341,15 +341,17 @@ func TestCalculateExternalContributor(t *testing.T) {
 	internalData.AuthorHasWriteAccess = true
 	internalBreakdown := Calculate(internalData, cfg)
 
-	// Costs should be equal
-	if breakdown.DelayCost != internalBreakdown.DelayCost {
-		t.Errorf("External and internal contributor delay costs should be equal, got %.2f vs %.2f",
-			breakdown.DelayCost, internalBreakdown.DelayCost)
+	// Costs should be equal (within 1 cent to account for floating point precision)
+	delayCostDiff := breakdown.DelayCost - internalBreakdown.DelayCost
+	if delayCostDiff < -0.01 || delayCostDiff > 0.01 {
+		t.Errorf("External and internal contributor delay costs should be equal, got %.2f vs %.2f (diff: %.6f)",
+			breakdown.DelayCost, internalBreakdown.DelayCost, delayCostDiff)
 	}
 
-	if breakdown.TotalCost != internalBreakdown.TotalCost {
-		t.Errorf("External and internal contributor total costs should be equal, got %.2f vs %.2f",
-			breakdown.TotalCost, internalBreakdown.TotalCost)
+	totalCostDiff := breakdown.TotalCost - internalBreakdown.TotalCost
+	if totalCostDiff < -0.01 || totalCostDiff > 0.01 {
+		t.Errorf("External and internal contributor total costs should be equal, got %.2f vs %.2f (diff: %.6f)",
+			breakdown.TotalCost, internalBreakdown.TotalCost, totalCostDiff)
 	}
 }
 
@@ -510,14 +512,14 @@ func TestCalculateWithRealPR13(t *testing.T) {
 	breakdown := Calculate(prData, cfg)
 
 	// This PR was open for ~2136 days (almost 6 years!)
-	// Project delay should be capped at 60 days
+	// Project delay should be capped at 90 days absolute maximum
 	if !breakdown.DelayCapped {
 		t.Error("Very long PR should have project delay capped")
 	}
 
-	expectedProjectDelayHours := 60.0 * 24.0 // 60 days cap
+	expectedProjectDelayHours := 90.0 * 24.0 // 90 days absolute cap
 	if breakdown.DelayCostDetail.ProjectDelayHours != expectedProjectDelayHours {
-		t.Errorf("Expected %.0f project delay hours (60 day cap), got %.2f",
+		t.Errorf("Expected %.0f project delay hours (90 day cap), got %.2f",
 			expectedProjectDelayHours, breakdown.DelayCostDetail.ProjectDelayHours)
 	}
 
@@ -537,7 +539,7 @@ func TestCalculateWithRealPR13(t *testing.T) {
 	t.Logf("PR 13 breakdown (6 year old PR):")
 	t.Logf("  638 LOC added")
 	t.Logf("  Author cost: $%.2f", breakdown.Author.TotalCost)
-	t.Logf("  Project Delay: $%.2f (%.0f hrs, capped at 60 days)",
+	t.Logf("  Project Delay: $%.2f (%.0f hrs, capped at 90 days)",
 		breakdown.DelayCostDetail.ProjectDelayCost, breakdown.DelayCostDetail.ProjectDelayHours)
 	t.Logf("  Code Updates: $%.2f (%.1f%% rework, capped at 90 days drift)",
 		breakdown.DelayCostDetail.CodeUpdatesCost, breakdown.DelayCostDetail.ReworkPercentage)
@@ -547,7 +549,8 @@ func TestCalculateWithRealPR13(t *testing.T) {
 }
 
 func TestCalculateLongPRCapped(t *testing.T) {
-	// Test PR open for 120 days - should be capped at 60 days for project delay
+	// Test PR open for 120 days with last event at the start
+	// Should only count 14 days after the last event
 	now := time.Now()
 	prData := PRData{
 		LinesAdded: 100,
@@ -565,13 +568,14 @@ func TestCalculateLongPRCapped(t *testing.T) {
 
 	// Should be capped
 	if !breakdown.DelayCapped {
-		t.Error("120-day old PR should have delay capped")
+		t.Error("120-day old PR with stale last event should have delay capped")
 	}
 
-	// Project delay hours should be capped at 60 days (default MaxProjectDelay)
-	expectedHours := 60.0 * 24.0
+	// Last event was 120 days ago, so we only count 14 days after it
+	// Result: 120 days - (120 - 14) = 14 days
+	expectedHours := 14.0 * 24.0
 	if breakdown.DelayCostDetail.ProjectDelayHours != expectedHours {
-		t.Errorf("Expected %.0f project delay hours (60 days), got %.2f",
+		t.Errorf("Expected %.0f project delay hours (14 days after last event), got %.2f",
 			expectedHours, breakdown.DelayCostDetail.ProjectDelayHours)
 	}
 }

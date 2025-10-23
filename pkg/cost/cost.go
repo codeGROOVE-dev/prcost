@@ -4,6 +4,7 @@ package cost
 
 import (
 	"cmp"
+	"log/slog"
 	"math"
 	"slices"
 	"time"
@@ -81,6 +82,8 @@ type PRData struct {
 	CreatedAt time.Time
 	// When the PR was last updated
 	UpdatedAt time.Time
+	// When the PR was closed/merged (zero if still open)
+	ClosedAt time.Time
 	// PR author's username
 	Author string
 	// All human events (reviews, comments, commits, etc.) with timestamps
@@ -183,8 +186,13 @@ func Calculate(data PRData, cfg Config) Breakdown {
 	participantCosts := calculateParticipantCosts(data, cfg, hourlyRate)
 
 	// Calculate delay cost with itemized breakdown (always shown)
-	delayHours := data.UpdatedAt.Sub(data.CreatedAt).Hours()
-	// Defensive check: if UpdatedAt is before CreatedAt (bad data), treat as zero delay
+	// Use ClosedAt if PR is closed, otherwise use current time
+	endTime := time.Now()
+	if !data.ClosedAt.IsZero() {
+		endTime = data.ClosedAt
+	}
+	delayHours := endTime.Sub(data.CreatedAt).Hours()
+	// Defensive check: if endTime is before CreatedAt (bad data), treat as zero delay
 	if delayHours < 0 {
 		delayHours = 0
 	}
@@ -205,11 +213,22 @@ func Calculate(data PRData, cfg Config) Breakdown {
 		lastEventTime = data.CreatedAt
 	}
 
-	// Calculate time since last event
-	timeSinceLastEvent := data.UpdatedAt.Sub(lastEventTime).Hours()
+	// Calculate time since last event (using endTime)
+	timeSinceLastEvent := endTime.Sub(lastEventTime).Hours()
 	if timeSinceLastEvent < 0 {
 		timeSinceLastEvent = 0
 	}
+
+	// Log delay calculation details
+	slog.Info("Delay calculation",
+		"pr_created_at", data.CreatedAt.Format(time.RFC3339),
+		"pr_closed_at", data.ClosedAt.Format(time.RFC3339),
+		"calculation_time", endTime.Format(time.RFC3339),
+		"last_event_time", lastEventTime.Format(time.RFC3339),
+		"total_delay_hours", delayHours,
+		"total_delay_days", delayDays,
+		"hours_since_last_event", timeSinceLastEvent,
+		"days_since_last_event", timeSinceLastEvent/24.0)
 
 	// Cap Project Delay in two ways:
 	// 1. Only count up to MaxDelayAfterLastEvent (default: 14 days) after the last event
@@ -229,13 +248,23 @@ func Calculate(data PRData, cfg Config) Breakdown {
 			cappedHrs = 0
 		}
 		capped = true
+		slog.Info("Applied delay cap: time since last event",
+			"max_hours_after_event", maxAfterEvent,
+			"actual_hours_since_event", timeSinceLastEvent,
+			"excess_hours", excessHours,
+			"capped_delay_hours", cappedHrs)
 	}
 
 	// Second, apply the absolute maximum cap
 	maxTotal := cfg.MaxProjectDelay.Hours()
 	if cappedHrs > maxTotal {
+		beforeCap := cappedHrs
 		cappedHrs = maxTotal
 		capped = true
+		slog.Info("Applied delay cap: absolute maximum",
+			"max_total_hours", maxTotal,
+			"delay_before_cap", beforeCap,
+			"capped_delay_hours", cappedHrs)
 	}
 
 	// 1. Project Delay: Configured percentage (default 20%) of engineer time
@@ -243,6 +272,7 @@ func Calculate(data PRData, cfg Config) Breakdown {
 	projectDelayHours := cappedHrs
 
 	// 2. Code Updates (Rework): Probability-based drift formula
+	// Only calculated for open PRs - closed PRs won't need future updates
 	//
 	// Research basis:
 	// - Windows Vista: 4-8% weekly code churn (Nagappan et al., Microsoft Research, 2008)
@@ -273,11 +303,9 @@ func Calculate(data PRData, cfg Config) Breakdown {
 	var codeUpdatesCost float64
 	var reworkPercentage float64
 
-	if delayDays < 3.0 {
-		// Under 3 days: minimal drift
-		reworkLOC = 0
-		reworkPercentage = 0.0
-	} else {
+	isClosed := !data.ClosedAt.IsZero()
+
+	if !isClosed && delayDays >= 3.0 {
 		// Cap days at configured maximum for drift calculation (default: 90 days)
 		maxDriftDays := cfg.MaxCodeDrift.Hours() / 24.0
 		driftDays := delayDays
@@ -298,23 +326,29 @@ func Calculate(data PRData, cfg Config) Breakdown {
 				reworkPercentage = 1.0 / float64(data.LinesAdded)
 			}
 		}
-	}
 
-	if reworkLOC > 0 {
-		reworkEffort := cocomo.EstimateEffort(reworkLOC, cfg.COCOMO)
-		codeUpdatesHours = reworkEffort.Hours()
-		codeUpdatesCost = codeUpdatesHours * hourlyRate
-		// Recalculate actual percentage for display
-		if data.LinesAdded > 0 {
-			reworkPercentage = float64(reworkLOC) / float64(data.LinesAdded)
+		if reworkLOC > 0 {
+			reworkEffort := cocomo.EstimateEffort(reworkLOC, cfg.COCOMO)
+			codeUpdatesHours = reworkEffort.Hours()
+			codeUpdatesCost = codeUpdatesHours * hourlyRate
+			// Recalculate actual percentage for display
+			if data.LinesAdded > 0 {
+				reworkPercentage = float64(reworkLOC) / float64(data.LinesAdded)
+			}
 		}
 	}
 
 	// 3. Future GitHub time: 3 events with full context switching
+	// Only calculated for open PRs - closed PRs won't have future activity
 	// Each event: context in + event time + context out
-	futureGitHubDuration := 3 * (cfg.ContextSwitchDuration + cfg.EventDuration + cfg.ContextSwitchDuration)
-	futureGitHubHours := futureGitHubDuration.Hours()
-	futureGitHubCost := futureGitHubHours * hourlyRate
+	var futureGitHubHours float64
+	var futureGitHubCost float64
+
+	if !isClosed {
+		futureGitHubDuration := 3 * (cfg.ContextSwitchDuration + cfg.EventDuration + cfg.ContextSwitchDuration)
+		futureGitHubHours = futureGitHubDuration.Hours()
+		futureGitHubCost = futureGitHubHours * hourlyRate
+	}
 
 	// Total delay cost
 	delayCost := projectDelayCost + codeUpdatesCost + futureGitHubCost

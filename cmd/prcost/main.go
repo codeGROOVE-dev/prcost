@@ -19,18 +19,13 @@ import (
 )
 
 func main() {
-	// Setup structured logging to stderr (stdout is for results)
-	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{
-		Level: slog.LevelInfo,
-	}))
-	slog.SetDefault(logger)
-
 	// Define command-line flags
 	salary := flag.Float64("salary", 250000, "Annual salary for cost calculation")
 	benefits := flag.Float64("benefits", 1.3, "Benefits multiplier (1.3 = 30% benefits)")
 	eventMinutes := flag.Float64("event-minutes", 20, "Minutes per review event")
 	overheadFactor := flag.Float64("overhead-factor", 0.25, "Delay cost factor (0.25 = 25%)")
 	format := flag.String("format", "human", "Output format: human or json")
+	verbose := flag.Bool("verbose", false, "Show verbose logging output")
 
 	flag.Usage = func() {
 		fmt.Fprintf(os.Stderr, "Usage: %s [options] <PR_URL>\n\n", os.Args[0])
@@ -46,6 +41,17 @@ func main() {
 	}
 
 	flag.Parse()
+
+	// Setup structured logging to stderr (stdout is for results)
+	// Only show errors by default, show info/debug with --verbose
+	logLevel := slog.LevelError
+	if *verbose {
+		logLevel = slog.LevelInfo
+	}
+	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{
+		Level: logLevel,
+	}))
+	slog.SetDefault(logger)
 
 	// Validate that we have a PR URL
 	if flag.NArg() != 1 {
@@ -135,40 +141,38 @@ func authToken(ctx context.Context) (string, error) {
 
 // printHumanReadable outputs a detailed itemized bill in human-readable format.
 func printHumanReadable(breakdown *cost.Breakdown, prURL string) {
-	fmt.Println("PULL REQUEST COST ANALYSIS")
-	fmt.Println("==========================")
+	// Helper to format currency with commas
+	formatCurrency := func(amount float64) string {
+		return fmt.Sprintf("$%s", formatWithCommas(amount))
+	}
+
+	// Header with PR info
 	fmt.Println()
-	fmt.Printf("PR URL:      %s\n", prURL)
-	fmt.Printf("Hourly Rate: $%.2f ($%.0f salary * %.1fX total benefits multiplier)\n\n",
-		breakdown.HourlyRate, breakdown.AnnualSalary, breakdown.BenefitsMultiplier)
+	fmt.Printf("  %s\n", prURL)
+	fmt.Printf("  Rate: %s/hr  •  Salary: %s  •  Benefits: %.1fx\n",
+		formatCurrency(breakdown.HourlyRate),
+		formatCurrency(breakdown.AnnualSalary),
+		breakdown.BenefitsMultiplier)
+	fmt.Println()
 
 	// Author Costs
-	fmt.Println("AUTHOR COSTS")
-	fmt.Printf("  Code Cost (COCOMO)          $%10.2f   (%d LOC, %.2f hrs)\n",
-		breakdown.Author.CodeCost, breakdown.Author.LinesAdded, breakdown.Author.CodeHours)
-	fmt.Printf("  Code Context Switching      $%10.2f   (%.2f hrs)\n",
-		breakdown.Author.CodeContextCost, breakdown.Author.CodeContextHours)
-	fmt.Printf("  GitHub Time                 $%10.2f   (%d events, %.2f hrs)\n",
-		breakdown.Author.GitHubCost, breakdown.Author.Events, breakdown.Author.GitHubHours)
-	fmt.Printf("  GitHub Context Switching    $%10.2f   (%d sessions, %.2f hrs)\n",
-		breakdown.Author.GitHubContextCost, breakdown.Author.Sessions, breakdown.Author.GitHubContextHours)
-	fmt.Println("  ---")
-	fmt.Printf("  Author Subtotal             $%10.2f   (%.2f hrs total)\n\n",
-		breakdown.Author.TotalCost, breakdown.Author.TotalHours)
+	fmt.Println("  Author")
+	fmt.Println("  ──────")
+	fmt.Printf("    Code Creation             %12s    %d LOC • %.1f hrs\n",
+		formatCurrency(breakdown.Author.CodeCost), breakdown.Author.LinesAdded, breakdown.Author.CodeHours)
+	fmt.Printf("    Code Context Switching    %12s    %.1f hrs\n",
+		formatCurrency(breakdown.Author.CodeContextCost), breakdown.Author.CodeContextHours)
+	fmt.Printf("    GitHub Activity           %12s    %d events • %.1f hrs\n",
+		formatCurrency(breakdown.Author.GitHubCost), breakdown.Author.Events, breakdown.Author.GitHubHours)
+	fmt.Printf("    GitHub Context Switching  %12s    %d sessions • %.1f hrs\n",
+		formatCurrency(breakdown.Author.GitHubContextCost), breakdown.Author.Sessions, breakdown.Author.GitHubContextHours)
+	fmt.Println("                              ────────────")
+	fmt.Printf("    Subtotal                  %12s    %.1f hrs\n",
+		formatCurrency(breakdown.Author.TotalCost), breakdown.Author.TotalHours)
+	fmt.Println()
 
 	// Participant Costs
 	if len(breakdown.Participants) > 0 {
-		fmt.Println("PARTICIPANT COSTS")
-		for _, p := range breakdown.Participants {
-			fmt.Printf("  %s\n", p.Actor)
-			fmt.Printf("    Event Time                $%10.2f   (%d events, %.2f hrs)\n",
-				p.GitHubCost, p.Events, p.GitHubHours)
-			fmt.Printf("    Context Switching         $%10.2f   (%d sessions, %.2f hrs)\n",
-				p.GitHubContextCost, p.Sessions, p.GitHubContextHours)
-			fmt.Printf("    Subtotal                  $%10.2f   (%.2f hrs total)\n",
-				p.TotalCost, p.TotalHours)
-		}
-
 		// Sum all participant costs
 		var totalParticipantCost float64
 		var totalParticipantHours float64
@@ -176,42 +180,80 @@ func printHumanReadable(breakdown *cost.Breakdown, prURL string) {
 			totalParticipantCost += p.TotalCost
 			totalParticipantHours += p.TotalHours
 		}
-		fmt.Println("  ---")
-		fmt.Printf("  Participants Subtotal       $%10.2f   (%.2f hrs total)\n\n",
-			totalParticipantCost, totalParticipantHours)
+
+		fmt.Println("  Reviewers")
+		fmt.Println("  ─────────")
+		for _, p := range breakdown.Participants {
+			fmt.Printf("    %s\n", p.Actor)
+			fmt.Printf("      Review Activity         %12s    %d events • %.1f hrs\n",
+				formatCurrency(p.GitHubCost), p.Events, p.GitHubHours)
+			fmt.Printf("      Context Switching       %12s    %d sessions • %.1f hrs\n",
+				formatCurrency(p.GitHubContextCost), p.Sessions, p.GitHubContextHours)
+		}
+		fmt.Println("                              ────────────")
+		fmt.Printf("    Subtotal                  %12s    %.1f hrs\n",
+			formatCurrency(totalParticipantCost), totalParticipantHours)
+		fmt.Println()
 	}
 
-	// Delay Cost
-	fmt.Println("DELAY COST")
+	// Delay Costs
+	fmt.Println("  Delay")
+	fmt.Println("  ─────")
 	if breakdown.DelayCapped {
-		fmt.Printf("  %-32s $%10.2f   (%.0f hrs, capped)\n",
-			"Project Delay (20%)", breakdown.DelayCostDetail.ProjectDelayCost, breakdown.DelayCostDetail.ProjectDelayHours)
+		fmt.Printf("    Delivery Delay (20%%)      %12s    %.0f hrs (capped)\n",
+			formatCurrency(breakdown.DelayCostDetail.ProjectDelayCost), breakdown.DelayCostDetail.ProjectDelayHours)
 	} else {
-		fmt.Printf("  %-32s $%10.2f   (%.2f hrs)\n",
-			"Project Delay (20%)", breakdown.DelayCostDetail.ProjectDelayCost, breakdown.DelayCostDetail.ProjectDelayHours)
+		fmt.Printf("    Delivery Delay (20%%)      %12s    %.1f hrs\n",
+			formatCurrency(breakdown.DelayCostDetail.ProjectDelayCost), breakdown.DelayCostDetail.ProjectDelayHours)
 	}
 
 	if breakdown.DelayCostDetail.ReworkPercentage > 0 {
-		label := fmt.Sprintf("Code Updates (%.0f%% rework)", breakdown.DelayCostDetail.ReworkPercentage)
-		fmt.Printf("  %-32s $%10.2f   (%.2f hrs)\n",
-			label, breakdown.DelayCostDetail.CodeUpdatesCost, breakdown.DelayCostDetail.CodeUpdatesHours)
+		fmt.Printf("    Code Updates (%.0f%% drift)   %12s    %.1f hrs\n",
+			breakdown.DelayCostDetail.ReworkPercentage,
+			formatCurrency(breakdown.DelayCostDetail.CodeUpdatesCost),
+			breakdown.DelayCostDetail.CodeUpdatesHours)
 	}
 
-	fmt.Printf("  %-32s $%10.2f   (%.2f hrs)\n",
-		"Future GitHub (3 events)", breakdown.DelayCostDetail.FutureGitHubCost, breakdown.DelayCostDetail.FutureGitHubHours)
-	fmt.Println("  ---")
+	if breakdown.DelayCostDetail.FutureGitHubCost > 0 {
+		fmt.Printf("    Est. Future GitHub        %12s    %.1f hrs\n",
+			formatCurrency(breakdown.DelayCostDetail.FutureGitHubCost), breakdown.DelayCostDetail.FutureGitHubHours)
+	}
+	fmt.Println("                              ────────────")
+	fmt.Printf("    Subtotal                  %12s    %.1f hrs\n",
+		formatCurrency(breakdown.DelayCost), breakdown.DelayCostDetail.TotalDelayHours)
+	fmt.Println()
 
-	if breakdown.DelayCapped {
-		fmt.Printf("  Total Delay Cost            $%10.2f   (actual: %.0f hours open)\n\n",
-			breakdown.DelayCost, breakdown.DelayHours)
-	} else {
-		fmt.Printf("  Total Delay Cost            $%10.2f\n\n", breakdown.DelayCost)
+	// Grand Total
+	totalHours := breakdown.Author.TotalHours + breakdown.DelayCostDetail.TotalDelayHours
+	for _, p := range breakdown.Participants {
+		totalHours += p.TotalHours
+	}
+	fmt.Println("  ═══════════════════════════════════════════════════════════════")
+	fmt.Printf("  Total                       %12s    %.1f hrs\n",
+		formatCurrency(breakdown.TotalCost), totalHours)
+	fmt.Println()
+}
+
+// formatWithCommas formats a float with commas for thousands separators.
+func formatWithCommas(amount float64) string {
+	// Format with 2 decimal places
+	s := fmt.Sprintf("%.2f", amount)
+
+	// Split into integer and decimal parts
+	parts := strings.Split(s, ".")
+	intPart := parts[0]
+	decPart := parts[1]
+
+	// Add commas to integer part
+	var result []rune
+	for i, r := range intPart {
+		if i > 0 && (len(intPart)-i)%3 == 0 {
+			result = append(result, ',')
+		}
+		result = append(result, r)
 	}
 
-	// Total
-	fmt.Println("==========================")
-	fmt.Printf("TOTAL COST                  $%10.2f\n", breakdown.TotalCost)
-	fmt.Println("==========================")
+	return string(result) + "." + decPart
 }
 
 // printJSON outputs the cost breakdown in JSON format.

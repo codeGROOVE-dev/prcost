@@ -87,7 +87,7 @@ This model is based on early research combining COCOMO II effort estimation with
 
 ### Delay Costs
 
-**Project Delay (20%)**: Opportunity cost of blocked engineer time: `hourly_rate × duration_hours × 0.20`. Capped at 2 weeks after the last event, with an absolute maximum of 90 days.
+**Project Delay (20% of an engineer's time)**: Opportunity cost of blocked engineer time: `hourly_rate × duration_hours × 0.20`. Capped at 2 weeks after the last event, with an absolute maximum of 90 days.
 
 **Code Updates**: Rework cost from code drift. Probability-based formula: `drift = 1 - (0.96)^(days/7)`, modeling the cumulative probability that code becomes stale with 4% weekly churn. Applies to PRs open 3+ days, capped at 90 days (~41% max drift). Based on Windows Vista analysis (Nagappan et al., Microsoft Research, 2008).
 

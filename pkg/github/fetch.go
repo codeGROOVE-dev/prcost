@@ -9,6 +9,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/codeGROOVE-dev/prcost/pkg/cost"
 	"github.com/codeGROOVE-dev/prx/pkg/prx"
@@ -33,12 +34,19 @@ func PRDataFromPRX(prData *prx.PullRequestData) cost.PRData {
 	// author_write_access <= 0 means external contributor
 	authorHasWriteAccess := pr.AuthorWriteAccess > 0
 
+	// Handle ClosedAt pointer - use zero time if nil
+	var closedAt time.Time
+	if pr.ClosedAt != nil {
+		closedAt = *pr.ClosedAt
+	}
+
 	return cost.PRData{
 		LinesAdded:           pr.Additions,
 		Author:               pr.Author,
 		Events:               events,
 		CreatedAt:            pr.CreatedAt,
 		UpdatedAt:            pr.UpdatedAt,
+		ClosedAt:             closedAt,
 		AuthorHasWriteAccess: authorHasWriteAccess,
 	}
 }
