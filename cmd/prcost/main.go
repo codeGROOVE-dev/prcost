@@ -23,7 +23,6 @@ func main() {
 	salary := flag.Float64("salary", 250000, "Annual salary for cost calculation")
 	benefits := flag.Float64("benefits", 1.3, "Benefits multiplier (1.3 = 30% benefits)")
 	eventMinutes := flag.Float64("event-minutes", 20, "Minutes per review event")
-	overheadFactor := flag.Float64("overhead-factor", 0.25, "Delay cost factor (0.25 = 25%)")
 	format := flag.String("format", "human", "Output format: human or json")
 	verbose := flag.Bool("verbose", false, "Show verbose logging output")
 
@@ -96,13 +95,13 @@ func main() {
 	cfg.AnnualSalary = *salary
 	cfg.BenefitsMultiplier = *benefits
 	cfg.EventDuration = time.Duration(*eventMinutes) * time.Minute
-	cfg.DelayCostFactor = *overheadFactor
 
 	slog.Debug("Configuration",
 		"salary", cfg.AnnualSalary,
 		"benefits_multiplier", cfg.BenefitsMultiplier,
 		"event_minutes", *eventMinutes,
-		"delay_cost_factor", cfg.DelayCostFactor)
+		"delivery_delay_factor", cfg.DeliveryDelayFactor,
+		"coordination_factor", cfg.CoordinationFactor)
 
 	// Retrieve GitHub token from gh CLI
 	ctx := context.Background()
@@ -220,17 +219,15 @@ func printHumanReadable(breakdown *cost.Breakdown, prURL string) {
 	// Author Costs
 	fmt.Println("  Author")
 	fmt.Println("  ──────")
-	fmt.Printf("    Code Creation             %12s    %d LOC • %.1f hrs\n",
-		formatCurrency(breakdown.Author.CodeCost), breakdown.Author.LinesAdded, breakdown.Author.CodeHours)
-	fmt.Printf("    Code Context Switching    %12s    %.1f hrs\n",
-		formatCurrency(breakdown.Author.CodeContextCost), breakdown.Author.CodeContextHours)
-	fmt.Printf("    GitHub Activity           %12s    %d events • %.1f hrs\n",
-		formatCurrency(breakdown.Author.GitHubCost), breakdown.Author.Events, breakdown.Author.GitHubHours)
-	fmt.Printf("    GitHub Context Switching  %12s    %d sessions • %.1f hrs\n",
-		formatCurrency(breakdown.Author.GitHubContextCost), breakdown.Author.Sessions, breakdown.Author.GitHubContextHours)
+	fmt.Printf("    Development Effort        %12s    %d LOC • %s\n",
+		formatCurrency(breakdown.Author.CodeCost), breakdown.Author.LinesAdded, formatTimeUnit(breakdown.Author.CodeHours))
+	fmt.Printf("    GitHub Activity           %12s    %d events • %s\n",
+		formatCurrency(breakdown.Author.GitHubCost), breakdown.Author.Events, formatTimeUnit(breakdown.Author.GitHubHours))
+	fmt.Printf("    GitHub Context Switching  %12s    %d sessions • %s\n",
+		formatCurrency(breakdown.Author.GitHubContextCost), breakdown.Author.Sessions, formatTimeUnit(breakdown.Author.GitHubContextHours))
 	fmt.Println("                              ────────────")
-	fmt.Printf("    Subtotal                  %12s    %.1f hrs\n",
-		formatCurrency(breakdown.Author.TotalCost), breakdown.Author.TotalHours)
+	fmt.Printf("    Subtotal                  %12s    %s\n",
+		formatCurrency(breakdown.Author.TotalCost), formatTimeUnit(breakdown.Author.TotalHours))
 	fmt.Println()
 
 	// Participant Costs
@@ -243,47 +240,92 @@ func printHumanReadable(breakdown *cost.Breakdown, prURL string) {
 			totalParticipantHours += p.TotalHours
 		}
 
-		fmt.Println("  Reviewers")
-		fmt.Println("  ─────────")
+		fmt.Println("  Participants")
+		fmt.Println("  ────────────")
 		for _, p := range breakdown.Participants {
 			fmt.Printf("    %s\n", p.Actor)
-			fmt.Printf("      Review Activity         %12s    %d events • %.1f hrs\n",
-				formatCurrency(p.GitHubCost), p.Events, p.GitHubHours)
-			fmt.Printf("      Context Switching       %12s    %d sessions • %.1f hrs\n",
-				formatCurrency(p.GitHubContextCost), p.Sessions, p.GitHubContextHours)
+			fmt.Printf("      Review Activity         %12s    %d events • %s\n",
+				formatCurrency(p.GitHubCost), p.Events, formatTimeUnit(p.GitHubHours))
+			fmt.Printf("      Context Switching       %12s    %d sessions • %s\n",
+				formatCurrency(p.GitHubContextCost), p.Sessions, formatTimeUnit(p.GitHubContextHours))
 		}
 		fmt.Println("                              ────────────")
-		fmt.Printf("    Subtotal                  %12s    %.1f hrs\n",
-			formatCurrency(totalParticipantCost), totalParticipantHours)
+		fmt.Printf("    Subtotal                  %12s    %s\n",
+			formatCurrency(totalParticipantCost), formatTimeUnit(totalParticipantHours))
 		fmt.Println()
 	}
 
-	// Delay Costs
-	fmt.Println("  Delay")
-	fmt.Println("  ─────")
+	// Merge Delay Costs
+	fmt.Println("  Merge Delay")
+	fmt.Println("  ───────────")
 	if breakdown.DelayCapped {
-		fmt.Printf("    Opportunity + Velocity Loss (20%%)  %12s    %.0f hrs (capped)\n",
-			formatCurrency(breakdown.DelayCostDetail.ProjectDelayCost), breakdown.DelayCostDetail.ProjectDelayHours)
+		fmt.Printf("    Cost of Delay           %12s    %s (capped)\n",
+			formatCurrency(breakdown.DelayCostDetail.DeliveryDelayCost), formatTimeUnit(breakdown.DelayCostDetail.DeliveryDelayHours))
 	} else {
-		fmt.Printf("    Opportunity + Velocity Loss (20%%)  %12s    %.1f hrs\n",
-			formatCurrency(breakdown.DelayCostDetail.ProjectDelayCost), breakdown.DelayCostDetail.ProjectDelayHours)
+		fmt.Printf("    Cost of Delay           %12s    %s\n",
+			formatCurrency(breakdown.DelayCostDetail.DeliveryDelayCost), formatTimeUnit(breakdown.DelayCostDetail.DeliveryDelayHours))
 	}
 
-	if breakdown.DelayCostDetail.ReworkPercentage > 0 {
-		fmt.Printf("    Est. Code Churn (%.0f%% drift)%12s    %.1f hrs\n",
-			breakdown.DelayCostDetail.ReworkPercentage,
-			formatCurrency(breakdown.DelayCostDetail.CodeChurnCost),
-			breakdown.DelayCostDetail.CodeChurnHours)
+	if breakdown.DelayCapped {
+		fmt.Printf("    Cognitive Load          %12s    %s (capped)\n",
+			formatCurrency(breakdown.DelayCostDetail.CoordinationCost), formatTimeUnit(breakdown.DelayCostDetail.CoordinationHours))
+	} else {
+		fmt.Printf("    Cognitive Load          %12s    %s\n",
+			formatCurrency(breakdown.DelayCostDetail.CoordinationCost), formatTimeUnit(breakdown.DelayCostDetail.CoordinationHours))
 	}
 
-	if breakdown.DelayCostDetail.FutureGitHubCost > 0 {
-		fmt.Printf("    Est. Future GitHub        %12s    %.1f hrs\n",
-			formatCurrency(breakdown.DelayCostDetail.FutureGitHubCost), breakdown.DelayCostDetail.FutureGitHubHours)
-	}
+	mergeDelayCost := breakdown.DelayCostDetail.DeliveryDelayCost + breakdown.DelayCostDetail.CoordinationCost
+	mergeDelayHours := breakdown.DelayCostDetail.DeliveryDelayHours + breakdown.DelayCostDetail.CoordinationHours
 	fmt.Println("                              ────────────")
-	fmt.Printf("    Subtotal                  %12s    %.1f hrs\n",
-		formatCurrency(breakdown.DelayCost), breakdown.DelayCostDetail.TotalDelayHours)
+	fmt.Printf("    Subtotal                %12s    %s\n",
+		formatCurrency(mergeDelayCost), formatTimeUnit(mergeDelayHours))
 	fmt.Println()
+
+	// Future Costs
+	hasFutureCosts := breakdown.DelayCostDetail.ReworkPercentage > 0 ||
+		breakdown.DelayCostDetail.FutureReviewCost > 0 ||
+		breakdown.DelayCostDetail.FutureMergeCost > 0 ||
+		breakdown.DelayCostDetail.FutureContextCost > 0
+
+	if hasFutureCosts {
+		fmt.Println("  Future Costs")
+		fmt.Println("  ────────────")
+
+		if breakdown.DelayCostDetail.ReworkPercentage > 0 {
+			fmt.Printf("    Code Churn (%.0f%% drift) %12s    %s\n",
+				breakdown.DelayCostDetail.ReworkPercentage,
+				formatCurrency(breakdown.DelayCostDetail.CodeChurnCost),
+				formatTimeUnit(breakdown.DelayCostDetail.CodeChurnHours))
+		}
+
+		if breakdown.DelayCostDetail.FutureReviewCost > 0 {
+			fmt.Printf("    Review                  %12s    %s\n",
+				formatCurrency(breakdown.DelayCostDetail.FutureReviewCost), formatTimeUnit(breakdown.DelayCostDetail.FutureReviewHours))
+		}
+
+		if breakdown.DelayCostDetail.FutureMergeCost > 0 {
+			fmt.Printf("    Merge                   %12s    %s\n",
+				formatCurrency(breakdown.DelayCostDetail.FutureMergeCost), formatTimeUnit(breakdown.DelayCostDetail.FutureMergeHours))
+		}
+
+		if breakdown.DelayCostDetail.FutureContextCost > 0 {
+			fmt.Printf("    Context Switching       %12s    %s\n",
+				formatCurrency(breakdown.DelayCostDetail.FutureContextCost), formatTimeUnit(breakdown.DelayCostDetail.FutureContextHours))
+		}
+
+		futureCost := breakdown.DelayCostDetail.CodeChurnCost +
+			breakdown.DelayCostDetail.FutureReviewCost +
+			breakdown.DelayCostDetail.FutureMergeCost +
+			breakdown.DelayCostDetail.FutureContextCost
+		futureHours := breakdown.DelayCostDetail.CodeChurnHours +
+			breakdown.DelayCostDetail.FutureReviewHours +
+			breakdown.DelayCostDetail.FutureMergeHours +
+			breakdown.DelayCostDetail.FutureContextHours
+		fmt.Println("                              ────────────")
+		fmt.Printf("    Subtotal                %12s    %s\n",
+			formatCurrency(futureCost), formatTimeUnit(futureHours))
+		fmt.Println()
+	}
 
 	// Grand Total
 	totalHours := breakdown.Author.TotalHours + breakdown.DelayCostDetail.TotalDelayHours
@@ -291,8 +333,8 @@ func printHumanReadable(breakdown *cost.Breakdown, prURL string) {
 		totalHours += p.TotalHours
 	}
 	fmt.Println("  ═══════════════════════════════════════════════════════════════")
-	fmt.Printf("  Total                       %12s    %.1f hrs\n",
-		formatCurrency(breakdown.TotalCost), totalHours)
+	fmt.Printf("  Total                       %12s    %s\n",
+		formatCurrency(breakdown.TotalCost), formatTimeUnit(totalHours))
 	fmt.Println()
 }
 

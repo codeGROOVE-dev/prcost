@@ -137,6 +137,7 @@ func extractParticipantEvents(events []prx.Event) []cost.ParticipantEvent {
 		participantEvents = append(participantEvents, cost.ParticipantEvent{
 			Timestamp: event.Timestamp,
 			Actor:     event.Actor,
+			Kind:      event.Kind,
 		})
 	}
 

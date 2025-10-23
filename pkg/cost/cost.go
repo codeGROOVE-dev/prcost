@@ -33,9 +33,13 @@ type Config struct {
 	// Events within this gap are considered part of the same session
 	SessionGapThreshold time.Duration
 
-	// Delay cost factor as percentage of hourly rate (default: 0.20 = 20%)
-	// This represents the opportunity cost of having a PR open
-	DelayCostFactor float64
+	// Delivery delay factor as percentage of hourly rate (default: 0.15 = 15%)
+	// Represents opportunity cost of blocked value delivery
+	DeliveryDelayFactor float64
+
+	// Coordination factor as percentage of hourly rate (default: 0.05 = 5%)
+	// Represents mental overhead of tracking unmerged work
+	CoordinationFactor float64
 
 	// Maximum time after last event to count for project delay (default: 14 days / 2 weeks)
 	// Only counts delay costs up to this many days after the last event on the PR
@@ -48,6 +52,16 @@ type Config struct {
 	// Maximum duration for code drift calculation (default: 90 days / 3 months)
 	// Code drift is capped at this duration (affects rework percentage)
 	MaxCodeDrift time.Duration
+
+	// Code review inspection rate in lines per hour (default: 275 LOC/hour)
+	// Based on IEEE/Fagan inspection research showing optimal rates of 150-400 LOC/hour
+	// - Fagan inspection (thorough): ~22 LOC/hour
+	// - Industry standard: 150-200 LOC/hour
+	// - Fast/lightweight: up to 400 LOC/hour
+	// - Average: 275 LOC/hour (midpoint of optimal range)
+	// Used for both past and future review time estimates
+	// Formula: review_hours = LOC / inspection_rate
+	ReviewInspectionRate float64
 
 	// COCOMO configuration for estimating code writing effort
 	COCOMO cocomo.Config
@@ -62,10 +76,12 @@ func DefaultConfig() Config {
 		EventDuration:          20 * time.Minute,
 		ContextSwitchDuration:  20 * time.Minute,
 		SessionGapThreshold:    60 * time.Minute,
-		DelayCostFactor:        0.20,
+		DeliveryDelayFactor:    0.15,  // 15% opportunity cost
+		CoordinationFactor:     0.05,  // 5% mental overhead
 		MaxDelayAfterLastEvent: 14 * 24 * time.Hour, // 14 days (2 weeks) after last event
 		MaxProjectDelay:        90 * 24 * time.Hour, // 90 days absolute max
 		MaxCodeDrift:           90 * 24 * time.Hour, // 90 days
+		ReviewInspectionRate:   275.0, // 275 LOC/hour (average of optimal 150-400 range)
 		COCOMO:                 cocomo.DefaultConfig(),
 	}
 }
@@ -74,6 +90,7 @@ func DefaultConfig() Config {
 type ParticipantEvent struct {
 	Timestamp time.Time
 	Actor     string
+	Kind      string // Event type: "commit", "review", "comment", etc.
 }
 
 // PRData contains all information needed to calculate PR costs.
@@ -93,8 +110,7 @@ type PRData struct {
 
 // AuthorCostDetail breaks down the author's costs.
 type AuthorCostDetail struct {
-	CodeCost          float64 // COCOMO-based cost for writing code
-	CodeContextCost   float64 // Cost of context switching while writing code (Microsoft research)
+	CodeCost          float64 // COCOMO-based cost for writing code (development effort)
 	GitHubCost        float64 // Cost of GitHub interactions (commits, comments, etc.)
 	GitHubContextCost float64 // Cost of context switching for GitHub sessions
 
@@ -103,7 +119,6 @@ type AuthorCostDetail struct {
 	Events             int     // Number of author events
 	Sessions           int     // Number of GitHub work sessions
 	CodeHours          float64 // Hours spent writing code (COCOMO)
-	CodeContextHours   float64 // Hours spent context switching during coding
 	GitHubHours        float64 // Hours spent on GitHub interactions
 	GitHubContextHours float64 // Hours spent context switching for GitHub
 	TotalHours         float64 // Total hours (sum of above)
@@ -127,17 +142,25 @@ type ParticipantCostDetail struct {
 
 // DelayCostDetail holds itemized delay costs.
 type DelayCostDetail struct {
-	ProjectDelayCost float64 // Opportunity cost of engineer time (20% factor)
-	CodeChurnCost  float64 // COCOMO cost for rework/merge conflicts
-	FutureGitHubCost float64 // Cost for future GitHub activity (3 events with context)
+	DeliveryDelayCost float64 // Opportunity cost - blocked value delivery (15% factor)
+	CoordinationCost  float64 // Mental overhead - tracking unmerged work (5% factor)
+	CodeChurnCost     float64 // COCOMO cost for rework/merge conflicts
+
+	// Future costs (estimated for open PRs) - split across 2 people
+	FutureReviewCost  float64 // Cost for future review events (2 events × 20 min)
+	FutureMergeCost   float64 // Cost for future merge event (1 event × 20 min)
+	FutureContextCost float64 // Cost for future context switching (3 events × 40 min)
 
 	// Supporting details
-	ProjectDelayHours float64 // Hours of project delay
-	CodeChurnHours  float64 // Hours for code churn
-	FutureGitHubHours float64 // Hours for future GitHub activity
-	ReworkPercentage  float64 // Percentage of code requiring rework (1%-30%)
-	TotalDelayCost    float64 // Total delay cost (sum of above)
-	TotalDelayHours   float64 // Total delay hours
+	DeliveryDelayHours float64 // Hours of delivery delay
+	CoordinationHours  float64 // Hours of coordination overhead
+	CodeChurnHours     float64 // Hours for code churn
+	FutureReviewHours  float64 // Hours for future review events
+	FutureMergeHours   float64 // Hours for future merge event
+	FutureContextHours float64 // Hours for future context switching
+	ReworkPercentage   float64 // Percentage of code requiring rework (1%-41%)
+	TotalDelayCost     float64 // Total delay cost (sum of above)
+	TotalDelayHours    float64 // Total delay hours
 }
 
 // Breakdown shows fully itemized costs for a pull request.
@@ -263,9 +286,15 @@ func Calculate(data PRData, cfg Config) Breakdown {
 			"capped_delay_hours", cappedHrs)
 	}
 
-	// 1. Project Delay: Configured percentage (default 20%) of engineer time
-	projectDelayCost := hourlyRate * cappedHrs * cfg.DelayCostFactor
-	projectDelayHours := cappedHrs
+	// 1a. Delivery Delay: Opportunity cost of blocked value (default 15%)
+	// The 15% represents the percentage of team capacity consumed by this blocked PR
+	deliveryDelayCost := hourlyRate * cappedHrs * cfg.DeliveryDelayFactor
+	deliveryDelayHours := cappedHrs * cfg.DeliveryDelayFactor // Productivity-equivalent hours
+
+	// 1b. Coordination Overhead: Mental cost of tracking unmerged work (default 5%)
+	// The 5% represents the mental overhead of tracking this unmerged PR
+	coordinationCost := hourlyRate * cappedHrs * cfg.CoordinationFactor
+	coordinationHours := cappedHrs * cfg.CoordinationFactor // Productivity-equivalent hours
 
 	// 2. Code Churn (Rework): Probability-based drift formula
 	// Only calculated for open PRs - closed PRs won't need future updates
@@ -301,22 +330,50 @@ func Calculate(data PRData, cfg Config) Breakdown {
 
 	isClosed := !data.ClosedAt.IsZero()
 
-	if !isClosed && delayDays >= 3.0 {
+	// Find the most recent commit event from the author
+	// Code churn is calculated from the last commit to now (only for open PRs)
+	var lastAuthorCommitTime time.Time
+	for _, event := range data.Events {
+		if event.Actor == data.Author && event.Kind == "commit" {
+			if lastAuthorCommitTime.IsZero() || event.Timestamp.After(lastAuthorCommitTime) {
+				lastAuthorCommitTime = event.Timestamp
+			}
+		}
+	}
+
+	// Calculate drift days from last commit (not from PR creation)
+	var driftDays float64
+	if !lastAuthorCommitTime.IsZero() {
+		driftHours := time.Since(lastAuthorCommitTime).Hours()
+		if driftHours < 0 {
+			driftHours = 0
+		}
+		driftDays = driftHours / 24.0
+
+		slog.Info("Code churn calculation",
+			"pr_closed", isClosed,
+			"last_author_commit", lastAuthorCommitTime.Format(time.RFC3339),
+			"drift_days", driftDays)
+	} else if !isClosed {
+		slog.Info("No author commits found for code churn calculation", "pr_closed", isClosed)
+	}
+
+	if !isClosed && driftDays >= 3.0 {
 		// Cap days at configured maximum for drift calculation (default: 90 days)
 		maxDriftDays := cfg.MaxCodeDrift.Hours() / 24.0
-		driftDays := delayDays
-		if driftDays > maxDriftDays {
-			driftDays = maxDriftDays
+		cappedDriftDays := driftDays
+		if cappedDriftDays > maxDriftDays {
+			cappedDriftDays = maxDriftDays
 		}
 
 		// Probability-based drift: 1 - (1 - 0.04)^(days/7)
-		weeks := driftDays / 7.0
+		weeks := cappedDriftDays / 7.0
 		reworkPercentage = 1.0 - math.Pow(0.96, weeks)
 
 		reworkLOC = int(float64(data.LinesAdded) * reworkPercentage)
 
-		// Ensure minimum of 1 LOC for PRs >= 3 days
-		if reworkLOC < 1 && delayDays >= 3.0 {
+		// Ensure minimum of 1 LOC for PRs >= 3 days since last commit
+		if reworkLOC < 1 && driftDays >= 3.0 {
 			reworkLOC = 1
 			if data.LinesAdded > 0 {
 				reworkPercentage = 1.0 / float64(data.LinesAdded)
@@ -334,32 +391,82 @@ func Calculate(data PRData, cfg Config) Breakdown {
 		}
 	}
 
-	// 3. Future GitHub time: 3 events with full context switching
+	// 3. Future GitHub time: split across 2 people (reviewer + author)
 	// Only calculated for open PRs - closed PRs won't have future activity
-	// Each event: context in + event time + context out
-	var futureGitHubHours float64
-	var futureGitHubCost float64
+	//
+	// Research-based approach using IEEE/Fagan inspection rates:
+	//
+	// Review Time Calculation:
+	// Based on empirical research showing code review inspection rates of 150-400 LOC/hour,
+	// with 275 LOC/hour being the average (configurable via ReviewInspectionRate).
+	//
+	// References:
+	// - Fagan, M. E. (1976). Design and Code Inspections to Reduce Errors in Program Development.
+	//   IBM Systems Journal, 15(3), 182-211.
+	// - IEEE Std 1028-2008: IEEE Standard for Software Reviews and Audits
+	// - Empirical data: Optimal code review rates are 150-400 LOC/hour for effective defect detection
+	//
+	// Breakdown:
+	// - Review: LOC / inspection_rate (e.g., 649 LOC / 275 LOC/hr = 2.4 hrs)
+	// - Merge: 1 merge event × 20 min = 0.33 hrs (author performs merge)
+	// - Context Switching: 2 sessions × (20 min in + 20 min out) = 1.33 hrs
+	//   (1 session for reviewer, 1 session for author merge)
+	//
+	// Example for 649 LOC PR:
+	// - Review: 2.4 hrs (size-dependent)
+	// - Merge: 0.33 hrs (fixed)
+	// - Context: 1.33 hrs (fixed for 2 sessions)
+	// - Total: 4.1 hrs
+	var futureReviewHours float64
+	var futureReviewCost float64
+	var futureMergeHours float64
+	var futureMergeCost float64
+	var futureContextHours float64
+	var futureContextCost float64
 
 	if !isClosed {
-		futureGitHubDuration := 3 * (cfg.ContextSwitchDuration + cfg.EventDuration + cfg.ContextSwitchDuration)
-		futureGitHubHours = futureGitHubDuration.Hours()
-		futureGitHubCost = futureGitHubHours * hourlyRate
+		// Review: Based on inspection rate (LOC / rate)
+		// Defensive check: avoid division by zero
+		if cfg.ReviewInspectionRate <= 0 {
+			cfg.ReviewInspectionRate = 200.0 // Default to industry standard
+		}
+		futureReviewHours = float64(data.LinesAdded) / cfg.ReviewInspectionRate
+		futureReviewCost = futureReviewHours * hourlyRate
+
+		// Merge: 1 event × event duration
+		futureMergeDuration := cfg.EventDuration
+		futureMergeHours = futureMergeDuration.Hours()
+		futureMergeCost = futureMergeHours * hourlyRate
+
+		// Context Switching: 2 sessions × (context in + context out)
+		// 1 session for reviewer, 1 session for author merge
+		futureContextDuration := 2 * (cfg.ContextSwitchDuration + cfg.ContextSwitchDuration)
+		futureContextHours = futureContextDuration.Hours()
+		futureContextCost = futureContextHours * hourlyRate
 	}
 
 	// Total delay cost
-	delayCost := projectDelayCost + codeChurnCost + futureGitHubCost
-	totalDelayHours := projectDelayHours + codeChurnHours + futureGitHubHours
+	futureTotalCost := futureReviewCost + futureMergeCost + futureContextCost
+	futureTotalHours := futureReviewHours + futureMergeHours + futureContextHours
+	delayCost := deliveryDelayCost + coordinationCost + codeChurnCost + futureTotalCost
+	totalDelayHours := deliveryDelayHours + coordinationHours + codeChurnHours + futureTotalHours
 
 	delayCostDetail := DelayCostDetail{
-		ProjectDelayCost:  projectDelayCost,
-		CodeChurnCost:   codeChurnCost,
-		FutureGitHubCost:  futureGitHubCost,
-		ProjectDelayHours: projectDelayHours,
-		CodeChurnHours:  codeChurnHours,
-		FutureGitHubHours: futureGitHubHours,
-		ReworkPercentage:  reworkPercentage * 100.0, // Store as percentage (0-100 scale, e.g., 41.0 = 41%)
-		TotalDelayCost:    delayCost,
-		TotalDelayHours:   totalDelayHours,
+		DeliveryDelayCost:  deliveryDelayCost,
+		CoordinationCost:   coordinationCost,
+		CodeChurnCost:      codeChurnCost,
+		FutureReviewCost:   futureReviewCost,
+		FutureMergeCost:    futureMergeCost,
+		FutureContextCost:  futureContextCost,
+		DeliveryDelayHours: deliveryDelayHours,
+		CoordinationHours:  coordinationHours,
+		CodeChurnHours:     codeChurnHours,
+		FutureReviewHours:  futureReviewHours,
+		FutureMergeHours:   futureMergeHours,
+		FutureContextHours: futureContextHours,
+		ReworkPercentage:   reworkPercentage * 100.0, // Store as percentage (0-100 scale, e.g., 41.0 = 41%)
+		TotalDelayCost:     delayCost,
+		TotalDelayHours:    totalDelayHours,
 	}
 
 	// Calculate total cost
@@ -384,24 +491,22 @@ func Calculate(data PRData, cfg Config) Breakdown {
 
 // calculateAuthorCost computes the author's costs broken down by type.
 func calculateAuthorCost(data PRData, cfg Config, hourlyRate float64) AuthorCostDetail {
-	// 1. Code Cost: COCOMO-based estimation for writing code
+	// 1. Code Cost: COCOMO-based estimation for development effort
+	// COCOMO II includes all overhead: understanding existing code, testing, integration, etc.
 	codeEffort := cocomo.EstimateEffort(data.LinesAdded, cfg.COCOMO)
 	codeHours := codeEffort.Hours()
 	codeCost := codeHours * hourlyRate
 
-	// 2. Code Context Switching Cost: Interruptions during code writing
-	// Based on Microsoft research (Czerwinski et al., 2004):
-	// Context switching overhead = COCOMO hours × 0.2 × sqrt(KLOC)
-	// This captures the cognitive overhead of task switching while writing code
-	kloc := float64(data.LinesAdded) / 1000.0
-	codeContextFactor := 0.2 * math.Sqrt(kloc)
-	codeContextHours := codeHours * codeContextFactor
-	codeContextCost := codeContextHours * hourlyRate
-
-	// 3. GitHub Cost + GitHub Context Cost: Based on author's events
+	// 2. GitHub Cost + GitHub Context Cost: Based on author's events
+	// Include all commits (even if Actor != data.Author) plus author's non-commit events
 	var authorEvents []ParticipantEvent
 	for _, event := range data.Events {
-		if event.Actor == data.Author {
+		// All commits go to Author, regardless of Actor
+		// (commits may be attributed to full name instead of GitHub username)
+		if event.Kind == "commit" {
+			authorEvents = append(authorEvents, event)
+		} else if event.Actor == data.Author {
+			// Non-commit events only if from the author
 			authorEvents = append(authorEvents, event)
 		}
 	}
@@ -409,19 +514,17 @@ func calculateAuthorCost(data PRData, cfg Config, hourlyRate float64) AuthorCost
 	githubCost := githubHours * hourlyRate
 	githubContextCost := githubContextHours * hourlyRate
 
-	totalHours := codeHours + codeContextHours + githubHours + githubContextHours
-	totalCost := codeCost + codeContextCost + githubCost + githubContextCost
+	totalHours := codeHours + githubHours + githubContextHours
+	totalCost := codeCost + githubCost + githubContextCost
 
 	return AuthorCostDetail{
 		CodeCost:           codeCost,
-		CodeContextCost:    codeContextCost,
 		GitHubCost:         githubCost,
 		GitHubContextCost:  githubContextCost,
 		LinesAdded:         data.LinesAdded,
 		Events:             len(authorEvents),
 		Sessions:           sessions,
 		CodeHours:          codeHours,
-		CodeContextHours:   codeContextHours,
 		GitHubHours:        githubHours,
 		GitHubContextHours: githubContextHours,
 		TotalHours:         totalHours,
@@ -430,10 +533,16 @@ func calculateAuthorCost(data PRData, cfg Config, hourlyRate float64) AuthorCost
 }
 
 // calculateParticipantCosts computes costs for all participants except the author.
+// Excludes commits (which are attributed to the author).
 func calculateParticipantCosts(data PRData, cfg Config, hourlyRate float64) []ParticipantCostDetail {
-	// Group events by actor
+	// Group events by actor (excluding author and excluding commits)
 	eventsByActor := make(map[string][]ParticipantEvent)
 	for _, event := range data.Events {
+		// Skip commits (all commits go to Author)
+		if event.Kind == "commit" {
+			continue
+		}
+		// Skip events by the author (already in Author section)
 		if event.Actor != data.Author {
 			eventsByActor[event.Actor] = append(eventsByActor[event.Actor], event)
 		}
@@ -442,8 +551,17 @@ func calculateParticipantCosts(data PRData, cfg Config, hourlyRate float64) []Pa
 	var participantCosts []ParticipantCostDetail
 
 	for actor, events := range eventsByActor {
-		// Calculate GitHub and GitHub Context costs based on sessions
-		githubHours, githubContextHours, sessions := calculateSessionCosts(events, cfg)
+		// Calculate context switching costs based on sessions
+		_, githubContextHours, sessions := calculateSessionCosts(events, cfg)
+
+		// Calculate review time based on inspection rate (LOC / rate)
+		// Defensive check: avoid division by zero
+		inspectionRate := cfg.ReviewInspectionRate
+		if inspectionRate <= 0 {
+			inspectionRate = 275.0 // Default to average
+		}
+		githubHours := float64(data.LinesAdded) / inspectionRate
+
 		githubCost := githubHours * hourlyRate
 		githubContextCost := githubContextHours * hourlyRate
 
@@ -527,14 +645,18 @@ func calculateSessionCosts(events []ParticipantEvent, cfg Config) (githubHours, 
 		// Context switch in at the start
 		contextTime += contextSwitch
 
-		for j := start; j <= end; j++ {
-			// Each event costs EventTime
-			githubTime += eventDur
+		// First event: use default duration (we don't know how long it took)
+		githubTime += eventDur
 
-			// Add gap time to next event (if within session)
-			if j < end {
-				gap := sorted[j+1].Timestamp.Sub(sorted[j].Timestamp)
+		// Subsequent events within the session:
+		// - If gap <= eventDur (20 min): use actual gap (we know they stayed engaged)
+		// - If gap > eventDur: use eventDur (we don't know what they did during the gap)
+		for j := start; j < end; j++ {
+			gap := sorted[j+1].Timestamp.Sub(sorted[j].Timestamp)
+			if gap <= eventDur {
 				githubTime += gap
+			} else {
+				githubTime += eventDur
 			}
 		}
 

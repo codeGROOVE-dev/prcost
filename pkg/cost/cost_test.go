@@ -27,8 +27,12 @@ func TestDefaultConfig(t *testing.T) {
 		t.Errorf("Expected 60 minute session gap, got %v", cfg.SessionGapThreshold)
 	}
 
-	if cfg.DelayCostFactor != 0.20 {
-		t.Errorf("Expected delay cost factor 0.20, got %.2f", cfg.DelayCostFactor)
+	if cfg.DeliveryDelayFactor != 0.15 {
+		t.Errorf("Expected delivery delay factor 0.15, got %.2f", cfg.DeliveryDelayFactor)
+	}
+
+	if cfg.CoordinationFactor != 0.05 {
+		t.Errorf("Expected coordination factor 0.05, got %.2f", cfg.CoordinationFactor)
 	}
 
 	if cfg.MaxDelayAfterLastEvent != 14*24*time.Hour {
@@ -205,6 +209,7 @@ func TestCalculateWithRealPRData(t *testing.T) {
 		events = append(events, ParticipantEvent{
 			Timestamp: ts,
 			Actor:     e.Actor,
+			Kind:      e.Kind,
 		})
 	}
 
@@ -333,7 +338,7 @@ func TestCalculateDelayComponents(t *testing.T) {
 		LinesAdded: 100,
 		Author:     "test-author",
 		Events: []ParticipantEvent{
-			{Timestamp: now.Add(-7 * 24 * time.Hour), Actor: "test-author"},
+			{Timestamp: now.Add(-7 * 24 * time.Hour), Actor: "test-author", Kind: "commit"},
 		},
 		CreatedAt:            now.Add(-7 * 24 * time.Hour),
 	}
@@ -341,9 +346,14 @@ func TestCalculateDelayComponents(t *testing.T) {
 	cfg := DefaultConfig()
 	breakdown := Calculate(prData, cfg)
 
-	// Should have project delay cost
-	if breakdown.DelayCostDetail.ProjectDelayCost <= 0 {
-		t.Error("Project delay cost should be positive for 7-day old PR")
+	// Should have delivery delay cost
+	if breakdown.DelayCostDetail.DeliveryDelayCost <= 0 {
+		t.Error("Delivery delay cost should be positive for 7-day old PR")
+	}
+
+	// Should have coordination cost
+	if breakdown.DelayCostDetail.CoordinationCost <= 0 {
+		t.Error("Coordination cost should be positive for 7-day old PR")
 	}
 
 	// Should have code churn cost (7 days = ~7% drift)
@@ -355,15 +365,19 @@ func TestCalculateDelayComponents(t *testing.T) {
 		t.Error("Rework percentage should be positive for 7-day old PR")
 	}
 
-	// Should have future GitHub cost
-	if breakdown.DelayCostDetail.FutureGitHubCost <= 0 {
-		t.Error("Future GitHub cost should be positive")
+	// Should have future costs (review + merge + context)
+	futureTotalCost := breakdown.DelayCostDetail.FutureReviewCost +
+		breakdown.DelayCostDetail.FutureMergeCost +
+		breakdown.DelayCostDetail.FutureContextCost
+	if futureTotalCost <= 0 {
+		t.Error("Future costs should be positive")
 	}
 
 	// Total delay should equal sum of components
-	expectedDelay := breakdown.DelayCostDetail.ProjectDelayCost +
+	expectedDelay := breakdown.DelayCostDetail.DeliveryDelayCost +
+		breakdown.DelayCostDetail.CoordinationCost +
 		breakdown.DelayCostDetail.CodeChurnCost +
-		breakdown.DelayCostDetail.FutureGitHubCost
+		futureTotalCost
 
 	if breakdown.DelayCost < expectedDelay-0.01 || breakdown.DelayCost > expectedDelay+0.01 {
 		t.Errorf("Delay cost mismatch: %.2f != %.2f", breakdown.DelayCost, expectedDelay)
@@ -394,13 +408,20 @@ func TestCalculateShortPRNoRework(t *testing.T) {
 		t.Error("Rework percentage should be zero for 2-day old PR")
 	}
 
-	// Should still have project delay and future GitHub costs
-	if breakdown.DelayCostDetail.ProjectDelayCost <= 0 {
-		t.Error("Project delay cost should be positive even for short PR")
+	// Should still have delivery delay and coordination costs
+	if breakdown.DelayCostDetail.DeliveryDelayCost <= 0 {
+		t.Error("Delivery delay cost should be positive even for short PR")
 	}
 
-	if breakdown.DelayCostDetail.FutureGitHubCost <= 0 {
-		t.Error("Future GitHub cost should be positive")
+	if breakdown.DelayCostDetail.CoordinationCost <= 0 {
+		t.Error("Coordination cost should be positive even for short PR")
+	}
+
+	futureTotalCost := breakdown.DelayCostDetail.FutureReviewCost +
+		breakdown.DelayCostDetail.FutureMergeCost +
+		breakdown.DelayCostDetail.FutureContextCost
+	if futureTotalCost <= 0 {
+		t.Error("Future costs should be positive")
 	}
 }
 
@@ -453,6 +474,7 @@ func TestCalculateWithRealPR13(t *testing.T) {
 		events = append(events, ParticipantEvent{
 			Timestamp: ts,
 			Actor:     e.Actor,
+			Kind:      e.Kind,
 		})
 	}
 
@@ -477,10 +499,20 @@ func TestCalculateWithRealPR13(t *testing.T) {
 		t.Error("Very long PR should have project delay capped")
 	}
 
-	expectedProjectDelayHours := 90.0 * 24.0 // 90 days absolute cap
-	if breakdown.DelayCostDetail.ProjectDelayHours != expectedProjectDelayHours {
-		t.Errorf("Expected %.0f project delay hours (90 day cap), got %.2f",
-			expectedProjectDelayHours, breakdown.DelayCostDetail.ProjectDelayHours)
+	// 90 days absolute cap = 2160 hours
+	// Delivery: 2160 * 0.15 = 324 hours
+	// Coordination: 2160 * 0.05 = 108 hours
+	expectedDeliveryHours := 90.0 * 24.0 * 0.15 // 324 hours
+	expectedCoordinationHours := 90.0 * 24.0 * 0.05 // 108 hours
+
+	if breakdown.DelayCostDetail.DeliveryDelayHours != expectedDeliveryHours {
+		t.Errorf("Expected %.0f delivery delay hours (15%% of 90 day cap), got %.2f",
+			expectedDeliveryHours, breakdown.DelayCostDetail.DeliveryDelayHours)
+	}
+
+	if breakdown.DelayCostDetail.CoordinationHours != expectedCoordinationHours {
+		t.Errorf("Expected %.0f coordination hours (5%% of 90 day cap), got %.2f",
+			expectedCoordinationHours, breakdown.DelayCostDetail.CoordinationHours)
 	}
 
 	// Code drift should be capped at 90 days (not unlimited)
@@ -499,11 +531,16 @@ func TestCalculateWithRealPR13(t *testing.T) {
 	t.Logf("PR 13 breakdown (6 year old PR):")
 	t.Logf("  638 LOC added")
 	t.Logf("  Author cost: $%.2f", breakdown.Author.TotalCost)
-	t.Logf("  Project Delay: $%.2f (%.0f hrs, capped at 90 days)",
-		breakdown.DelayCostDetail.ProjectDelayCost, breakdown.DelayCostDetail.ProjectDelayHours)
+	t.Logf("  Delivery Delay (15%%): $%.2f (%.0f hrs, capped at 90 days)",
+		breakdown.DelayCostDetail.DeliveryDelayCost, breakdown.DelayCostDetail.DeliveryDelayHours)
+	t.Logf("  Coordination (5%%): $%.2f (%.0f hrs, capped at 90 days)",
+		breakdown.DelayCostDetail.CoordinationCost, breakdown.DelayCostDetail.CoordinationHours)
 	t.Logf("  Code Churn: $%.2f (%.1f%% rework, capped at 90 days drift)",
 		breakdown.DelayCostDetail.CodeChurnCost, breakdown.DelayCostDetail.ReworkPercentage)
-	t.Logf("  Future GitHub: $%.2f", breakdown.DelayCostDetail.FutureGitHubCost)
+	futureTotalCost := breakdown.DelayCostDetail.FutureReviewCost +
+		breakdown.DelayCostDetail.FutureMergeCost +
+		breakdown.DelayCostDetail.FutureContextCost
+	t.Logf("  Future Costs: $%.2f", futureTotalCost)
 	t.Logf("  Total delay cost: $%.2f", breakdown.DelayCost)
 	t.Logf("  Total cost: $%.2f", breakdown.TotalCost)
 }
@@ -530,10 +567,89 @@ func TestCalculateLongPRCapped(t *testing.T) {
 	}
 
 	// Last event was 120 days ago, so we only count 14 days after it
-	// Result: 120 days - (120 - 14) = 14 days
-	expectedHours := 14.0 * 24.0
-	if breakdown.DelayCostDetail.ProjectDelayHours != expectedHours {
-		t.Errorf("Expected %.0f project delay hours (14 days after last event), got %.2f",
-			expectedHours, breakdown.DelayCostDetail.ProjectDelayHours)
+	// Capped hours: 14 days = 336 hours
+	// Delivery delay: 336 * 0.15 = 50.4 hours
+	// Coordination: 336 * 0.05 = 16.8 hours
+	expectedDeliveryHours := 14.0 * 24.0 * 0.15
+	expectedCoordinationHours := 14.0 * 24.0 * 0.05
+
+	if breakdown.DelayCostDetail.DeliveryDelayHours != expectedDeliveryHours {
+		t.Errorf("Expected %.1f delivery delay hours (15%% of 14 days), got %.2f",
+			expectedDeliveryHours, breakdown.DelayCostDetail.DeliveryDelayHours)
+	}
+
+	if breakdown.DelayCostDetail.CoordinationHours != expectedCoordinationHours {
+		t.Errorf("Expected %.1f coordination hours (5%% of 14 days), got %.2f",
+			expectedCoordinationHours, breakdown.DelayCostDetail.CoordinationHours)
+	}
+}
+
+func TestDelayHoursNeverExceedPRAge(t *testing.T) {
+	// Test that delay hours (as productivity-equivalent time) are reasonable
+	// Delivery (15%) + Coordination (5%) should equal 20% of PR age
+	now := time.Now()
+	testCases := []struct {
+		name    string
+		ageHrs  float64
+		prData  PRData
+		wantMax float64 // Maximum acceptable delay hours (delivery + coordination)
+	}{
+		{
+			name:   "1 day old PR",
+			ageHrs: 24.0,
+			prData: PRData{
+				LinesAdded: 50,
+				Author:     "test-author",
+				Events: []ParticipantEvent{
+					{Timestamp: now.Add(-24 * time.Hour), Actor: "test-author", Kind: "commit"},
+				},
+				CreatedAt: now.Add(-24 * time.Hour),
+			},
+			wantMax: 24.0 * 0.20, // 20% of 24 hours = 4.8 hours
+		},
+		{
+			name:   "7 day old PR",
+			ageHrs: 168.0,
+			prData: PRData{
+				LinesAdded: 100,
+				Author:     "test-author",
+				Events: []ParticipantEvent{
+					{Timestamp: now.Add(-7 * 24 * time.Hour), Actor: "test-author", Kind: "commit"},
+				},
+				CreatedAt: now.Add(-7 * 24 * time.Hour),
+			},
+			wantMax: 168.0 * 0.20, // 20% of 168 hours = 33.6 hours
+		},
+	}
+
+	cfg := DefaultConfig()
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			breakdown := Calculate(tc.prData, cfg)
+
+			totalDelayHours := breakdown.DelayCostDetail.DeliveryDelayHours +
+				breakdown.DelayCostDetail.CoordinationHours
+
+			// Total delay hours should not exceed 20% of PR age
+			if totalDelayHours > tc.wantMax+0.1 { // Allow 0.1 hr tolerance for floating point
+				t.Errorf("Delay hours exceed 20%% of PR age: got %.2f hours, want <= %.2f hours (PR age: %.1f hrs)",
+					totalDelayHours, tc.wantMax, tc.ageHrs)
+			}
+
+			// Verify the split: delivery should be 15%, coordination should be 5%
+			expectedDelivery := tc.ageHrs * 0.15
+			expectedCoordination := tc.ageHrs * 0.05
+
+			if breakdown.DelayCostDetail.DeliveryDelayHours > expectedDelivery+0.1 {
+				t.Errorf("Delivery delay hours too high: got %.2f, want %.2f (15%% of %.1f)",
+					breakdown.DelayCostDetail.DeliveryDelayHours, expectedDelivery, tc.ageHrs)
+			}
+
+			if breakdown.DelayCostDetail.CoordinationHours > expectedCoordination+0.1 {
+				t.Errorf("Coordination hours too high: got %.2f, want %.2f (5%% of %.1f)",
+					breakdown.DelayCostDetail.CoordinationHours, expectedCoordination, tc.ageHrs)
+			}
+		})
 	}
 }
