@@ -80,8 +80,6 @@ type ParticipantEvent struct {
 type PRData struct {
 	// When the PR was opened
 	CreatedAt time.Time
-	// When the PR was last updated
-	UpdatedAt time.Time
 	// When the PR was closed/merged (zero if still open)
 	ClosedAt time.Time
 	// PR author's username
@@ -91,8 +89,6 @@ type PRData struct {
 	Events []ParticipantEvent
 	// Lines of code added by the author
 	LinesAdded int
-	// Whether the author has write access (false means external contributor)
-	AuthorHasWriteAccess bool
 }
 
 // AuthorCostDetail breaks down the author's costs.

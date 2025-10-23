@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -29,11 +28,6 @@ func PRDataFromPRX(prData *prx.PullRequestData) cost.PRData {
 	// Extract all human events with timestamps (exclude bots)
 	events := extractParticipantEvents(prData.Events)
 
-	// Determine if author has write access
-	// author_write_access > 0 means they have write access
-	// author_write_access <= 0 means external contributor
-	authorHasWriteAccess := pr.AuthorWriteAccess > 0
-
 	// Handle ClosedAt pointer - use zero time if nil
 	var closedAt time.Time
 	if pr.ClosedAt != nil {
@@ -41,13 +35,11 @@ func PRDataFromPRX(prData *prx.PullRequestData) cost.PRData {
 	}
 
 	return cost.PRData{
-		LinesAdded:           pr.Additions,
-		Author:               pr.Author,
-		Events:               events,
-		CreatedAt:            pr.CreatedAt,
-		UpdatedAt:            pr.UpdatedAt,
-		ClosedAt:             closedAt,
-		AuthorHasWriteAccess: authorHasWriteAccess,
+		LinesAdded: pr.Additions,
+		Author:     pr.Author,
+		Events:     events,
+		CreatedAt:  pr.CreatedAt,
+		ClosedAt:   closedAt,
 	}
 }
 
@@ -120,25 +112,6 @@ func parsePRURL(prURL string) (owner, repo string, number int, err error) {
 	}
 
 	return parts[0], parts[1], number, nil
-}
-
-// FetchPRDataWithDefaults is a convenience function that uses environment variables
-// for authentication.
-//
-// Parameters:
-//   - ctx: Context for the API call
-//   - prURL: Full GitHub PR URL (e.g., "https://github.com/owner/repo/pull/123")
-//
-// Returns:
-//   - cost.PRData with all information needed for cost calculation
-func FetchPRDataWithDefaults(ctx context.Context, prURL string) (cost.PRData, error) {
-	// Get GitHub token from environment
-	token := os.Getenv("GITHUB_TOKEN")
-	if token == "" {
-		return cost.PRData{}, errors.New("GITHUB_TOKEN environment variable not set")
-	}
-
-	return FetchPRData(ctx, prURL, token)
 }
 
 // extractParticipantEvents extracts all human events with their timestamps and actors.

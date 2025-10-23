@@ -169,7 +169,6 @@ func TestExtractParticipantEvents(t *testing.T) {
 func TestPRDataFromPRX(t *testing.T) {
 	now := time.Now()
 	created := now.Add(-24 * time.Hour)
-	updated := now
 
 	prxData := prx.PullRequestData{
 		PullRequest: prx.PullRequest{
@@ -177,7 +176,6 @@ func TestPRDataFromPRX(t *testing.T) {
 			Additions:         100,
 			Deletions:         50,
 			CreatedAt:         created,
-			UpdatedAt:         updated,
 			AuthorWriteAccess: 1, // Has write access
 		},
 		Events: []prx.Event{
@@ -198,16 +196,8 @@ func TestPRDataFromPRX(t *testing.T) {
 		t.Errorf("Expected 100 lines added, got %d", costData.LinesAdded)
 	}
 
-	if !costData.AuthorHasWriteAccess {
-		t.Error("Expected author to have write access")
-	}
-
 	if !costData.CreatedAt.Equal(created) {
 		t.Errorf("Expected created at %v, got %v", created, costData.CreatedAt)
-	}
-
-	if !costData.UpdatedAt.Equal(updated) {
-		t.Errorf("Expected updated at %v, got %v", updated, costData.UpdatedAt)
 	}
 
 	// Should have 2 events (bot event filtered out)
@@ -232,7 +222,6 @@ func TestPRDataFromPRXExternalContributor(t *testing.T) {
 			Author:            "external-contributor",
 			Additions:         50,
 			CreatedAt:         now,
-			UpdatedAt:         now,
 			AuthorWriteAccess: -1, // No write access
 		},
 		Events: []prx.Event{
@@ -242,9 +231,9 @@ func TestPRDataFromPRXExternalContributor(t *testing.T) {
 
 	costData := PRDataFromPRX(&prxData)
 
-	// External contributor should not have write access
-	if costData.AuthorHasWriteAccess {
-		t.Error("Expected external contributor to not have write access")
+	// Verify basic conversion
+	if costData.Author != "external-contributor" {
+		t.Errorf("Expected author 'external-contributor', got '%s'", costData.Author)
 	}
 }
 

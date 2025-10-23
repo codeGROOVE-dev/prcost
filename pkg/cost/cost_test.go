@@ -64,8 +64,6 @@ func TestCalculateSingleEvent(t *testing.T) {
 			{Timestamp: now, Actor: "test-author"},
 		},
 		CreatedAt:            now.Add(-1 * time.Hour),
-		UpdatedAt:            now,
-		AuthorHasWriteAccess: true,
 	}
 
 	cfg := DefaultConfig()
@@ -101,8 +99,6 @@ func TestCalculateMultipleEventsOneSession(t *testing.T) {
 			{Timestamp: now.Add(10 * time.Minute), Actor: "test-author"},
 		},
 		CreatedAt:            now.Add(-1 * time.Hour),
-		UpdatedAt:            now.Add(10 * time.Minute),
-		AuthorHasWriteAccess: true,
 	}
 
 	cfg := DefaultConfig()
@@ -129,8 +125,6 @@ func TestCalculateMultipleEventsTwoSessions(t *testing.T) {
 			{Timestamp: now.Add(90 * time.Minute), Actor: "test-author"}, // 90 min gap = new session
 		},
 		CreatedAt:            now.Add(-2 * time.Hour),
-		UpdatedAt:            now.Add(90 * time.Minute),
-		AuthorHasWriteAccess: true,
 	}
 
 	cfg := DefaultConfig()
@@ -153,8 +147,6 @@ func TestCalculateWithParticipants(t *testing.T) {
 			{Timestamp: now.Add(2 * time.Hour), Actor: "reviewer2"},
 		},
 		CreatedAt:            now.Add(-3 * time.Hour),
-		UpdatedAt:            now.Add(2 * time.Hour),
-		AuthorHasWriteAccess: true,
 	}
 
 	cfg := DefaultConfig()
@@ -190,7 +182,6 @@ func TestCalculateWithRealPRData(t *testing.T) {
 		} `json:"events"`
 		PullRequest struct {
 			CreatedAt         string `json:"created_at"`
-			UpdatedAt         string `json:"updated_at"`
 			Author            string `json:"author"`
 			Additions         int    `json:"additions"`
 			AuthorWriteAccess int    `json:"author_write_access"`
@@ -221,18 +212,12 @@ func TestCalculateWithRealPRData(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to parse created_at: %v", err)
 	}
-	updatedAt, err := time.Parse(time.RFC3339, prxData.PullRequest.UpdatedAt)
-	if err != nil {
-		t.Fatalf("Failed to parse updated_at: %v", err)
-	}
 
 	prData := PRData{
 		LinesAdded:           prxData.PullRequest.Additions,
 		Author:               prxData.PullRequest.Author,
 		Events:               events,
 		CreatedAt:            createdAt,
-		UpdatedAt:            updatedAt,
-		AuthorHasWriteAccess: prxData.PullRequest.AuthorWriteAccess >= 0,
 	}
 
 	cfg := DefaultConfig()
@@ -299,8 +284,6 @@ func TestCalculateMinimumValues(t *testing.T) {
 			{Timestamp: time.Now(), Actor: "test-author"},
 		},
 		CreatedAt:            time.Now().Add(-1 * time.Hour),
-		UpdatedAt:            time.Now(),
-		AuthorHasWriteAccess: true,
 	}
 
 	cfg := DefaultConfig()
@@ -328,30 +311,18 @@ func TestCalculateExternalContributor(t *testing.T) {
 			{Timestamp: time.Now().Add(-72 * time.Hour), Actor: "external-contributor"},
 		},
 		CreatedAt:            time.Now().Add(-72 * time.Hour),
-		UpdatedAt:            time.Now(),
-		AuthorHasWriteAccess: false, // External contributor
 	}
 
 	cfg := DefaultConfig()
 	breakdown := Calculate(prData, cfg)
 
-	// External contributors should have same cost calculation as internal
-	// (we removed the 50% reduction)
-	internalData := prData
-	internalData.AuthorHasWriteAccess = true
-	internalBreakdown := Calculate(internalData, cfg)
-
-	// Costs should be equal (within 1 cent to account for floating point precision)
-	delayCostDiff := breakdown.DelayCost - internalBreakdown.DelayCost
-	if delayCostDiff < -0.01 || delayCostDiff > 0.01 {
-		t.Errorf("External and internal contributor delay costs should be equal, got %.2f vs %.2f (diff: %.6f)",
-			breakdown.DelayCost, internalBreakdown.DelayCost, delayCostDiff)
+	// Verify delay cost is calculated
+	if breakdown.DelayCost <= 0 {
+		t.Error("Expected positive delay cost")
 	}
 
-	totalCostDiff := breakdown.TotalCost - internalBreakdown.TotalCost
-	if totalCostDiff < -0.01 || totalCostDiff > 0.01 {
-		t.Errorf("External and internal contributor total costs should be equal, got %.2f vs %.2f (diff: %.6f)",
-			breakdown.TotalCost, internalBreakdown.TotalCost, totalCostDiff)
+	if breakdown.TotalCost <= 0 {
+		t.Error("Expected positive total cost")
 	}
 }
 
@@ -365,8 +336,6 @@ func TestCalculateDelayComponents(t *testing.T) {
 			{Timestamp: now.Add(-7 * 24 * time.Hour), Actor: "test-author"},
 		},
 		CreatedAt:            now.Add(-7 * 24 * time.Hour),
-		UpdatedAt:            now,
-		AuthorHasWriteAccess: true,
 	}
 
 	cfg := DefaultConfig()
@@ -411,8 +380,6 @@ func TestCalculateShortPRNoRework(t *testing.T) {
 			{Timestamp: now.Add(-2 * 24 * time.Hour), Actor: "test-author"},
 		},
 		CreatedAt:            now.Add(-2 * 24 * time.Hour),
-		UpdatedAt:            now,
-		AuthorHasWriteAccess: true,
 	}
 
 	cfg := DefaultConfig()
@@ -463,7 +430,6 @@ func TestCalculateWithRealPR13(t *testing.T) {
 		} `json:"events"`
 		PullRequest struct {
 			CreatedAt         string `json:"created_at"`
-			UpdatedAt         string `json:"updated_at"`
 			Author            string `json:"author"`
 			Additions         int    `json:"additions"`
 			AuthorWriteAccess int    `json:"author_write_access"`
@@ -494,18 +460,12 @@ func TestCalculateWithRealPR13(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to parse created_at: %v", err)
 	}
-	updatedAt, err := time.Parse(time.RFC3339, prxData.PullRequest.UpdatedAt)
-	if err != nil {
-		t.Fatalf("Failed to parse updated_at: %v", err)
-	}
 
 	prData := PRData{
 		LinesAdded:           prxData.PullRequest.Additions,
 		Author:               prxData.PullRequest.Author,
 		Events:               events,
 		CreatedAt:            createdAt,
-		UpdatedAt:            updatedAt,
-		AuthorHasWriteAccess: prxData.PullRequest.AuthorWriteAccess >= 0,
 	}
 
 	cfg := DefaultConfig()
@@ -559,8 +519,6 @@ func TestCalculateLongPRCapped(t *testing.T) {
 			{Timestamp: now.Add(-120 * 24 * time.Hour), Actor: "test-author"},
 		},
 		CreatedAt:            now.Add(-120 * 24 * time.Hour),
-		UpdatedAt:            now,
-		AuthorHasWriteAccess: true,
 	}
 
 	cfg := DefaultConfig()
