@@ -128,12 +128,12 @@ type ParticipantCostDetail struct {
 // DelayCostDetail holds itemized delay costs.
 type DelayCostDetail struct {
 	ProjectDelayCost float64 // Opportunity cost of engineer time (20% factor)
-	CodeUpdatesCost  float64 // COCOMO cost for rework/merge conflicts
+	CodeChurnCost  float64 // COCOMO cost for rework/merge conflicts
 	FutureGitHubCost float64 // Cost for future GitHub activity (3 events with context)
 
 	// Supporting details
 	ProjectDelayHours float64 // Hours of project delay
-	CodeUpdatesHours  float64 // Hours for code updates
+	CodeChurnHours  float64 // Hours for code churn
 	FutureGitHubHours float64 // Hours for future GitHub activity
 	ReworkPercentage  float64 // Percentage of code requiring rework (1%-30%)
 	TotalDelayCost    float64 // Total delay cost (sum of above)
@@ -267,7 +267,7 @@ func Calculate(data PRData, cfg Config) Breakdown {
 	projectDelayCost := hourlyRate * cappedHrs * cfg.DelayCostFactor
 	projectDelayHours := cappedHrs
 
-	// 2. Code Updates (Rework): Probability-based drift formula
+	// 2. Code Churn (Rework): Probability-based drift formula
 	// Only calculated for open PRs - closed PRs won't need future updates
 	//
 	// Research basis:
@@ -295,8 +295,8 @@ func Calculate(data PRData, cfg Config) Breakdown {
 	// Structure on Software Quality. ACM/IEEE ICSE. DOI: 10.1145/1368088.1368160
 
 	var reworkLOC int
-	var codeUpdatesHours float64
-	var codeUpdatesCost float64
+	var codeChurnHours float64
+	var codeChurnCost float64
 	var reworkPercentage float64
 
 	isClosed := !data.ClosedAt.IsZero()
@@ -325,8 +325,8 @@ func Calculate(data PRData, cfg Config) Breakdown {
 
 		if reworkLOC > 0 {
 			reworkEffort := cocomo.EstimateEffort(reworkLOC, cfg.COCOMO)
-			codeUpdatesHours = reworkEffort.Hours()
-			codeUpdatesCost = codeUpdatesHours * hourlyRate
+			codeChurnHours = reworkEffort.Hours()
+			codeChurnCost = codeChurnHours * hourlyRate
 			// Recalculate actual percentage for display
 			if data.LinesAdded > 0 {
 				reworkPercentage = float64(reworkLOC) / float64(data.LinesAdded)
@@ -347,15 +347,15 @@ func Calculate(data PRData, cfg Config) Breakdown {
 	}
 
 	// Total delay cost
-	delayCost := projectDelayCost + codeUpdatesCost + futureGitHubCost
-	totalDelayHours := projectDelayHours + codeUpdatesHours + futureGitHubHours
+	delayCost := projectDelayCost + codeChurnCost + futureGitHubCost
+	totalDelayHours := projectDelayHours + codeChurnHours + futureGitHubHours
 
 	delayCostDetail := DelayCostDetail{
 		ProjectDelayCost:  projectDelayCost,
-		CodeUpdatesCost:   codeUpdatesCost,
+		CodeChurnCost:   codeChurnCost,
 		FutureGitHubCost:  futureGitHubCost,
 		ProjectDelayHours: projectDelayHours,
-		CodeUpdatesHours:  codeUpdatesHours,
+		CodeChurnHours:  codeChurnHours,
 		FutureGitHubHours: futureGitHubHours,
 		ReworkPercentage:  reworkPercentage * 100.0, // Store as percentage (0-100 scale, e.g., 41.0 = 41%)
 		TotalDelayCost:    delayCost,

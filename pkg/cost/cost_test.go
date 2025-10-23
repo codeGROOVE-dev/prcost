@@ -346,9 +346,9 @@ func TestCalculateDelayComponents(t *testing.T) {
 		t.Error("Project delay cost should be positive for 7-day old PR")
 	}
 
-	// Should have code updates cost (7 days = ~7% drift)
-	if breakdown.DelayCostDetail.CodeUpdatesCost <= 0 {
-		t.Error("Code updates cost should be positive for 7-day old PR")
+	// Should have code churn cost (7 days = ~7% drift)
+	if breakdown.DelayCostDetail.CodeChurnCost <= 0 {
+		t.Error("Code churn cost should be positive for 7-day old PR")
 	}
 
 	if breakdown.DelayCostDetail.ReworkPercentage <= 0 {
@@ -362,7 +362,7 @@ func TestCalculateDelayComponents(t *testing.T) {
 
 	// Total delay should equal sum of components
 	expectedDelay := breakdown.DelayCostDetail.ProjectDelayCost +
-		breakdown.DelayCostDetail.CodeUpdatesCost +
+		breakdown.DelayCostDetail.CodeChurnCost +
 		breakdown.DelayCostDetail.FutureGitHubCost
 
 	if breakdown.DelayCost < expectedDelay-0.01 || breakdown.DelayCost > expectedDelay+0.01 {
@@ -385,9 +385,9 @@ func TestCalculateShortPRNoRework(t *testing.T) {
 	cfg := DefaultConfig()
 	breakdown := Calculate(prData, cfg)
 
-	// Should NOT have code updates cost (< 3 days)
-	if breakdown.DelayCostDetail.CodeUpdatesCost != 0 {
-		t.Error("Code updates cost should be zero for 2-day old PR")
+	// Should NOT have code churn cost (< 3 days)
+	if breakdown.DelayCostDetail.CodeChurnCost != 0 {
+		t.Error("Code churn cost should be zero for 2-day old PR")
 	}
 
 	if breakdown.DelayCostDetail.ReworkPercentage != 0 {
@@ -501,8 +501,8 @@ func TestCalculateWithRealPR13(t *testing.T) {
 	t.Logf("  Author cost: $%.2f", breakdown.Author.TotalCost)
 	t.Logf("  Project Delay: $%.2f (%.0f hrs, capped at 90 days)",
 		breakdown.DelayCostDetail.ProjectDelayCost, breakdown.DelayCostDetail.ProjectDelayHours)
-	t.Logf("  Code Updates: $%.2f (%.1f%% rework, capped at 90 days drift)",
-		breakdown.DelayCostDetail.CodeUpdatesCost, breakdown.DelayCostDetail.ReworkPercentage)
+	t.Logf("  Code Churn: $%.2f (%.1f%% rework, capped at 90 days drift)",
+		breakdown.DelayCostDetail.CodeChurnCost, breakdown.DelayCostDetail.ReworkPercentage)
 	t.Logf("  Future GitHub: $%.2f", breakdown.DelayCostDetail.FutureGitHubCost)
 	t.Logf("  Total delay cost: $%.2f", breakdown.DelayCost)
 	t.Logf("  Total cost: $%.2f", breakdown.TotalCost)

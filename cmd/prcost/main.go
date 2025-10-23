@@ -27,17 +27,32 @@ func main() {
 	format := flag.String("format", "human", "Output format: human or json")
 	verbose := flag.Bool("verbose", false, "Show verbose logging output")
 
+	// Org/Repo sampling flags
+	org := flag.String("org", "", "GitHub organization to analyze (optionally with --repo for single repo)")
+	repo := flag.String("repo", "", "GitHub repository to analyze (requires --org)")
+	samples := flag.Int("samples", 25, "Number of PRs to sample for extrapolation")
+	days := flag.Int("days", 90, "Number of days to look back for PR modifications")
+
 	flag.Usage = func() {
-		fmt.Fprintf(os.Stderr, "Usage: %s [options] <PR_URL>\n\n", os.Args[0])
-		fmt.Fprint(os.Stderr, "Calculate the real-world cost of a GitHub pull request.\n\n")
+		fmt.Fprintf(os.Stderr, "Usage: %s [options] <PR_URL>\n", os.Args[0])
+		fmt.Fprintf(os.Stderr, "       %s --org <org> [--repo <repo>] [options]\n\n", os.Args[0])
+		fmt.Fprint(os.Stderr, "Calculate the real-world cost of GitHub pull requests.\n\n")
+		fmt.Fprint(os.Stderr, "Modes:\n")
+		fmt.Fprint(os.Stderr, "  Single PR:   Provide a PR URL as argument\n")
+		fmt.Fprint(os.Stderr, "  Single Repo: Use --org and --repo to analyze one repository\n")
+		fmt.Fprint(os.Stderr, "  Org-wide:    Use --org to analyze entire organization\n\n")
 		fmt.Fprint(os.Stderr, "Options:\n")
 		flag.PrintDefaults()
 		fmt.Fprint(os.Stderr, "\nExamples:\n")
-		fmt.Fprintf(os.Stderr, "  %s https://github.com/owner/repo/pull/123\n", os.Args[0])
-		fmt.Fprintf(os.Stderr, "  %s --salary 300000 --benefits 1.4 https://github.com/owner/repo/pull/123\n", os.Args[0])
-		fmt.Fprintf(os.Stderr,
-			"  %s --salary 200000 --benefits 1.25 --event-minutes 30 --format json https://github.com/owner/repo/pull/123\n",
-			os.Args[0])
+		fmt.Fprintf(os.Stderr, "  Single PR:\n")
+		fmt.Fprintf(os.Stderr, "    %s https://github.com/owner/repo/pull/123\n", os.Args[0])
+		fmt.Fprintf(os.Stderr, "    %s --salary 300000 https://github.com/owner/repo/pull/123\n\n", os.Args[0])
+		fmt.Fprintf(os.Stderr, "  Repository analysis:\n")
+		fmt.Fprintf(os.Stderr, "    %s --org kubernetes --repo kubernetes\n", os.Args[0])
+		fmt.Fprintf(os.Stderr, "    %s --org myorg --repo myrepo --samples 50 --days 30\n\n", os.Args[0])
+		fmt.Fprintf(os.Stderr, "  Organization-wide analysis:\n")
+		fmt.Fprintf(os.Stderr, "    %s --org chainguard-dev\n", os.Args[0])
+		fmt.Fprintf(os.Stderr, "    %s --org myorg --samples 100 --days 60\n", os.Args[0])
 	}
 
 	flag.Parse()
@@ -53,20 +68,28 @@ func main() {
 	}))
 	slog.SetDefault(logger)
 
-	// Validate that we have a PR URL
-	if flag.NArg() != 1 {
+	// Determine mode: single PR or org/repo sampling
+	orgMode := *org != ""
+	singlePRMode := flag.NArg() == 1
+
+	// Validate mode selection
+	// First check if --repo is specified without --org
+	if *repo != "" && *org == "" {
+		fmt.Fprintf(os.Stderr, "Error: --repo requires --org to be specified\n\n")
 		flag.Usage()
 		os.Exit(1)
 	}
 
-	prURL := flag.Arg(0)
-
-	// Validate PR URL format
-	if !strings.HasPrefix(prURL, "https://github.com/") || !strings.Contains(prURL, "/pull/") {
-		log.Fatal("Invalid PR URL. Expected format: https://github.com/owner/repo/pull/123")
+	if orgMode && singlePRMode {
+		fmt.Fprintf(os.Stderr, "Error: Cannot use both --org and PR URL. Choose one mode.\n\n")
+		flag.Usage()
+		os.Exit(1)
 	}
 
-	slog.Info("Starting PR cost analysis", "pr_url", prURL, "format", *format)
+	if !orgMode && !singlePRMode {
+		flag.Usage()
+		os.Exit(1)
+	}
 
 	// Create cost configuration from flags
 	cfg := cost.DefaultConfig()
@@ -91,33 +114,72 @@ func main() {
 	}
 	slog.Debug("Successfully retrieved GitHub token")
 
-	// Fetch PR data
-	slog.Info("Fetching PR data from GitHub")
-	prData, err := github.FetchPRData(ctx, prURL, token)
-	if err != nil {
-		slog.Error("Failed to fetch PR data", "error", err)
-		log.Fatalf("Failed to fetch PR data: %v", err)
-	}
-	slog.Info("Successfully fetched PR data",
-		"lines_added", prData.LinesAdded,
-		"author", prData.Author,
-		"events", len(prData.Events))
+	// Execute based on mode
+	if orgMode {
+		// Org/Repo sampling mode
+		if *repo != "" {
+			// Single repository mode
+			slog.Info("Starting repository analysis",
+				"org", *org,
+				"repo", *repo,
+				"samples", *samples,
+				"days", *days)
 
-	// Calculate costs
-	slog.Info("Calculating PR costs")
-	breakdown := cost.Calculate(prData, cfg)
-	slog.Info("Cost calculation complete", "total_cost", breakdown.TotalCost)
+			err := analyzeRepository(ctx, *org, *repo, *samples, *days, cfg, token)
+			if err != nil {
+				log.Fatalf("Repository analysis failed: %v", err)
+			}
+		} else {
+			// Organization-wide mode
+			slog.Info("Starting organization-wide analysis",
+				"org", *org,
+				"samples", *samples,
+				"days", *days)
 
-	// Output in requested format
-	switch *format {
-	case "human":
-		printHumanReadable(&breakdown, prURL)
-	case "json":
-		if err := printJSON(&breakdown); err != nil {
-			log.Fatalf("Failed to output results: %v", err)
+			err := analyzeOrganization(ctx, *org, *samples, *days, cfg, token)
+			if err != nil {
+				log.Fatalf("Organization analysis failed: %v", err)
+			}
 		}
-	default:
-		log.Fatalf("Unknown format: %s (must be human or json)", *format)
+	} else {
+		// Single PR mode
+		prURL := flag.Arg(0)
+
+		// Validate PR URL format
+		if !strings.HasPrefix(prURL, "https://github.com/") || !strings.Contains(prURL, "/pull/") {
+			log.Fatal("Invalid PR URL. Expected format: https://github.com/owner/repo/pull/123")
+		}
+
+		slog.Info("Starting PR cost analysis", "pr_url", prURL, "format", *format)
+
+		// Fetch PR data
+		slog.Info("Fetching PR data from GitHub")
+		prData, err := github.FetchPRData(ctx, prURL, token)
+		if err != nil {
+			slog.Error("Failed to fetch PR data", "error", err)
+			log.Fatalf("Failed to fetch PR data: %v", err)
+		}
+		slog.Info("Successfully fetched PR data",
+			"lines_added", prData.LinesAdded,
+			"author", prData.Author,
+			"events", len(prData.Events))
+
+		// Calculate costs
+		slog.Info("Calculating PR costs")
+		breakdown := cost.Calculate(prData, cfg)
+		slog.Info("Cost calculation complete", "total_cost", breakdown.TotalCost)
+
+		// Output in requested format
+		switch *format {
+		case "human":
+			printHumanReadable(&breakdown, prURL)
+		case "json":
+			if err := printJSON(&breakdown); err != nil {
+				log.Fatalf("Failed to output results: %v", err)
+			}
+		default:
+			log.Fatalf("Unknown format: %s (must be human or json)", *format)
+		}
 	}
 }
 
@@ -200,18 +262,18 @@ func printHumanReadable(breakdown *cost.Breakdown, prURL string) {
 	fmt.Println("  Delay")
 	fmt.Println("  ─────")
 	if breakdown.DelayCapped {
-		fmt.Printf("    Delivery Delay (20%%)      %12s    %.0f hrs (capped)\n",
+		fmt.Printf("    Opportunity + Velocity Loss (20%%)  %12s    %.0f hrs (capped)\n",
 			formatCurrency(breakdown.DelayCostDetail.ProjectDelayCost), breakdown.DelayCostDetail.ProjectDelayHours)
 	} else {
-		fmt.Printf("    Delivery Delay (20%%)      %12s    %.1f hrs\n",
+		fmt.Printf("    Opportunity + Velocity Loss (20%%)  %12s    %.1f hrs\n",
 			formatCurrency(breakdown.DelayCostDetail.ProjectDelayCost), breakdown.DelayCostDetail.ProjectDelayHours)
 	}
 
 	if breakdown.DelayCostDetail.ReworkPercentage > 0 {
-		fmt.Printf("    Code Updates (%.0f%% drift)   %12s    %.1f hrs\n",
+		fmt.Printf("    Est. Code Churn (%.0f%% drift)%12s    %.1f hrs\n",
 			breakdown.DelayCostDetail.ReworkPercentage,
-			formatCurrency(breakdown.DelayCostDetail.CodeUpdatesCost),
-			breakdown.DelayCostDetail.CodeUpdatesHours)
+			formatCurrency(breakdown.DelayCostDetail.CodeChurnCost),
+			breakdown.DelayCostDetail.CodeChurnHours)
 	}
 
 	if breakdown.DelayCostDetail.FutureGitHubCost > 0 {
