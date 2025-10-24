@@ -1078,7 +1078,8 @@
                 output += `    GitHub Context Switching  ${formatCurrency(b.author.github_context_cost).padStart(12)}    ${formatTimeUnit(b.author.github_context_hours)}\n`;
             }
             output += '                              ────────────\n';
-            output += `    Subtotal                  ${formatCurrency(b.author.total_cost).padStart(12)}    ${formatTimeUnit(b.author.total_hours)}\n\n`;
+            let pct = (b.author.total_cost / b.total_cost) * 100;
+            output += `    Subtotal                  ${formatCurrency(b.author.total_cost).padStart(12)}    ${formatTimeUnit(b.author.total_hours)}  (${pct.toFixed(1)}%)\n\n`;
 
             // Participants
             if (b.participants && b.participants.length > 0) {
@@ -1097,7 +1098,8 @@
                     output += `      Context Switching       ${formatCurrency(p.github_context_cost).padStart(12)}    ${formatTimeUnit(p.github_context_hours)}\n`;
                 });
                 output += '                              ────────────\n';
-                output += `    Subtotal                  ${formatCurrency(totalParticipantCost).padStart(12)}    ${formatTimeUnit(totalParticipantHours)}\n\n`;
+                pct = (totalParticipantCost / b.total_cost) * 100;
+                output += `    Subtotal                  ${formatCurrency(totalParticipantCost).padStart(12)}    ${formatTimeUnit(totalParticipantHours)}  (${pct.toFixed(1)}%)\n\n`;
             }
 
             // Delay and Future Costs - only show if there are any delay costs
@@ -1111,7 +1113,8 @@
                 const mergeDelayCost = b.delay_cost_detail.delivery_delay_cost + b.delay_cost_detail.coordination_cost;
                 const mergeDelayHours = b.delay_cost_detail.delivery_delay_hours + b.delay_cost_detail.coordination_hours;
                 output += '                              ────────────\n';
-                output += `    Subtotal                ${formatCurrency(mergeDelayCost).padStart(12)}    ${formatTimeUnit(mergeDelayHours)}\n\n`;
+                pct = (mergeDelayCost / b.total_cost) * 100;
+                output += `    Subtotal                ${formatCurrency(mergeDelayCost).padStart(12)}    ${formatTimeUnit(mergeDelayHours)}  (${pct.toFixed(1)}%)\n\n`;
 
                 // Future Costs
                 const hasFuture = b.delay_cost_detail.rework_percentage > 0 ||
@@ -1141,7 +1144,8 @@
                     const futureHours = b.delay_cost_detail.code_churn_hours + b.delay_cost_detail.future_review_hours +
                                        b.delay_cost_detail.future_merge_hours + b.delay_cost_detail.future_context_hours;
                     output += '                              ────────────\n';
-                    output += `    Subtotal                ${formatCurrency(futureCost).padStart(12)}    ${formatTimeUnit(futureHours)}\n\n`;
+                    pct = (futureCost / b.total_cost) * 100;
+                    output += `    Subtotal                ${formatCurrency(futureCost).padStart(12)}    ${formatTimeUnit(futureHours)}  (${pct.toFixed(1)}%)\n\n`;
                 }
             }
 
@@ -1204,7 +1208,8 @@
             output += `    GitHub Activity           ${formatCurrency(avgAuthorGitHubCost).padStart(12)}    ${formatTimeUnit(avgAuthorGitHubHours)}\n`;
             output += `    GitHub Context Switching  ${formatCurrency(avgAuthorGitHubContextCost).padStart(12)}    ${formatTimeUnit(avgAuthorGitHubContextHours)}\n`;
             output += '                              ────────────\n';
-            output += `    Subtotal                  ${formatCurrency(avgAuthorTotalCost).padStart(12)}    ${formatTimeUnit(avgAuthorTotalHours)}\n\n`;
+            let pct = (avgAuthorTotalCost / avgTotalCost) * 100;
+            output += `    Subtotal                  ${formatCurrency(avgAuthorTotalCost).padStart(12)}    ${formatTimeUnit(avgAuthorTotalHours)}  (${pct.toFixed(1)}%)\n\n`;
 
             // Participants
             if (e.participant_total_cost > 0) {
@@ -1213,7 +1218,8 @@
                 output += `    Review Activity           ${formatCurrency(avgParticipantGitHubCost).padStart(12)}    ${formatTimeUnit(avgParticipantGitHubHours)}\n`;
                 output += `    Context Switching         ${formatCurrency(avgParticipantContextCost).padStart(12)}    ${formatTimeUnit(avgParticipantContextHours)}\n`;
                 output += '                              ────────────\n';
-                output += `    Subtotal                  ${formatCurrency(avgParticipantTotalCost).padStart(12)}    ${formatTimeUnit(avgParticipantTotalHours)}\n\n`;
+                pct = (avgParticipantTotalCost / avgTotalCost) * 100;
+                output += `    Subtotal                  ${formatCurrency(avgParticipantTotalCost).padStart(12)}    ${formatTimeUnit(avgParticipantTotalHours)}  (${pct.toFixed(1)}%)\n\n`;
             }
 
             // Delay Costs
@@ -1224,7 +1230,8 @@
             const avgMergeDelayCost = avgDeliveryDelayCost + avgCoordinationCost;
             const avgMergeDelayHours = avgDeliveryDelayHours + avgCoordinationHours;
             output += '                              ────────────\n';
-            output += `    Subtotal                  ${formatCurrency(avgMergeDelayCost).padStart(12)}    ${formatTimeUnit(avgMergeDelayHours)}\n\n`;
+            pct = (avgMergeDelayCost / avgTotalCost) * 100;
+            output += `    Subtotal                  ${formatCurrency(avgMergeDelayCost).padStart(12)}    ${formatTimeUnit(avgMergeDelayHours)}  (${pct.toFixed(1)}%)\n\n`;
 
             // Future Costs
             const hasFuture = e.code_churn_cost > 0.01 || e.future_review_cost > 0.01 || e.future_merge_cost > 0.01 || e.future_context_cost > 0.01;
@@ -1246,7 +1253,8 @@
                 const avgFutureCost = avgCodeChurnCost + avgFutureReviewCost + avgFutureMergeCost + avgFutureContextCost;
                 const avgFutureHours = avgCodeChurnHours + avgFutureReviewHours + avgFutureMergeHours + avgFutureContextHours;
                 output += '                              ────────────\n';
-                output += `    Subtotal                  ${formatCurrency(avgFutureCost).padStart(12)}    ${formatTimeUnit(avgFutureHours)}\n\n`;
+                pct = (avgFutureCost / avgTotalCost) * 100;
+                output += `    Subtotal                  ${formatCurrency(avgFutureCost).padStart(12)}    ${formatTimeUnit(avgFutureHours)}  (${pct.toFixed(1)}%)\n\n`;
             }
 
             // Average Total
@@ -1267,7 +1275,8 @@
             output += `    GitHub Activity           ${formatCurrency(e.author_github_cost).padStart(12)}    ${formatTimeUnit(e.author_github_hours)}\n`;
             output += `    GitHub Context Switching  ${formatCurrency(e.author_github_context_cost).padStart(12)}    ${formatTimeUnit(e.author_github_context_hours)}\n`;
             output += '                              ────────────\n';
-            output += `    Subtotal                  ${formatCurrency(e.author_total_cost).padStart(12)}    ${formatTimeUnit(e.author_total_hours)}\n\n`;
+            let pct = (e.author_total_cost / e.total_cost) * 100;
+            output += `    Subtotal                  ${formatCurrency(e.author_total_cost).padStart(12)}    ${formatTimeUnit(e.author_total_hours)}  (${pct.toFixed(1)}%)\n\n`;
 
             // Participants
             if (e.participant_total_cost > 0) {
@@ -1276,7 +1285,8 @@
                 output += `    Review Activity           ${formatCurrency(e.participant_github_cost).padStart(12)}    ${formatTimeUnit(e.participant_github_hours)}\n`;
                 output += `    Context Switching         ${formatCurrency(e.participant_context_cost).padStart(12)}    ${formatTimeUnit(e.participant_context_hours)}\n`;
                 output += '                              ────────────\n';
-                output += `    Subtotal                  ${formatCurrency(e.participant_total_cost).padStart(12)}    ${formatTimeUnit(e.participant_total_hours)}\n\n`;
+                pct = (e.participant_total_cost / e.total_cost) * 100;
+                output += `    Subtotal                  ${formatCurrency(e.participant_total_cost).padStart(12)}    ${formatTimeUnit(e.participant_total_hours)}  (${pct.toFixed(1)}%)\n\n`;
             }
 
             // Delay Costs
@@ -1287,7 +1297,8 @@
             const mergeDelayCost = e.delivery_delay_cost + e.coordination_cost;
             const mergeDelayHours = e.delivery_delay_hours + e.coordination_hours;
             output += '                              ────────────\n';
-            output += `    Subtotal                  ${formatCurrency(mergeDelayCost).padStart(12)}    ${formatTimeUnit(mergeDelayHours)}\n\n`;
+            pct = (mergeDelayCost / e.total_cost) * 100;
+            output += `    Subtotal                  ${formatCurrency(mergeDelayCost).padStart(12)}    ${formatTimeUnit(mergeDelayHours)}  (${pct.toFixed(1)}%)\n\n`;
 
             // Future Costs
             const hasFuture = e.code_churn_cost > 0.01 || e.future_review_cost > 0.01 || e.future_merge_cost > 0.01 || e.future_context_cost > 0.01;
@@ -1309,7 +1320,8 @@
                 const futureCost = e.code_churn_cost + e.future_review_cost + e.future_merge_cost + e.future_context_cost;
                 const futureHours = e.code_churn_hours + e.future_review_hours + e.future_merge_hours + e.future_context_hours;
                 output += '                              ────────────\n';
-                output += `    Subtotal                  ${formatCurrency(futureCost).padStart(12)}    ${formatTimeUnit(futureHours)}\n\n`;
+                pct = (futureCost / e.total_cost) * 100;
+                output += `    Subtotal                  ${formatCurrency(futureCost).padStart(12)}    ${formatTimeUnit(futureHours)}  (${pct.toFixed(1)}%)\n\n`;
             }
 
             // Total
