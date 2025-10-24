@@ -1,4 +1,3 @@
-// Package github provides functions for querying GitHub PRs.
 package github
 
 import (
@@ -13,6 +12,8 @@ import (
 )
 
 // PRSummary holds minimal information about a PR for sampling and fetching.
+//
+//nolint:govet // fieldalignment: struct field order optimized for readability
 type PRSummary struct {
 	Owner     string    // Repository owner
 	Repo      string    // Repository name
@@ -57,7 +58,7 @@ func FetchPRsFromRepo(ctx context.Context, owner, repo string, since time.Time, 
 	for {
 		pageNum++
 		// Build request body
-		variables := map[string]interface{}{
+		variables := map[string]any{
 			"owner": owner,
 			"name":  repo,
 		}
@@ -65,7 +66,7 @@ func FetchPRsFromRepo(ctx context.Context, owner, repo string, since time.Time, 
 			variables["cursor"] = *cursor
 		}
 
-		requestBody := map[string]interface{}{
+		requestBody := map[string]any{
 			"query":     query,
 			"variables": variables,
 		}
@@ -76,7 +77,7 @@ func FetchPRsFromRepo(ctx context.Context, owner, repo string, since time.Time, 
 		}
 
 		// Make GraphQL request
-		req, err := http.NewRequestWithContext(ctx, "POST", "https://api.github.com/graphql", bytes.NewReader(bodyBytes))
+		req, err := http.NewRequestWithContext(ctx, http.MethodPost, "https://api.github.com/graphql", bytes.NewReader(bodyBytes))
 		if err != nil {
 			return nil, fmt.Errorf("failed to create request: %w", err)
 		}
@@ -88,13 +89,19 @@ func FetchPRsFromRepo(ctx context.Context, owner, repo string, since time.Time, 
 		if err != nil {
 			return nil, fmt.Errorf("failed to execute request: %w", err)
 		}
-		defer resp.Body.Close()
+		//nolint:revive,gocritic // defer-in-loop: proper HTTP response cleanup pattern
+		defer func() {
+			if err := resp.Body.Close(); err != nil {
+				slog.Warn("Failed to close response body", "error", err)
+			}
+		}()
 
 		if resp.StatusCode != http.StatusOK {
 			return nil, fmt.Errorf("GraphQL request failed with status %d", resp.StatusCode)
 		}
 
 		// Parse response
+		//nolint:govet // fieldalignment: anonymous GraphQL response struct
 		var result struct {
 			Data struct {
 				Repository struct {
@@ -210,14 +217,14 @@ func FetchPRsFromOrg(ctx context.Context, org string, since time.Time, token str
 	for {
 		pageNum++
 		// Build request body
-		variables := map[string]interface{}{
+		variables := map[string]any{
 			"searchQuery": searchQuery,
 		}
 		if cursor != nil {
 			variables["cursor"] = *cursor
 		}
 
-		requestBody := map[string]interface{}{
+		requestBody := map[string]any{
 			"query":     query,
 			"variables": variables,
 		}
@@ -228,7 +235,7 @@ func FetchPRsFromOrg(ctx context.Context, org string, since time.Time, token str
 		}
 
 		// Make GraphQL request
-		req, err := http.NewRequestWithContext(ctx, "POST", "https://api.github.com/graphql", bytes.NewReader(bodyBytes))
+		req, err := http.NewRequestWithContext(ctx, http.MethodPost, "https://api.github.com/graphql", bytes.NewReader(bodyBytes))
 		if err != nil {
 			return nil, fmt.Errorf("failed to create request: %w", err)
 		}
@@ -240,13 +247,19 @@ func FetchPRsFromOrg(ctx context.Context, org string, since time.Time, token str
 		if err != nil {
 			return nil, fmt.Errorf("failed to execute request: %w", err)
 		}
-		defer resp.Body.Close()
+		//nolint:revive,gocritic // defer-in-loop: proper HTTP response cleanup pattern
+		defer func() {
+			if err := resp.Body.Close(); err != nil {
+				slog.Warn("Failed to close response body", "error", err)
+			}
+		}()
 
 		if resp.StatusCode != http.StatusOK {
 			return nil, fmt.Errorf("GraphQL request failed with status %d", resp.StatusCode)
 		}
 
 		// Parse response
+		//nolint:govet // fieldalignment: anonymous GraphQL response struct
 		var result struct {
 			Data struct {
 				Search struct {
@@ -363,7 +376,7 @@ func SamplePRs(prs []PRSummary, sampleSize int) []PRSummary {
 	}
 
 	buckets := make([]bucket, sampleSize)
-	for i := 0; i < sampleSize; i++ {
+	for i := range sampleSize {
 		buckets[i].startTime = newest.Add(-time.Duration(i+1) * bucketDuration)
 		buckets[i].endTime = newest.Add(-time.Duration(i) * bucketDuration)
 	}

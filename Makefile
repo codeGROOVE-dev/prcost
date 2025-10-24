@@ -67,3 +67,7 @@ fix:
 	exit $$exit_code
 
 # END: lint-install .
+
+.PHONY: deploy
+deploy:
+	./hacks/deploy.sh cmd/server/

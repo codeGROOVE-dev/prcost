@@ -8,7 +8,7 @@ Calculate the real-world cost of GitHub pull requests with detailed breakdowns o
 $ prcost https://github.com/chainguard-dev/apko/pull/1860
 
   https://github.com/chainguard-dev/apko/pull/1860
-  Rate: $156.25/hr  •  Salary: $250,000.00  •  Benefits: 1.3x
+  Rate: $155.71/hr  •  Salary: $249,000.00  •  Benefits: 1.3x
 
   Author
   ──────
@@ -31,8 +31,8 @@ $ prcost https://github.com/chainguard-dev/apko/pull/1860
 
   Merge Delay
   ───────────
-    Cost of Delay              $9,481.36    2.5 days (capped)
-    Cognitive Load             $3,160.45    20.2 hrs (capped)
+    Delivery                  $9,481.36    2.5 days (capped)
+    Coordination              $3,160.45    20.2 hrs (capped)
                               ────────────
     Subtotal                  $12,641.81    3.4 days
 
@@ -170,6 +170,8 @@ func main() {
 
 This model synthesizes empirical research from software engineering economics, cognitive psychology, and organizational behavior to estimate the comprehensive cost of pull request workflows. Individual PR estimates exhibit variance due to developer heterogeneity and project characteristics; statistical validity improves with aggregate analysis across larger samples (n ≥ 25).
 
+**Default Salary**: The model uses $249,000 as the default annual salary, based on the 2025 average for Staff Software Engineers per [Glassdoor](https://www.glassdoor.com/Salaries/staff-software-engineer-salary-SRCH_KO0,23.htm). This can be customized via the `--salary` flag or API configuration.
+
 ### 1. Development Effort
 
 **Method**: COCOMO II (COnstructive COst MOdel) effort estimation [1]
@@ -273,15 +275,11 @@ Where:
 
 **Scientific Justification**:
 
-**Cognitive Load**: Each unmerged PR consumes working memory capacity. Cognitive Load Theory shows that human working memory is limited to 7±2 items [7]. Developers must mentally track:
-1. The PR's current state and review status
-2. Potential merge conflicts with ongoing work
-3. Dependencies on or from the unmerged code
-4. Communication overhead coordinating with reviewers
+**Working Memory Burden**: Each unmerged PR consumes limited working memory capacity. Developers must mentally track the PR's current state, potential merge conflicts, dependencies, and communication with reviewers. Cognitive Load Theory shows human working memory is limited to 7±2 items [7], making this tracking overhead measurable.
 
 **Context Retention Costs**: Weinberg's research on programmer productivity shows 20-25% productivity loss from maintaining multiple mental contexts [8]. The 5% coordination factor captures the cost of "keeping tabs" on pending work rather than the cost of full context switches (which are accounted separately).
 
-**Team Communication Overhead**: Brooks' Law demonstrates that communication overhead grows with project complexity [9]. Unmerged PRs increase coordination burden as team members must track dependencies and potential conflicts.
+**Team Communication Overhead**: Brooks' Law demonstrates that communication overhead grows with project complexity [9]. Unmerged PRs increase coordination burden as team members must track dependencies and potential conflicts across the team.
 
 **References**:
 [7] Sweller, J., van Merriënboer, J. J., & Paas, F. (1998). Cognitive Architecture and Instructional Design. *Educational Psychology Review*, 10(3), 251-296. DOI: 10.1023/A:1022193728205

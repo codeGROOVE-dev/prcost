@@ -31,9 +31,9 @@ func TestEstimateEffort(t *testing.T) {
 		tolerance     float64
 	}{
 		{
-			name:          "zero LOC should return minimum",
+			name:          "zero LOC should return zero (no minimum)",
 			linesOfCode:   0,
-			expectedHours: 0.333, // 20 minutes
+			expectedHours: 0.0, // No effort for 0 LOC
 			tolerance:     0.01,
 		},
 		{

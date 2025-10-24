@@ -1,57 +1,60 @@
-// Package cost provides cost calculation and extrapolation for PRs.
 package cost
 
 // ExtrapolatedBreakdown represents cost estimates extrapolated from a sample
 // of PRs to estimate total costs across a larger population.
 type ExtrapolatedBreakdown struct {
 	// Sample metadata
-	TotalPRs          int     // Total number of PRs in the population
-	SampledPRs        int     // Number of PRs successfully sampled
-	SuccessfulSamples int     // Number of samples that processed successfully
+	TotalPRs          int `json:"total_prs"`          // Total number of PRs in the population
+	SampledPRs        int `json:"sampled_prs"`        // Number of PRs successfully sampled
+	SuccessfulSamples int `json:"successful_samples"` // Number of samples that processed successfully
 
 	// Author costs (extrapolated)
-	AuthorCodeCost          float64
-	AuthorGitHubCost        float64
-	AuthorGitHubContextCost float64
-	AuthorTotalCost         float64
+	AuthorNewCodeCost       float64 `json:"author_new_code_cost"`
+	AuthorAdaptationCost    float64 `json:"author_adaptation_cost"`
+	AuthorGitHubCost        float64 `json:"author_github_cost"`
+	AuthorGitHubContextCost float64 `json:"author_github_context_cost"`
+	AuthorTotalCost         float64 `json:"author_total_cost"`
 
 	// Author hours (extrapolated)
-	AuthorCodeHours          float64
-	AuthorGitHubHours        float64
-	AuthorGitHubContextHours float64
-	AuthorTotalHours         float64
+	AuthorNewCodeHours       float64 `json:"author_new_code_hours"`
+	AuthorAdaptationHours    float64 `json:"author_adaptation_hours"`
+	AuthorGitHubHours        float64 `json:"author_github_hours"`
+	AuthorGitHubContextHours float64 `json:"author_github_context_hours"`
+	AuthorTotalHours         float64 `json:"author_total_hours"`
 
 	// Participant costs (extrapolated, combined across all reviewers)
-	ParticipantGitHubCost   float64
-	ParticipantContextCost  float64
-	ParticipantTotalCost    float64
+	ParticipantReviewCost  float64 `json:"participant_review_cost"`
+	ParticipantGitHubCost  float64 `json:"participant_github_cost"`
+	ParticipantContextCost float64 `json:"participant_context_cost"`
+	ParticipantTotalCost   float64 `json:"participant_total_cost"`
 
 	// Participant hours (extrapolated)
-	ParticipantGitHubHours   float64
-	ParticipantContextHours  float64
-	ParticipantTotalHours    float64
+	ParticipantReviewHours  float64 `json:"participant_review_hours"`
+	ParticipantGitHubHours  float64 `json:"participant_github_hours"`
+	ParticipantContextHours float64 `json:"participant_context_hours"`
+	ParticipantTotalHours   float64 `json:"participant_total_hours"`
 
 	// Delay costs (extrapolated)
-	DeliveryDelayCost  float64
-	CoordinationCost   float64
-	CodeChurnCost      float64
-	FutureReviewCost   float64
-	FutureMergeCost    float64
-	FutureContextCost  float64
-	DelayTotalCost     float64
+	DeliveryDelayCost float64 `json:"delivery_delay_cost"`
+	CoordinationCost  float64 `json:"coordination_cost"`
+	CodeChurnCost     float64 `json:"code_churn_cost"`
+	FutureReviewCost  float64 `json:"future_review_cost"`
+	FutureMergeCost   float64 `json:"future_merge_cost"`
+	FutureContextCost float64 `json:"future_context_cost"`
+	DelayTotalCost    float64 `json:"delay_total_cost"`
 
 	// Delay hours (extrapolated)
-	DeliveryDelayHours float64
-	CoordinationHours  float64
-	CodeChurnHours     float64
-	FutureReviewHours  float64
-	FutureMergeHours   float64
-	FutureContextHours float64
-	DelayTotalHours    float64
+	DeliveryDelayHours float64 `json:"delivery_delay_hours"`
+	CoordinationHours  float64 `json:"coordination_hours"`
+	CodeChurnHours     float64 `json:"code_churn_hours"`
+	FutureReviewHours  float64 `json:"future_review_hours"`
+	FutureMergeHours   float64 `json:"future_merge_hours"`
+	FutureContextHours float64 `json:"future_context_hours"`
+	DelayTotalHours    float64 `json:"delay_total_hours"`
 
 	// Grand totals
-	TotalCost  float64
-	TotalHours float64
+	TotalCost  float64 `json:"total_cost"`
+	TotalHours float64 `json:"total_hours"`
 }
 
 // ExtrapolateFromSamples calculates extrapolated cost estimates from a sample
@@ -79,10 +82,10 @@ func ExtrapolateFromSamples(breakdowns []Breakdown, totalPRs int) ExtrapolatedBr
 	multiplier := float64(totalPRs)
 
 	// Accumulate costs from all samples
-	var sumAuthorCodeCost, sumAuthorGitHubCost, sumAuthorGitHubContextCost float64
-	var sumAuthorCodeHours, sumAuthorGitHubHours, sumAuthorGitHubContextHours float64
-	var sumParticipantGitHubCost, sumParticipantContextCost, sumParticipantCost float64
-	var sumParticipantGitHubHours, sumParticipantContextHours, sumParticipantHours float64
+	var sumAuthorNewCodeCost, sumAuthorAdaptationCost, sumAuthorGitHubCost, sumAuthorGitHubContextCost float64
+	var sumAuthorNewCodeHours, sumAuthorAdaptationHours, sumAuthorGitHubHours, sumAuthorGitHubContextHours float64
+	var sumParticipantReviewCost, sumParticipantGitHubCost, sumParticipantContextCost, sumParticipantCost float64
+	var sumParticipantReviewHours, sumParticipantGitHubHours, sumParticipantContextHours, sumParticipantHours float64
 	var sumDeliveryDelayCost, sumCoordinationCost, sumCodeChurnCost float64
 	var sumFutureReviewCost, sumFutureMergeCost, sumFutureContextCost, sumDelayCost float64
 	var sumDeliveryDelayHours, sumCoordinationHours, sumCodeChurnHours float64
@@ -90,21 +93,26 @@ func ExtrapolateFromSamples(breakdowns []Breakdown, totalPRs int) ExtrapolatedBr
 	var sumAuthorHours float64
 	var sumTotalCost float64
 
-	for _, breakdown := range breakdowns {
+	for i := range breakdowns {
+		breakdown := &breakdowns[i]
 		// Accumulate author costs
-		sumAuthorCodeCost += breakdown.Author.CodeCost
+		sumAuthorNewCodeCost += breakdown.Author.NewCodeCost
+		sumAuthorAdaptationCost += breakdown.Author.AdaptationCost
 		sumAuthorGitHubCost += breakdown.Author.GitHubCost
 		sumAuthorGitHubContextCost += breakdown.Author.GitHubContextCost
-		sumAuthorCodeHours += breakdown.Author.CodeHours
+		sumAuthorNewCodeHours += breakdown.Author.NewCodeHours
+		sumAuthorAdaptationHours += breakdown.Author.AdaptationHours
 		sumAuthorGitHubHours += breakdown.Author.GitHubHours
 		sumAuthorGitHubContextHours += breakdown.Author.GitHubContextHours
 		sumAuthorHours += breakdown.Author.TotalHours
 
 		// Accumulate participant costs (combined across all participants)
 		for _, p := range breakdown.Participants {
+			sumParticipantReviewCost += p.ReviewCost
 			sumParticipantGitHubCost += p.GitHubCost
 			sumParticipantContextCost += p.GitHubContextCost
 			sumParticipantCost += p.TotalCost
+			sumParticipantReviewHours += p.ReviewHours
 			sumParticipantGitHubHours += p.GitHubHours
 			sumParticipantContextHours += p.GitHubContextHours
 			sumParticipantHours += p.TotalHours
@@ -132,18 +140,22 @@ func ExtrapolateFromSamples(breakdowns []Breakdown, totalPRs int) ExtrapolatedBr
 	// Calculate averages and extrapolate to total PRs
 	samples := float64(successfulSamples)
 
-	extAuthorCodeCost := sumAuthorCodeCost / samples * multiplier
+	extAuthorNewCodeCost := sumAuthorNewCodeCost / samples * multiplier
+	extAuthorAdaptationCost := sumAuthorAdaptationCost / samples * multiplier
 	extAuthorGitHubCost := sumAuthorGitHubCost / samples * multiplier
 	extAuthorGitHubContextCost := sumAuthorGitHubContextCost / samples * multiplier
-	extAuthorCodeHours := sumAuthorCodeHours / samples * multiplier
+	extAuthorNewCodeHours := sumAuthorNewCodeHours / samples * multiplier
+	extAuthorAdaptationHours := sumAuthorAdaptationHours / samples * multiplier
 	extAuthorGitHubHours := sumAuthorGitHubHours / samples * multiplier
 	extAuthorGitHubContextHours := sumAuthorGitHubContextHours / samples * multiplier
-	extAuthorTotal := extAuthorCodeCost + extAuthorGitHubCost + extAuthorGitHubContextCost
+	extAuthorTotal := extAuthorNewCodeCost + extAuthorAdaptationCost + extAuthorGitHubCost + extAuthorGitHubContextCost
 	extAuthorHours := sumAuthorHours / samples * multiplier
 
+	extParticipantReviewCost := sumParticipantReviewCost / samples * multiplier
 	extParticipantGitHubCost := sumParticipantGitHubCost / samples * multiplier
 	extParticipantContextCost := sumParticipantContextCost / samples * multiplier
 	extParticipantCost := sumParticipantCost / samples * multiplier
+	extParticipantReviewHours := sumParticipantReviewHours / samples * multiplier
 	extParticipantGitHubHours := sumParticipantGitHubHours / samples * multiplier
 	extParticipantContextHours := sumParticipantContextHours / samples * multiplier
 	extParticipantHours := sumParticipantHours / samples * multiplier
@@ -171,20 +183,24 @@ func ExtrapolateFromSamples(breakdowns []Breakdown, totalPRs int) ExtrapolatedBr
 		SampledPRs:        successfulSamples,
 		SuccessfulSamples: successfulSamples,
 
-		AuthorCodeCost:          extAuthorCodeCost,
+		AuthorNewCodeCost:       extAuthorNewCodeCost,
+		AuthorAdaptationCost:    extAuthorAdaptationCost,
 		AuthorGitHubCost:        extAuthorGitHubCost,
 		AuthorGitHubContextCost: extAuthorGitHubContextCost,
 		AuthorTotalCost:         extAuthorTotal,
 
-		AuthorCodeHours:          extAuthorCodeHours,
+		AuthorNewCodeHours:       extAuthorNewCodeHours,
+		AuthorAdaptationHours:    extAuthorAdaptationHours,
 		AuthorGitHubHours:        extAuthorGitHubHours,
 		AuthorGitHubContextHours: extAuthorGitHubContextHours,
 		AuthorTotalHours:         extAuthorHours,
 
+		ParticipantReviewCost:  extParticipantReviewCost,
 		ParticipantGitHubCost:  extParticipantGitHubCost,
 		ParticipantContextCost: extParticipantContextCost,
 		ParticipantTotalCost:   extParticipantCost,
 
+		ParticipantReviewHours:  extParticipantReviewHours,
 		ParticipantGitHubHours:  extParticipantGitHubHours,
 		ParticipantContextHours: extParticipantContextHours,
 		ParticipantTotalHours:   extParticipantHours,

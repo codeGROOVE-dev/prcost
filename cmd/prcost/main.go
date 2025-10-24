@@ -20,16 +20,16 @@ import (
 
 func main() {
 	// Define command-line flags
-	salary := flag.Float64("salary", 250000, "Annual salary for cost calculation")
+	salary := flag.Float64("salary", 249000, "Annual salary for cost calculation")
 	benefits := flag.Float64("benefits", 1.3, "Benefits multiplier (1.3 = 30% benefits)")
-	eventMinutes := flag.Float64("event-minutes", 20, "Minutes per review event")
+	eventMinutes := flag.Float64("event-minutes", 10, "Minutes per GitHub event (commits, comments, etc.)")
 	format := flag.String("format", "human", "Output format: human or json")
 	verbose := flag.Bool("verbose", false, "Show verbose logging output")
 
 	// Org/Repo sampling flags
 	org := flag.String("org", "", "GitHub organization to analyze (optionally with --repo for single repo)")
 	repo := flag.String("repo", "", "GitHub repository to analyze (requires --org)")
-	samples := flag.Int("samples", 25, "Number of PRs to sample for extrapolation")
+	samples := flag.Int("samples", 20, "Number of PRs to sample for extrapolation")
 	days := flag.Int("days", 90, "Number of days to look back for PR modifications")
 
 	flag.Usage = func() {
@@ -43,13 +43,13 @@ func main() {
 		fmt.Fprint(os.Stderr, "Options:\n")
 		flag.PrintDefaults()
 		fmt.Fprint(os.Stderr, "\nExamples:\n")
-		fmt.Fprintf(os.Stderr, "  Single PR:\n")
+		fmt.Fprint(os.Stderr, "  Single PR:\n")
 		fmt.Fprintf(os.Stderr, "    %s https://github.com/owner/repo/pull/123\n", os.Args[0])
 		fmt.Fprintf(os.Stderr, "    %s --salary 300000 https://github.com/owner/repo/pull/123\n\n", os.Args[0])
-		fmt.Fprintf(os.Stderr, "  Repository analysis:\n")
+		fmt.Fprint(os.Stderr, "  Repository analysis:\n")
 		fmt.Fprintf(os.Stderr, "    %s --org kubernetes --repo kubernetes\n", os.Args[0])
 		fmt.Fprintf(os.Stderr, "    %s --org myorg --repo myrepo --samples 50 --days 30\n\n", os.Args[0])
-		fmt.Fprintf(os.Stderr, "  Organization-wide analysis:\n")
+		fmt.Fprint(os.Stderr, "  Organization-wide analysis:\n")
 		fmt.Fprintf(os.Stderr, "    %s --org chainguard-dev\n", os.Args[0])
 		fmt.Fprintf(os.Stderr, "    %s --org myorg --samples 100 --days 60\n", os.Args[0])
 	}
@@ -74,13 +74,13 @@ func main() {
 	// Validate mode selection
 	// First check if --repo is specified without --org
 	if *repo != "" && *org == "" {
-		fmt.Fprintf(os.Stderr, "Error: --repo requires --org to be specified\n\n")
+		fmt.Fprint(os.Stderr, "Error: --repo requires --org to be specified\n\n")
 		flag.Usage()
 		os.Exit(1)
 	}
 
 	if orgMode && singlePRMode {
-		fmt.Fprintf(os.Stderr, "Error: Cannot use both --org and PR URL. Choose one mode.\n\n")
+		fmt.Fprint(os.Stderr, "Error: Cannot use both --org and PR URL. Choose one mode.\n\n")
 		flag.Usage()
 		os.Exit(1)
 	}
@@ -210,25 +210,45 @@ func printHumanReadable(breakdown *cost.Breakdown, prURL string) {
 	// Header with PR info
 	fmt.Println()
 	fmt.Printf("  %s\n", prURL)
+
+	// Show author and duration
+	authorLabel := breakdown.PRAuthor
+	if breakdown.AuthorBot {
+		authorLabel += " (bot)"
+	}
+	fmt.Printf("  Author: %s  •  Open: %s\n", authorLabel, formatTimeUnit(breakdown.PRDuration))
 	fmt.Printf("  Rate: %s/hr  •  Salary: %s  •  Benefits: %.1fx\n",
 		formatCurrency(breakdown.HourlyRate),
 		formatCurrency(breakdown.AnnualSalary),
 		breakdown.BenefitsMultiplier)
 	fmt.Println()
 
-	// Author Costs
-	fmt.Println("  Author")
-	fmt.Println("  ──────")
-	fmt.Printf("    Development Effort        %12s    %d LOC • %s\n",
-		formatCurrency(breakdown.Author.CodeCost), breakdown.Author.LinesAdded, formatTimeUnit(breakdown.Author.CodeHours))
-	fmt.Printf("    GitHub Activity           %12s    %d sessions • %s\n",
-		formatCurrency(breakdown.Author.GitHubCost), breakdown.Author.Sessions, formatTimeUnit(breakdown.Author.GitHubHours))
-	fmt.Printf("    GitHub Context Switching  %12s    %s\n",
-		formatCurrency(breakdown.Author.GitHubContextCost), formatTimeUnit(breakdown.Author.GitHubContextHours))
-	fmt.Println("                              ────────────")
-	fmt.Printf("    Subtotal                  %12s    %s\n",
-		formatCurrency(breakdown.Author.TotalCost), formatTimeUnit(breakdown.Author.TotalHours))
-	fmt.Println()
+	// Author Costs (skip entire section if no costs)
+	if breakdown.Author.TotalCost > 0 {
+		fmt.Println("  Development Cost")
+		fmt.Println("  ────────────────")
+		// Show development and adaptation separately (only if there are actual lines of code)
+		if breakdown.Author.NewLines > 0 {
+			fmt.Printf("    New Development           %12s    %d LOC • %s\n",
+				formatCurrency(breakdown.Author.NewCodeCost), breakdown.Author.NewLines, formatTimeUnit(breakdown.Author.NewCodeHours))
+		}
+		if breakdown.Author.ModifiedLines > 0 {
+			fmt.Printf("    Adaptation                %12s    %d LOC • %s\n",
+				formatCurrency(breakdown.Author.AdaptationCost), breakdown.Author.ModifiedLines, formatTimeUnit(breakdown.Author.AdaptationHours))
+		}
+		if breakdown.Author.GitHubHours > 0 {
+			fmt.Printf("    GitHub Activity           %12s    %d sessions • %s\n",
+				formatCurrency(breakdown.Author.GitHubCost), breakdown.Author.Sessions, formatTimeUnit(breakdown.Author.GitHubHours))
+		}
+		if breakdown.Author.GitHubContextHours > 0 {
+			fmt.Printf("    GitHub Context Switching  %12s    %s\n",
+				formatCurrency(breakdown.Author.GitHubContextCost), formatTimeUnit(breakdown.Author.GitHubContextHours))
+		}
+		fmt.Println("                              ────────────")
+		fmt.Printf("    Subtotal                  %12s    %s\n",
+			formatCurrency(breakdown.Author.TotalCost), formatTimeUnit(breakdown.Author.TotalHours))
+		fmt.Println()
+	}
 
 	// Participant Costs
 	if len(breakdown.Participants) > 0 {
@@ -240,14 +260,25 @@ func printHumanReadable(breakdown *cost.Breakdown, prURL string) {
 			totalParticipantHours += p.TotalHours
 		}
 
-		fmt.Println("  Participants")
-		fmt.Println("  ────────────")
+		fmt.Println("  Participant Cost")
+		fmt.Println("  ────────────────")
 		for _, p := range breakdown.Participants {
 			fmt.Printf("    %s\n", p.Actor)
-			fmt.Printf("      Review Activity         %12s    %d sessions • %s\n",
-				formatCurrency(p.GitHubCost), p.Sessions, formatTimeUnit(p.GitHubHours))
-			fmt.Printf("      Context Switching       %12s    %s\n",
-				formatCurrency(p.GitHubContextCost), formatTimeUnit(p.GitHubContextHours))
+			// Only show review activity if they reviewed (LOC-based)
+			if p.ReviewHours > 0 {
+				fmt.Printf("      Review Activity         %12s    %s\n",
+					formatCurrency(p.ReviewCost), formatTimeUnit(p.ReviewHours))
+			}
+			// Only show other events if they had non-review events
+			if p.GitHubHours > 0 {
+				fmt.Printf("      GitHub Events           %12s    %d sessions • %s\n",
+					formatCurrency(p.GitHubCost), p.Sessions, formatTimeUnit(p.GitHubHours))
+			}
+			// Always show context switching if there were sessions
+			if p.Sessions > 0 {
+				fmt.Printf("      Context Switching       %12s    %s\n",
+					formatCurrency(p.GitHubContextCost), formatTimeUnit(p.GitHubContextHours))
+			}
 		}
 		fmt.Println("                              ────────────")
 		fmt.Printf("    Subtotal                  %12s    %s\n",
@@ -256,28 +287,32 @@ func printHumanReadable(breakdown *cost.Breakdown, prURL string) {
 	}
 
 	// Merge Delay Costs
-	fmt.Println("  Merge Delay")
+	fmt.Println("  Delay Costs")
 	fmt.Println("  ───────────")
-	if breakdown.DelayCapped {
-		fmt.Printf("    Cost of Delay           %12s    %s (capped)\n",
-			formatCurrency(breakdown.DelayCostDetail.DeliveryDelayCost), formatTimeUnit(breakdown.DelayCostDetail.DeliveryDelayHours))
-	} else {
-		fmt.Printf("    Cost of Delay           %12s    %s\n",
-			formatCurrency(breakdown.DelayCostDetail.DeliveryDelayCost), formatTimeUnit(breakdown.DelayCostDetail.DeliveryDelayHours))
+	if breakdown.DelayCostDetail.DeliveryDelayHours > 0 {
+		if breakdown.DelayCapped {
+			fmt.Printf("    Delivery                  %12s    %s (capped)\n",
+				formatCurrency(breakdown.DelayCostDetail.DeliveryDelayCost), formatTimeUnit(breakdown.DelayCostDetail.DeliveryDelayHours))
+		} else {
+			fmt.Printf("    Delivery                  %12s    %s\n",
+				formatCurrency(breakdown.DelayCostDetail.DeliveryDelayCost), formatTimeUnit(breakdown.DelayCostDetail.DeliveryDelayHours))
+		}
 	}
 
-	if breakdown.DelayCapped {
-		fmt.Printf("    Cognitive Load          %12s    %s (capped)\n",
-			formatCurrency(breakdown.DelayCostDetail.CoordinationCost), formatTimeUnit(breakdown.DelayCostDetail.CoordinationHours))
-	} else {
-		fmt.Printf("    Cognitive Load          %12s    %s\n",
-			formatCurrency(breakdown.DelayCostDetail.CoordinationCost), formatTimeUnit(breakdown.DelayCostDetail.CoordinationHours))
+	if breakdown.DelayCostDetail.CoordinationHours > 0 {
+		if breakdown.DelayCapped {
+			fmt.Printf("    Coordination              %12s    %s (capped)\n",
+				formatCurrency(breakdown.DelayCostDetail.CoordinationCost), formatTimeUnit(breakdown.DelayCostDetail.CoordinationHours))
+		} else {
+			fmt.Printf("    Coordination              %12s    %s\n",
+				formatCurrency(breakdown.DelayCostDetail.CoordinationCost), formatTimeUnit(breakdown.DelayCostDetail.CoordinationHours))
+		}
 	}
 
 	mergeDelayCost := breakdown.DelayCostDetail.DeliveryDelayCost + breakdown.DelayCostDetail.CoordinationCost
 	mergeDelayHours := breakdown.DelayCostDetail.DeliveryDelayHours + breakdown.DelayCostDetail.CoordinationHours
 	fmt.Println("                              ────────────")
-	fmt.Printf("    Subtotal                %12s    %s\n",
+	fmt.Printf("    Subtotal                  %12s    %s\n",
 		formatCurrency(mergeDelayCost), formatTimeUnit(mergeDelayHours))
 	fmt.Println()
 
@@ -292,24 +327,28 @@ func printHumanReadable(breakdown *cost.Breakdown, prURL string) {
 		fmt.Println("  ────────────")
 
 		if breakdown.DelayCostDetail.ReworkPercentage > 0 {
-			fmt.Printf("    Code Churn (%.0f%% drift) %12s    %s\n",
-				breakdown.DelayCostDetail.ReworkPercentage,
+			label := fmt.Sprintf("Code Churn (%.0f%% drift)", breakdown.DelayCostDetail.ReworkPercentage)
+			fmt.Printf("    %-24s%12s    %s\n",
+				label,
 				formatCurrency(breakdown.DelayCostDetail.CodeChurnCost),
 				formatTimeUnit(breakdown.DelayCostDetail.CodeChurnHours))
 		}
 
 		if breakdown.DelayCostDetail.FutureReviewCost > 0 {
-			fmt.Printf("    Review                  %12s    %s\n",
+			fmt.Printf("    %-24s%12s    %s\n",
+				"Review",
 				formatCurrency(breakdown.DelayCostDetail.FutureReviewCost), formatTimeUnit(breakdown.DelayCostDetail.FutureReviewHours))
 		}
 
 		if breakdown.DelayCostDetail.FutureMergeCost > 0 {
-			fmt.Printf("    Merge                   %12s    %s\n",
+			fmt.Printf("    %-24s%12s    %s\n",
+				"Merge",
 				formatCurrency(breakdown.DelayCostDetail.FutureMergeCost), formatTimeUnit(breakdown.DelayCostDetail.FutureMergeHours))
 		}
 
 		if breakdown.DelayCostDetail.FutureContextCost > 0 {
-			fmt.Printf("    Context Switching       %12s    %s\n",
+			fmt.Printf("    %-24s%12s    %s\n",
+				"Context Switching",
 				formatCurrency(breakdown.DelayCostDetail.FutureContextCost), formatTimeUnit(breakdown.DelayCostDetail.FutureContextHours))
 		}
 
@@ -322,7 +361,7 @@ func printHumanReadable(breakdown *cost.Breakdown, prURL string) {
 			breakdown.DelayCostDetail.FutureMergeHours +
 			breakdown.DelayCostDetail.FutureContextHours
 		fmt.Println("                              ────────────")
-		fmt.Printf("    Subtotal                %12s    %s\n",
+		fmt.Printf("    Subtotal                  %12s    %s\n",
 			formatCurrency(futureCost), formatTimeUnit(futureHours))
 		fmt.Println()
 	}

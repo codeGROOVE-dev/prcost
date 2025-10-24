@@ -44,6 +44,11 @@ func DefaultConfig() Config {
 // Returns:
 //   - Effort in hours (never less than config.MinimumEffort)
 func EstimateEffort(linesOfCode int, cfg Config) time.Duration {
+	// No effort for 0 lines of code (skip minimum)
+	if linesOfCode == 0 {
+		return 0
+	}
+
 	// Convert lines of code to thousands of lines (KLOC)
 	kloc := float64(linesOfCode) / 1000.0
 
@@ -58,7 +63,7 @@ func EstimateEffort(linesOfCode int, cfg Config) time.Duration {
 	// Convert to duration
 	effort := time.Duration(hours * float64(time.Hour))
 
-	// Apply minimum effort floor
+	// Apply minimum effort floor (only for non-zero LOC)
 	if effort < cfg.MinimumEffort {
 		return cfg.MinimumEffort
 	}

@@ -11,8 +11,8 @@ import (
 func TestDefaultConfig(t *testing.T) {
 	cfg := DefaultConfig()
 
-	if cfg.AnnualSalary != 250000.0 {
-		t.Errorf("Expected annual salary $250,000, got $%.2f", cfg.AnnualSalary)
+	if cfg.AnnualSalary != 249000.0 {
+		t.Errorf("Expected annual salary $249,000, got $%.2f", cfg.AnnualSalary)
 	}
 
 	if cfg.BenefitsMultiplier != 1.3 {
@@ -52,8 +52,8 @@ func TestHourlyRate(t *testing.T) {
 	cfg := DefaultConfig()
 	hourlyRate := (cfg.AnnualSalary * cfg.BenefitsMultiplier) / cfg.HoursPerYear
 
-	// $250,000 * 1.3 / 2080 = $156.25/hr
-	expectedRate := 156.25
+	// $249,000 * 1.3 / 2080 = $155.62/hr
+	expectedRate := 155.625
 	if hourlyRate < expectedRate-0.01 || hourlyRate > expectedRate+0.01 {
 		t.Errorf("Expected hourly rate $%.2f, got $%.2f", expectedRate, hourlyRate)
 	}
@@ -67,7 +67,7 @@ func TestCalculateSingleEvent(t *testing.T) {
 		Events: []ParticipantEvent{
 			{Timestamp: now, Actor: "test-author"},
 		},
-		CreatedAt:            now.Add(-1 * time.Hour),
+		CreatedAt: now.Add(-1 * time.Hour),
 	}
 
 	cfg := DefaultConfig()
@@ -79,7 +79,8 @@ func TestCalculateSingleEvent(t *testing.T) {
 	}
 
 	// Single event should have positive costs
-	if breakdown.Author.CodeCost <= 0 {
+	codeCost := breakdown.Author.NewCodeCost + breakdown.Author.AdaptationCost
+	if codeCost <= 0 {
 		t.Error("Code cost should be positive")
 	}
 
@@ -102,7 +103,7 @@ func TestCalculateMultipleEventsOneSession(t *testing.T) {
 			{Timestamp: now.Add(5 * time.Minute), Actor: "test-author"},
 			{Timestamp: now.Add(10 * time.Minute), Actor: "test-author"},
 		},
-		CreatedAt:            now.Add(-1 * time.Hour),
+		CreatedAt: now.Add(-1 * time.Hour),
 	}
 
 	cfg := DefaultConfig()
@@ -128,7 +129,7 @@ func TestCalculateMultipleEventsTwoSessions(t *testing.T) {
 			{Timestamp: now, Actor: "test-author"},
 			{Timestamp: now.Add(90 * time.Minute), Actor: "test-author"}, // 90 min gap = new session
 		},
-		CreatedAt:            now.Add(-2 * time.Hour),
+		CreatedAt: now.Add(-2 * time.Hour),
 	}
 
 	cfg := DefaultConfig()
@@ -150,7 +151,7 @@ func TestCalculateWithParticipants(t *testing.T) {
 			{Timestamp: now.Add(1 * time.Hour), Actor: "reviewer1"},
 			{Timestamp: now.Add(2 * time.Hour), Actor: "reviewer2"},
 		},
-		CreatedAt:            now.Add(-3 * time.Hour),
+		CreatedAt: now.Add(-3 * time.Hour),
 	}
 
 	cfg := DefaultConfig()
@@ -219,10 +220,10 @@ func TestCalculateWithRealPRData(t *testing.T) {
 	}
 
 	prData := PRData{
-		LinesAdded:           prxData.PullRequest.Additions,
-		Author:               prxData.PullRequest.Author,
-		Events:               events,
-		CreatedAt:            createdAt,
+		LinesAdded: prxData.PullRequest.Additions,
+		Author:     prxData.PullRequest.Author,
+		Events:     events,
+		CreatedAt:  createdAt,
 	}
 
 	cfg := DefaultConfig()
@@ -243,7 +244,8 @@ func TestCalculateWithRealPRData(t *testing.T) {
 	}
 
 	// Should have author costs
-	if breakdown.Author.CodeCost <= 0 {
+	codeCost := breakdown.Author.NewCodeCost + breakdown.Author.AdaptationCost
+	if codeCost <= 0 {
 		t.Error("Author code cost should be positive")
 	}
 
@@ -288,14 +290,15 @@ func TestCalculateMinimumValues(t *testing.T) {
 		Events: []ParticipantEvent{
 			{Timestamp: time.Now(), Actor: "test-author"},
 		},
-		CreatedAt:            time.Now().Add(-1 * time.Hour),
+		CreatedAt: time.Now().Add(-1 * time.Hour),
 	}
 
 	cfg := DefaultConfig()
 	breakdown := Calculate(prData, cfg)
 
 	// Even minimal PR should have costs
-	if breakdown.Author.CodeCost <= 0 {
+	codeCost := breakdown.Author.NewCodeCost + breakdown.Author.AdaptationCost
+	if codeCost <= 0 {
 		t.Error("Even 1 LOC should have positive code cost (minimum)")
 	}
 
@@ -315,7 +318,7 @@ func TestCalculateExternalContributor(t *testing.T) {
 		Events: []ParticipantEvent{
 			{Timestamp: time.Now().Add(-72 * time.Hour), Actor: "external-contributor"},
 		},
-		CreatedAt:            time.Now().Add(-72 * time.Hour),
+		CreatedAt: time.Now().Add(-72 * time.Hour),
 	}
 
 	cfg := DefaultConfig()
@@ -340,7 +343,7 @@ func TestCalculateDelayComponents(t *testing.T) {
 		Events: []ParticipantEvent{
 			{Timestamp: now.Add(-7 * 24 * time.Hour), Actor: "test-author", Kind: "commit"},
 		},
-		CreatedAt:            now.Add(-7 * 24 * time.Hour),
+		CreatedAt: now.Add(-7 * 24 * time.Hour),
 	}
 
 	cfg := DefaultConfig()
@@ -393,7 +396,7 @@ func TestCalculateShortPRNoRework(t *testing.T) {
 		Events: []ParticipantEvent{
 			{Timestamp: now.Add(-2 * 24 * time.Hour), Actor: "test-author"},
 		},
-		CreatedAt:            now.Add(-2 * 24 * time.Hour),
+		CreatedAt: now.Add(-2 * 24 * time.Hour),
 	}
 
 	cfg := DefaultConfig()
@@ -484,10 +487,10 @@ func TestCalculateWithRealPR13(t *testing.T) {
 	}
 
 	prData := PRData{
-		LinesAdded:           prxData.PullRequest.Additions,
-		Author:               prxData.PullRequest.Author,
-		Events:               events,
-		CreatedAt:            createdAt,
+		LinesAdded: prxData.PullRequest.Additions,
+		Author:     prxData.PullRequest.Author,
+		Events:     events,
+		CreatedAt:  createdAt,
 	}
 
 	cfg := DefaultConfig()
@@ -502,7 +505,7 @@ func TestCalculateWithRealPR13(t *testing.T) {
 	// 90 days absolute cap = 2160 hours
 	// Delivery: 2160 * 0.15 = 324 hours
 	// Coordination: 2160 * 0.05 = 108 hours
-	expectedDeliveryHours := 90.0 * 24.0 * 0.15 // 324 hours
+	expectedDeliveryHours := 90.0 * 24.0 * 0.15     // 324 hours
 	expectedCoordinationHours := 90.0 * 24.0 * 0.05 // 108 hours
 
 	if breakdown.DelayCostDetail.DeliveryDelayHours != expectedDeliveryHours {
@@ -555,7 +558,7 @@ func TestCalculateLongPRCapped(t *testing.T) {
 		Events: []ParticipantEvent{
 			{Timestamp: now.Add(-120 * 24 * time.Hour), Actor: "test-author"},
 		},
-		CreatedAt:            now.Add(-120 * 24 * time.Hour),
+		CreatedAt: now.Add(-120 * 24 * time.Hour),
 	}
 
 	cfg := DefaultConfig()

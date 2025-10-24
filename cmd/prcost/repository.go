@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"time"
@@ -49,7 +50,10 @@ func analyzeRepository(ctx context.Context, owner, repo string, sampleSize, days
 
 	for i, pr := range samples {
 		prURL := fmt.Sprintf("https://github.com/%s/%s/pull/%d", owner, repo, pr.Number)
-		slog.Info("Processing sample PR", "repo", fmt.Sprintf("%s/%s", owner, repo), "number", pr.Number, "progress", fmt.Sprintf("%d/%d", i+1, len(samples)))
+		slog.Info("Processing sample PR",
+			"repo", fmt.Sprintf("%s/%s", owner, repo),
+			"number", pr.Number,
+			"progress", fmt.Sprintf("%d/%d", i+1, len(samples)))
 
 		// Fetch full PR data
 		prData, err := github.FetchPRData(ctx, prURL, token)
@@ -64,14 +68,14 @@ func analyzeRepository(ctx context.Context, owner, repo string, sampleSize, days
 	}
 
 	if len(breakdowns) == 0 {
-		return fmt.Errorf("no samples could be processed successfully")
+		return errors.New("no samples could be processed successfully")
 	}
 
 	// Extrapolate costs from samples using library function
 	extrapolated := cost.ExtrapolateFromSamples(breakdowns, len(prs))
 
 	// Display results in itemized format
-	printExtrapolatedResults(fmt.Sprintf("%s/%s", owner, repo), days, extrapolated)
+	printExtrapolatedResults(fmt.Sprintf("%s/%s", owner, repo), days, &extrapolated)
 
 	return nil
 }
@@ -115,7 +119,10 @@ func analyzeOrganization(ctx context.Context, org string, sampleSize, days int, 
 
 	for i, pr := range samples {
 		prURL := fmt.Sprintf("https://github.com/%s/%s/pull/%d", pr.Owner, pr.Repo, pr.Number)
-		slog.Info("Processing sample PR", "repo", fmt.Sprintf("%s/%s", pr.Owner, pr.Repo), "number", pr.Number, "progress", fmt.Sprintf("%d/%d", i+1, len(samples)))
+		slog.Info("Processing sample PR",
+			"repo", fmt.Sprintf("%s/%s", pr.Owner, pr.Repo),
+			"number", pr.Number,
+			"progress", fmt.Sprintf("%d/%d", i+1, len(samples)))
 
 		// Fetch full PR data
 		prData, err := github.FetchPRData(ctx, prURL, token)
@@ -130,14 +137,14 @@ func analyzeOrganization(ctx context.Context, org string, sampleSize, days int, 
 	}
 
 	if len(breakdowns) == 0 {
-		return fmt.Errorf("no samples could be processed successfully")
+		return errors.New("no samples could be processed successfully")
 	}
 
 	// Extrapolate costs from samples using library function
 	extrapolated := cost.ExtrapolateFromSamples(breakdowns, len(prs))
 
 	// Display results in itemized format
-	printExtrapolatedResults(fmt.Sprintf("%s (organization)", org), days, extrapolated)
+	printExtrapolatedResults(fmt.Sprintf("%s (organization)", org), days, &extrapolated)
 
 	return nil
 }
@@ -149,7 +156,7 @@ func analyzeOrganization(ctx context.Context, org string, sampleSize, days int, 
 // - >= 48 hours and < 14 days: show as days
 // - >= 14 days and < 56 days: show as weeks
 // - >= 56 days and < 730 days: show as months
-// - >= 730 days: show as years
+// - >= 730 days: show as years.
 func formatTimeUnit(hours float64) string {
 	// Show minutes for values less than 1 hour
 	if hours < 1.0 {
@@ -181,25 +188,31 @@ func formatTimeUnit(hours float64) string {
 }
 
 // printExtrapolatedResults displays extrapolated cost breakdown in itemized format.
-func printExtrapolatedResults(title string, days int, ext cost.ExtrapolatedBreakdown) {
+//
+//nolint:maintidx,revive // acceptable complexity/length for comprehensive display function
+func printExtrapolatedResults(title string, days int, ext *cost.ExtrapolatedBreakdown) {
 	fmt.Println()
 	fmt.Printf("  %s\n", title)
 	fmt.Printf("  Period: Last %d days  •  Total PRs: %d  •  Sampled: %d\n", days, ext.TotalPRs, ext.SuccessfulSamples)
 	fmt.Println()
 
 	// Calculate average per PR
-	avgAuthorCodeCost := ext.AuthorCodeCost / float64(ext.TotalPRs)
+	avgAuthorNewCodeCost := ext.AuthorNewCodeCost / float64(ext.TotalPRs)
+	avgAuthorAdaptationCost := ext.AuthorAdaptationCost / float64(ext.TotalPRs)
 	avgAuthorGitHubCost := ext.AuthorGitHubCost / float64(ext.TotalPRs)
 	avgAuthorGitHubContextCost := ext.AuthorGitHubContextCost / float64(ext.TotalPRs)
 	avgAuthorTotalCost := ext.AuthorTotalCost / float64(ext.TotalPRs)
-	avgAuthorCodeHours := ext.AuthorCodeHours / float64(ext.TotalPRs)
+	avgAuthorNewCodeHours := ext.AuthorNewCodeHours / float64(ext.TotalPRs)
+	avgAuthorAdaptationHours := ext.AuthorAdaptationHours / float64(ext.TotalPRs)
 	avgAuthorGitHubHours := ext.AuthorGitHubHours / float64(ext.TotalPRs)
 	avgAuthorGitHubContextHours := ext.AuthorGitHubContextHours / float64(ext.TotalPRs)
 	avgAuthorTotalHours := ext.AuthorTotalHours / float64(ext.TotalPRs)
 
+	avgParticipantReviewCost := ext.ParticipantReviewCost / float64(ext.TotalPRs)
 	avgParticipantGitHubCost := ext.ParticipantGitHubCost / float64(ext.TotalPRs)
 	avgParticipantContextCost := ext.ParticipantContextCost / float64(ext.TotalPRs)
 	avgParticipantTotalCost := ext.ParticipantTotalCost / float64(ext.TotalPRs)
+	avgParticipantReviewHours := ext.ParticipantReviewHours / float64(ext.TotalPRs)
 	avgParticipantGitHubHours := ext.ParticipantGitHubHours / float64(ext.TotalPRs)
 	avgParticipantContextHours := ext.ParticipantContextHours / float64(ext.TotalPRs)
 	avgParticipantTotalHours := ext.ParticipantTotalHours / float64(ext.TotalPRs)
@@ -219,10 +232,12 @@ func printExtrapolatedResults(title string, days int, ext cost.ExtrapolatedBreak
 	fmt.Println()
 
 	// Authors section
-	fmt.Println("  Authors")
-	fmt.Println("  ───────")
-	fmt.Printf("    Development Effort        %12s    %s\n",
-		formatWithCommas(avgAuthorCodeCost), formatTimeUnit(avgAuthorCodeHours))
+	fmt.Println("  Development Cost")
+	fmt.Println("  ────────────────")
+	fmt.Printf("    New Development           %12s    %s\n",
+		formatWithCommas(avgAuthorNewCodeCost), formatTimeUnit(avgAuthorNewCodeHours))
+	fmt.Printf("    Adaptation                %12s    %s\n",
+		formatWithCommas(avgAuthorAdaptationCost), formatTimeUnit(avgAuthorAdaptationHours))
 	fmt.Printf("    GitHub Activity           %12s    %s\n",
 		formatWithCommas(avgAuthorGitHubCost), formatTimeUnit(avgAuthorGitHubHours))
 	fmt.Printf("    GitHub Context Switching  %12s    %s\n",
@@ -234,10 +249,16 @@ func printExtrapolatedResults(title string, days int, ext cost.ExtrapolatedBreak
 
 	// Participants section (if any participants)
 	if ext.ParticipantTotalCost > 0 {
-		fmt.Println("  Participants")
-		fmt.Println("  ────────────")
-		fmt.Printf("    Review Activity           %12s    %s\n",
-			formatWithCommas(avgParticipantGitHubCost), formatTimeUnit(avgParticipantGitHubHours))
+		fmt.Println("  Participant Cost")
+		fmt.Println("  ────────────────")
+		if avgParticipantReviewCost > 0 {
+			fmt.Printf("    Review Activity           %12s    %s\n",
+				formatWithCommas(avgParticipantReviewCost), formatTimeUnit(avgParticipantReviewHours))
+		}
+		if avgParticipantGitHubCost > 0 {
+			fmt.Printf("    GitHub Events             %12s    %s\n",
+				formatWithCommas(avgParticipantGitHubCost), formatTimeUnit(avgParticipantGitHubHours))
+		}
 		fmt.Printf("    Context Switching         %12s    %s\n",
 			formatWithCommas(avgParticipantContextCost), formatTimeUnit(avgParticipantContextHours))
 		fmt.Println("                              ────────────")
@@ -247,16 +268,16 @@ func printExtrapolatedResults(title string, days int, ext cost.ExtrapolatedBreak
 	}
 
 	// Merge Delay section
-	fmt.Println("  Merge Delay")
+	fmt.Println("  Delay Costs")
 	fmt.Println("  ───────────")
-	fmt.Printf("    Cost of Delay           %12s    %s\n",
+	fmt.Printf("    Delivery                  %12s    %s\n",
 		formatWithCommas(avgDeliveryDelayCost), formatTimeUnit(avgDeliveryDelayHours))
-	fmt.Printf("    Cognitive Load          %12s    %s\n",
+	fmt.Printf("    Coordination              %12s    %s\n",
 		formatWithCommas(avgCoordinationCost), formatTimeUnit(avgCoordinationHours))
 	avgMergeDelayCost := avgDeliveryDelayCost + avgCoordinationCost
 	avgMergeDelayHours := avgDeliveryDelayHours + avgCoordinationHours
 	fmt.Println("                              ────────────")
-	fmt.Printf("    Subtotal                %12s    %s\n",
+	fmt.Printf("    Subtotal                  %12s    %s\n",
 		formatWithCommas(avgMergeDelayCost), formatTimeUnit(avgMergeDelayHours))
 	fmt.Println()
 
@@ -279,21 +300,24 @@ func printExtrapolatedResults(title string, days int, ext cost.ExtrapolatedBreak
 				formatWithCommas(avgCodeChurnCost), formatTimeUnit(avgCodeChurnHours))
 		}
 		if ext.FutureReviewCost > 0.01 {
-			fmt.Printf("    Review                  %12s    %s\n",
+			fmt.Printf("    %-24s%12s    %s\n",
+				"Review",
 				formatWithCommas(avgFutureReviewCost), formatTimeUnit(avgFutureReviewHours))
 		}
 		if ext.FutureMergeCost > 0.01 {
-			fmt.Printf("    Merge                   %12s    %s\n",
+			fmt.Printf("    %-24s%12s    %s\n",
+				"Merge",
 				formatWithCommas(avgFutureMergeCost), formatTimeUnit(avgFutureMergeHours))
 		}
 		if ext.FutureContextCost > 0.01 {
-			fmt.Printf("    Context Switching       %12s    %s\n",
+			fmt.Printf("    %-24s%12s    %s\n",
+				"Context Switching",
 				formatWithCommas(avgFutureContextCost), formatTimeUnit(avgFutureContextHours))
 		}
 		avgFutureCost := avgCodeChurnCost + avgFutureReviewCost + avgFutureMergeCost + avgFutureContextCost
 		avgFutureHours := avgCodeChurnHours + avgFutureReviewHours + avgFutureMergeHours + avgFutureContextHours
 		fmt.Println("                              ────────────")
-		fmt.Printf("    Subtotal                %12s    %s\n",
+		fmt.Printf("    Subtotal                  %12s    %s\n",
 			formatWithCommas(avgFutureCost), formatTimeUnit(avgFutureHours))
 		fmt.Println()
 	}
@@ -310,10 +334,12 @@ func printExtrapolatedResults(title string, days int, ext cost.ExtrapolatedBreak
 	fmt.Println()
 
 	// Authors section (extrapolated)
-	fmt.Println("  Authors")
-	fmt.Println("  ───────")
-	fmt.Printf("    Development Effort        %12s    %s\n",
-		formatWithCommas(ext.AuthorCodeCost), formatTimeUnit(ext.AuthorCodeHours))
+	fmt.Println("  Development Cost")
+	fmt.Println("  ────────────────")
+	fmt.Printf("    New Development           %12s    %s\n",
+		formatWithCommas(ext.AuthorNewCodeCost), formatTimeUnit(ext.AuthorNewCodeHours))
+	fmt.Printf("    Adaptation                %12s    %s\n",
+		formatWithCommas(ext.AuthorAdaptationCost), formatTimeUnit(ext.AuthorAdaptationHours))
 	fmt.Printf("    GitHub Activity           %12s    %s\n",
 		formatWithCommas(ext.AuthorGitHubCost), formatTimeUnit(ext.AuthorGitHubHours))
 	fmt.Printf("    GitHub Context Switching  %12s    %s\n",
@@ -325,10 +351,16 @@ func printExtrapolatedResults(title string, days int, ext cost.ExtrapolatedBreak
 
 	// Participants section (extrapolated, if any participants)
 	if ext.ParticipantTotalCost > 0 {
-		fmt.Println("  Participants")
-		fmt.Println("  ────────────")
-		fmt.Printf("    Review Activity           %12s    %s\n",
-			formatWithCommas(ext.ParticipantGitHubCost), formatTimeUnit(ext.ParticipantGitHubHours))
+		fmt.Println("  Participant Cost")
+		fmt.Println("  ────────────────")
+		if ext.ParticipantReviewCost > 0 {
+			fmt.Printf("    Review Activity           %12s    %s\n",
+				formatWithCommas(ext.ParticipantReviewCost), formatTimeUnit(ext.ParticipantReviewHours))
+		}
+		if ext.ParticipantGitHubCost > 0 {
+			fmt.Printf("    GitHub Events             %12s    %s\n",
+				formatWithCommas(ext.ParticipantGitHubCost), formatTimeUnit(ext.ParticipantGitHubHours))
+		}
 		fmt.Printf("    Context Switching         %12s    %s\n",
 			formatWithCommas(ext.ParticipantContextCost), formatTimeUnit(ext.ParticipantContextHours))
 		fmt.Println("                              ────────────")
@@ -338,16 +370,16 @@ func printExtrapolatedResults(title string, days int, ext cost.ExtrapolatedBreak
 	}
 
 	// Merge Delay section (extrapolated)
-	fmt.Println("  Merge Delay")
+	fmt.Println("  Delay Costs")
 	fmt.Println("  ───────────")
-	fmt.Printf("    Cost of Delay           %12s    %s\n",
+	fmt.Printf("    Delivery                  %12s    %s\n",
 		formatWithCommas(ext.DeliveryDelayCost), formatTimeUnit(ext.DeliveryDelayHours))
-	fmt.Printf("    Cognitive Load          %12s    %s\n",
+	fmt.Printf("    Coordination              %12s    %s\n",
 		formatWithCommas(ext.CoordinationCost), formatTimeUnit(ext.CoordinationHours))
 	extMergeDelayCost := ext.DeliveryDelayCost + ext.CoordinationCost
 	extMergeDelayHours := ext.DeliveryDelayHours + ext.CoordinationHours
 	fmt.Println("                              ────────────")
-	fmt.Printf("    Subtotal                %12s    %s\n",
+	fmt.Printf("    Subtotal                  %12s    %s\n",
 		formatWithCommas(extMergeDelayCost), formatTimeUnit(extMergeDelayHours))
 	fmt.Println()
 
@@ -363,21 +395,24 @@ func printExtrapolatedResults(title string, days int, ext cost.ExtrapolatedBreak
 				formatWithCommas(ext.CodeChurnCost), formatTimeUnit(ext.CodeChurnHours))
 		}
 		if ext.FutureReviewCost > 0.01 {
-			fmt.Printf("    Review                  %12s    %s\n",
+			fmt.Printf("    %-24s%12s    %s\n",
+				"Review",
 				formatWithCommas(ext.FutureReviewCost), formatTimeUnit(ext.FutureReviewHours))
 		}
 		if ext.FutureMergeCost > 0.01 {
-			fmt.Printf("    Merge                   %12s    %s\n",
+			fmt.Printf("    %-24s%12s    %s\n",
+				"Merge",
 				formatWithCommas(ext.FutureMergeCost), formatTimeUnit(ext.FutureMergeHours))
 		}
 		if ext.FutureContextCost > 0.01 {
-			fmt.Printf("    Context Switching       %12s    %s\n",
+			fmt.Printf("    %-24s%12s    %s\n",
+				"Context Switching",
 				formatWithCommas(ext.FutureContextCost), formatTimeUnit(ext.FutureContextHours))
 		}
 		extFutureCost := ext.CodeChurnCost + ext.FutureReviewCost + ext.FutureMergeCost + ext.FutureContextCost
 		extFutureHours := ext.CodeChurnHours + ext.FutureReviewHours + ext.FutureMergeHours + ext.FutureContextHours
 		fmt.Println("                              ────────────")
-		fmt.Printf("    Subtotal                %12s    %s\n",
+		fmt.Printf("    Subtotal                  %12s    %s\n",
 			formatWithCommas(extFutureCost), formatTimeUnit(extFutureHours))
 		fmt.Println()
 	}

@@ -35,11 +35,13 @@ func PRDataFromPRX(prData *prx.PullRequestData) cost.PRData {
 	}
 
 	return cost.PRData{
-		LinesAdded: pr.Additions,
-		Author:     pr.Author,
-		Events:     events,
-		CreatedAt:  pr.CreatedAt,
-		ClosedAt:   closedAt,
+		LinesAdded:   pr.Additions,
+		LinesDeleted: pr.Deletions,
+		Author:       pr.Author,
+		AuthorBot:    pr.AuthorBot,
+		Events:       events,
+		CreatedAt:    pr.CreatedAt,
+		ClosedAt:     closedAt,
 	}
 }
 
@@ -76,6 +78,7 @@ func FetchPRData(ctx context.Context, prURL string, token string) (cost.PRData, 
 
 	slog.Debug("GitHub API call successful",
 		"additions", prData.PullRequest.Additions,
+		"deletions", prData.PullRequest.Deletions,
 		"author", prData.PullRequest.Author,
 		"total_events", len(prData.Events))
 
@@ -128,8 +131,8 @@ func extractParticipantEvents(events []prx.Event) []cost.ParticipantEvent {
 
 	for i := range events {
 		event := &events[i]
-		// Skip bots and GitHub's own automation
-		if event.Bot || event.Actor == "github" {
+		// Skip bots, GitHub's own automation, and events with no actor
+		if event.Bot || event.Actor == "github" || event.Actor == "" {
 			continue
 		}
 
