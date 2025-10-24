@@ -282,7 +282,7 @@ func printHumanReadable(breakdown *cost.Breakdown, prURL string) {
 			}
 			// Only show other events if they had non-review events
 			if p.GitHubHours > 0 {
-				fmt.Printf("      GitHub Events           %12s    %d sessions • %s\n",
+				fmt.Printf("      GitHub Activity         %12s    %d sessions • %s\n",
 					formatCurrency(p.GitHubCost), p.Sessions, formatTimeUnit(p.GitHubHours))
 			}
 			// Always show context switching if there were sessions
@@ -312,6 +312,9 @@ func printHumanReadable(breakdown *cost.Breakdown, prURL string) {
 	fmt.Printf("  Total                       %12s    %s\n",
 		formatCurrency(breakdown.TotalCost), formatTimeUnit(totalHours))
 	fmt.Println()
+
+	// Print efficiency score
+	printEfficiency(breakdown, formatCurrency)
 }
 
 // printDelayCosts prints delay and future costs section.
@@ -325,7 +328,7 @@ func printDelayCosts(breakdown *cost.Breakdown, formatCurrency func(float64) str
 		if breakdown.DelayCapped {
 			cappedSuffix = " (capped)"
 		}
-		fmt.Printf("    Project                   %12s    %s%s\n",
+		fmt.Printf("    Workstream blockage       %12s    %s%s\n",
 			formatCurrency(breakdown.DelayCostDetail.DeliveryDelayCost),
 			formatTimeUnit(breakdown.DelayCostDetail.DeliveryDelayHours),
 			cappedSuffix)
@@ -430,4 +433,77 @@ func formatWithCommas(amount float64) string {
 	}
 
 	return string(result) + "." + decPart
+}
+
+// efficiencyGrade returns a letter grade and message based on efficiency percentage (MIT scale).
+func efficiencyGrade(efficiencyPct float64) (string, string) {
+	switch {
+	case efficiencyPct >= 97:
+		return "A+", "Outstanding!"
+	case efficiencyPct >= 93:
+		return "A", "Excellent!"
+	case efficiencyPct >= 90:
+		return "A-", "Great work!"
+	case efficiencyPct >= 87:
+		return "B+", "Pretty good!"
+	case efficiencyPct >= 83:
+		return "B", "Good work!"
+	case efficiencyPct >= 80:
+		return "B-", "Room for improvement."
+	case efficiencyPct >= 77:
+		return "C+", "Some inefficiency."
+	case efficiencyPct >= 73:
+		return "C", "Needs work."
+	case efficiencyPct >= 70:
+		return "C-", "Optimize your workflow."
+	case efficiencyPct >= 67:
+		return "D+", "Major inefficiency."
+	case efficiencyPct >= 63:
+		return "D", "Critical issues."
+	case efficiencyPct >= 60:
+		return "D-", "Severe inefficiency."
+	default:
+		return "F", "Rethink your workflow."
+	}
+}
+
+// printEfficiency prints the workflow efficiency section for a single PR.
+func printEfficiency(breakdown *cost.Breakdown, formatCurrency func(float64) string) {
+	// Calculate preventable waste: Code Churn + All Delay Costs
+	preventableHours := breakdown.DelayCostDetail.CodeChurnHours +
+		breakdown.DelayCostDetail.DeliveryDelayHours +
+		breakdown.DelayCostDetail.CoordinationHours
+	preventableCost := breakdown.DelayCostDetail.CodeChurnCost +
+		breakdown.DelayCostDetail.DeliveryDelayCost +
+		breakdown.DelayCostDetail.CoordinationCost
+
+	// Calculate total hours
+	totalHours := breakdown.Author.TotalHours + breakdown.DelayCostDetail.TotalDelayHours
+	for _, p := range breakdown.Participants {
+		totalHours += p.TotalHours
+	}
+
+	// Calculate efficiency
+	var efficiencyPct float64
+	if totalHours > 0 {
+		efficiencyPct = 100.0 * (totalHours - preventableHours) / totalHours
+	} else {
+		efficiencyPct = 100.0
+	}
+
+	grade, message := efficiencyGrade(efficiencyPct)
+
+	fmt.Println("  ┌─────────────────────────────────────────────────────────────┐")
+	fmt.Printf("  │ WORKFLOW EFFICIENCY: %s (%.1f%%) - %s", grade, efficiencyPct, message)
+	// Calculate padding to reach 63 chars (box width)
+	headerLen := 25 + len(grade) + len(fmt.Sprintf("%.1f", efficiencyPct)) + len(message)
+	padding := 63 - headerLen
+	if padding < 0 {
+		padding = 0
+	}
+	fmt.Printf("%*s│\n", padding, "")
+	fmt.Println("  └─────────────────────────────────────────────────────────────┘")
+	fmt.Printf("  Preventable Waste:         $%12s    %s\n",
+		formatWithCommas(preventableCost), formatTimeUnit(preventableHours))
+	fmt.Println()
 }

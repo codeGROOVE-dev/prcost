@@ -7,6 +7,7 @@ type ExtrapolatedBreakdown struct {
 	TotalPRs          int `json:"total_prs"`          // Total number of PRs in the population
 	SampledPRs        int `json:"sampled_prs"`        // Number of PRs successfully sampled
 	SuccessfulSamples int `json:"successful_samples"` // Number of samples that processed successfully
+	UniqueUsers       int `json:"unique_users"`       // Number of unique users (authors + participants) across all sampled PRs
 
 	// Author costs (extrapolated)
 	AuthorNewCodeCost       float64 `json:"author_new_code_cost"`
@@ -81,6 +82,9 @@ func ExtrapolateFromSamples(breakdowns []Breakdown, totalPRs int) ExtrapolatedBr
 	successfulSamples := len(breakdowns)
 	multiplier := float64(totalPRs)
 
+	// Track unique users across all PRs
+	uniqueUsers := make(map[string]bool)
+
 	// Accumulate costs from all samples
 	var sumAuthorNewCodeCost, sumAuthorAdaptationCost, sumAuthorGitHubCost, sumAuthorGitHubContextCost float64
 	var sumAuthorNewCodeHours, sumAuthorAdaptationHours, sumAuthorGitHubHours, sumAuthorGitHubContextHours float64
@@ -95,6 +99,13 @@ func ExtrapolateFromSamples(breakdowns []Breakdown, totalPRs int) ExtrapolatedBr
 
 	for i := range breakdowns {
 		breakdown := &breakdowns[i]
+
+		// Track unique users (author + participants)
+		uniqueUsers[breakdown.PRAuthor] = true
+		for _, p := range breakdown.Participants {
+			uniqueUsers[p.Actor] = true
+		}
+
 		// Accumulate author costs
 		sumAuthorNewCodeCost += breakdown.Author.NewCodeCost
 		sumAuthorAdaptationCost += breakdown.Author.AdaptationCost
@@ -182,6 +193,7 @@ func ExtrapolateFromSamples(breakdowns []Breakdown, totalPRs int) ExtrapolatedBr
 		TotalPRs:          totalPRs,
 		SampledPRs:        successfulSamples,
 		SuccessfulSamples: successfulSamples,
+		UniqueUsers:       len(uniqueUsers),
 
 		AuthorNewCodeCost:       extAuthorNewCodeCost,
 		AuthorAdaptationCost:    extAuthorAdaptationCost,

@@ -511,6 +511,141 @@
             margin-top: 0;
         }
 
+        .efficiency-section {
+            background: linear-gradient(135deg, #f0f9ff 0%, #ffffff 100%);
+            padding: 28px;
+            border-radius: 12px;
+            border: 2px solid #e5e5ea;
+            margin-bottom: 32px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.06);
+        }
+
+        .efficiency-section h2 {
+            font-size: 17px;
+            font-weight: 700;
+            margin: 0 0 20px 0;
+            color: #1d1d1f;
+            letter-spacing: -0.02em;
+        }
+
+        .efficiency-content {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 24px;
+        }
+
+        .efficiency-score {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+        }
+
+        .efficiency-percentage {
+            font-size: 48px;
+            font-weight: 700;
+            letter-spacing: -0.03em;
+            line-height: 1;
+            color: #1d1d1f;
+        }
+
+        .efficiency-grade {
+            font-size: 32px;
+            font-weight: 600;
+            letter-spacing: -0.02em;
+        }
+
+        .grade-A { color: #28a745; }
+        .grade-B { color: #5cb85c; }
+        .grade-C { color: #ffc107; }
+        .grade-D { color: #fd7e14; }
+        .grade-F { color: #dc3545; }
+
+        .efficiency-message {
+            font-size: 16px;
+            color: #6e6e73;
+            margin-left: 8px;
+        }
+
+        .efficiency-annual {
+            text-align: right;
+        }
+
+        .efficiency-annual-label {
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: #6e6e73;
+            margin-bottom: 6px;
+            font-weight: 600;
+        }
+
+        .efficiency-annual-value {
+            font-size: 24px;
+            font-weight: 700;
+            color: #1d1d1f;
+            margin-bottom: 4px;
+        }
+
+        .efficiency-annual-time {
+            font-size: 14px;
+            color: #6e6e73;
+        }
+
+        .efficiency-callout {
+            background: linear-gradient(135deg, #fff9e6 0%, #ffffff 100%);
+            border: 2px solid #ffcc00;
+            border-radius: 12px;
+            padding: 24px;
+            margin-top: 24px;
+        }
+
+        .efficiency-callout p {
+            margin: 0 0 16px 0;
+            font-size: 16px;
+            line-height: 1.6;
+            color: #1d1d1f;
+        }
+
+        .efficiency-callout p:last-child {
+            margin-bottom: 0;
+        }
+
+        .efficiency-callout strong {
+            color: #000;
+            font-weight: 600;
+        }
+
+        .efficiency-callout a {
+            color: #007aff;
+            text-decoration: none;
+            font-weight: 600;
+        }
+
+        .efficiency-callout a:hover {
+            text-decoration: underline;
+        }
+
+        @media (max-width: 768px) {
+            .efficiency-content {
+                flex-direction: column;
+                align-items: flex-start;
+            }
+            .efficiency-annual {
+                text-align: left;
+                width: 100%;
+            }
+        }
+
+        @media (max-width: 480px) {
+            .efficiency-percentage {
+                font-size: 42px;
+            }
+            .efficiency-grade {
+                font-size: 28px;
+            }
+        }
+
         .error {
             background: #fff5f5;
             color: #c00;
@@ -851,22 +986,21 @@
                         <input
                             type="number"
                             id="repoSampleSize"
-                            value="20"
+                            value="25"
                             min="1"
-                            max="1000"
+                            max="25"
+                            disabled
                         >
-                        <div class="help-text">Default: 20 PRs</div>
+                        <div class="help-text">Fixed at 25 PRs</div>
                     </div>
                     <div class="form-group">
                         <label for="repoDays">Days Back</label>
-                        <input
-                            type="number"
-                            id="repoDays"
-                            value="90"
-                            min="1"
-                            max="365"
-                        >
-                        <div class="help-text">Default: 90 days</div>
+                        <select id="repoDays">
+                            <option value="10">10 days</option>
+                            <option value="30">30 days</option>
+                            <option value="90" selected>90 days</option>
+                        </select>
+                        <div class="help-text">Time period for analysis</div>
                     </div>
                 </div>
             </div>
@@ -893,22 +1027,21 @@
                         <input
                             type="number"
                             id="orgSampleSize"
-                            value="20"
+                            value="25"
                             min="1"
-                            max="1000"
+                            max="25"
+                            disabled
                         >
-                        <div class="help-text">Default: 20 PRs</div>
+                        <div class="help-text">Fixed at 25 PRs</div>
                     </div>
                     <div class="form-group">
                         <label for="orgDays">Days Back</label>
-                        <input
-                            type="number"
-                            id="orgDays"
-                            value="90"
-                            min="1"
-                            max="365"
-                        >
-                        <div class="help-text">Default: 90 days</div>
+                        <select id="orgDays">
+                            <option value="10">10 days</option>
+                            <option value="30">30 days</option>
+                            <option value="90" selected>90 days</option>
+                        </select>
+                        <div class="help-text">Time period for analysis</div>
                     </div>
                 </div>
             </div>
@@ -1043,7 +1176,138 @@
             if (hours < 1) {
                 return (hours * 60).toFixed(1) + ' min';
             }
-            return hours.toFixed(1) + ' hrs';
+            if (hours < 48) {
+                return hours.toFixed(1) + ' hrs';
+            }
+
+            const days = hours / 24;
+            if (days < 14) {
+                return days.toFixed(1) + ' days';
+            }
+
+            const weeks = days / 7;
+            if (weeks < 8) {
+                return weeks.toFixed(1) + ' weeks';
+            }
+
+            const months = days / 30;
+            if (months < 24) {
+                return months.toFixed(1) + ' months';
+            }
+
+            const years = days / 365;
+            return years.toFixed(1) + ' years';
+        }
+
+        function formatEngTimeUnit(hours) {
+            if (hours < 1) {
+                return (hours * 60).toFixed(1) + ' min';
+            }
+            if (hours < 48) {
+                return hours.toFixed(1) + ' hrs';
+            }
+
+            const days = hours / 24;
+            if (days < 14) {
+                return days.toFixed(1) + ' days';
+            }
+
+            const weeks = days / 7;
+            if (weeks < 8) {
+                return weeks.toFixed(1) + ' weeks';
+            }
+
+            const months = days / 30;
+            if (months < 24) {
+                return months.toFixed(1) + ' months';
+            }
+
+            const years = days / 365;
+            return years.toFixed(1) + ' years';
+        }
+
+        function efficiencyGrade(efficiencyPct) {
+            // MIT grading scale
+            if (efficiencyPct >= 97) {
+                return { grade: 'A+', message: 'Outstanding!' };
+            } else if (efficiencyPct >= 93) {
+                return { grade: 'A', message: 'Excellent!' };
+            } else if (efficiencyPct >= 90) {
+                return { grade: 'A-', message: 'Great work!' };
+            } else if (efficiencyPct >= 87) {
+                return { grade: 'B+', message: 'Pretty good!' };
+            } else if (efficiencyPct >= 83) {
+                return { grade: 'B', message: 'Good work!' };
+            } else if (efficiencyPct >= 80) {
+                return { grade: 'B-', message: 'Room for improvement.' };
+            } else if (efficiencyPct >= 77) {
+                return { grade: 'C+', message: 'Some inefficiency.' };
+            } else if (efficiencyPct >= 73) {
+                return { grade: 'C', message: 'Needs work.' };
+            } else if (efficiencyPct >= 70) {
+                return { grade: 'C-', message: 'Optimize your workflow.' };
+            } else if (efficiencyPct >= 67) {
+                return { grade: 'D+', message: 'Major inefficiency.' };
+            } else if (efficiencyPct >= 63) {
+                return { grade: 'D', message: 'Critical issues.' };
+            } else if (efficiencyPct >= 60) {
+                return { grade: 'D-', message: 'Severe inefficiency.' };
+            } else {
+                return { grade: 'F', message: 'Rethink your workflow.' };
+            }
+        }
+
+        function formatEfficiencyHTML(efficiencyPct, grade, message, preventableCost, preventableHours, totalCost, totalHours, isAnnual = false, annualWasteCost = 0, annualWasteHours = 0, userCount = 0) {
+            let html = '<div class="efficiency-section">';
+            html += '<h2>Workflow Efficiency</h2>';
+
+            html += '<div class="efficiency-content">';
+
+            // Left side: Score, grade, and message
+            html += '<div>';
+            html += '<div class="efficiency-score">';
+            html += `<div class="efficiency-percentage">${efficiencyPct.toFixed(1)}%</div>`;
+            html += `<div class="efficiency-grade grade-${grade[0]}">${grade}</div>`;
+            html += `<div class="efficiency-message">${message}</div>`;
+            html += '</div>';
+            html += '</div>';
+
+            // Right side: Annual wasted effort (only if annual)
+            if (isAnnual) {
+                html += '<div class="efficiency-annual">';
+                html += '<div class="efficiency-annual-label">Annual Wasted Effort</div>';
+                html += `<div class="efficiency-annual-value">${formatCurrency(annualWasteCost)}</div>`;
+                html += `<div class="efficiency-annual-time">${formatEngTimeUnit(annualWasteHours)}</div>`;
+                html += '</div>';
+            }
+
+            html += '</div>'; // Close efficiency-content
+
+            // Callout for B or lower (not B+, not A-, not A, not A+)
+            const showCallout = grade === 'B' || grade === 'B-' || grade === 'C+' || grade === 'C' ||
+                               grade === 'C-' || grade === 'D+' || grade === 'D' || grade === 'D-' || grade === 'F';
+
+            if (showCallout && isAnnual) {
+                // Calculate savings potential at 90% efficiency
+                const totalAnnualCost = totalCost * (annualWasteCost / preventableCost);
+                const targetWaste = totalAnnualCost * 0.10; // 10% waste at 90% efficiency
+                const currentWaste = annualWasteCost;
+                let savings = currentWaste - targetWaste;
+
+                // Subtract our pricing: $5/month * 12 months * number of users
+                const pricingCost = 5 * 12 * userCount;
+                savings -= pricingCost;
+
+                if (savings > 0) {
+                    html += '<div class="efficiency-callout">';
+                    html += `<p><strong>Tired of being a ${grade} student?</strong></p>`;
+                    html += `<p>Come talk to us at <a href="mailto:go-faster@codeGROOVE.dev">go-faster@codeGROOVE.dev</a> to save at least <strong>${formatCurrency(savings)} a year</strong> in lost development velocity.</p>`;
+                    html += '</div>';
+                }
+            }
+
+            html += '</div>';
+            return html;
         }
 
         function formatBreakdown(data) {
@@ -1069,7 +1333,7 @@
                 output += `    New Development           ${formatCurrency(b.author.new_code_cost).padStart(12)}    ${b.author.new_lines} LOC • ${formatTimeUnit(b.author.new_code_hours)}\n`;
             }
             if (b.author.modified_lines > 0) {
-                output += `    Code Adaptation           ${formatCurrency(b.author.adaptation_cost).padStart(12)}    ${b.author.modified_lines} LOC • ${formatTimeUnit(b.author.adaptation_hours)}\n`;
+                output += `    Adaptation                ${formatCurrency(b.author.adaptation_cost).padStart(12)}    ${b.author.modified_lines} LOC • ${formatTimeUnit(b.author.adaptation_hours)}\n`;
             }
             if (b.author.github_hours > 0) {
                 output += `    GitHub Activity           ${formatCurrency(b.author.github_cost).padStart(12)}    ${b.author.sessions} sessions • ${formatTimeUnit(b.author.github_hours)}\n`;
@@ -1094,8 +1358,18 @@
                 output += '  ─────────────────\n';
                 b.participants.forEach(p => {
                     output += `    ${p.actor}\n`;
-                    output += `      Review Activity         ${formatCurrency(p.github_cost).padStart(12)}    ${p.sessions} sessions • ${formatTimeUnit(p.github_hours)}\n`;
-                    output += `      Context Switching       ${formatCurrency(p.github_context_cost).padStart(12)}    ${formatTimeUnit(p.github_context_hours)}\n`;
+                    // Only show review activity if they reviewed (LOC-based)
+                    if (p.review_hours > 0) {
+                        output += `      Review Activity         ${formatCurrency(p.review_cost).padStart(12)}    ${formatTimeUnit(p.review_hours)}\n`;
+                    }
+                    // Only show other events if they had non-review events
+                    if (p.github_hours > 0) {
+                        output += `      GitHub Activity         ${formatCurrency(p.github_cost).padStart(12)}    ${p.sessions} sessions • ${formatTimeUnit(p.github_hours)}\n`;
+                    }
+                    // Always show context switching if there were sessions
+                    if (p.sessions > 0) {
+                        output += `      Context Switching       ${formatCurrency(p.github_context_cost).padStart(12)}    ${formatTimeUnit(p.github_context_hours)}\n`;
+                    }
                 });
                 output += '                              ────────────\n';
                 pct = (totalParticipantCost / b.total_cost) * 100;
@@ -1108,7 +1382,7 @@
                 output += '  Delay Costs\n';
                 output += '  ───────────\n';
                 const cappedLabel = b.delay_capped ? ' (capped)' : '';
-                output += `    Project                   ${formatCurrency(b.delay_cost_detail.delivery_delay_cost).padStart(12)}    ${formatTimeUnit(b.delay_cost_detail.delivery_delay_hours)}${cappedLabel}\n`;
+                output += `    Workstream blockage       ${formatCurrency(b.delay_cost_detail.delivery_delay_cost).padStart(12)}    ${formatTimeUnit(b.delay_cost_detail.delivery_delay_hours)}${cappedLabel}\n`;
                 output += `    Coordination              ${formatCurrency(b.delay_cost_detail.coordination_cost).padStart(12)}    ${formatTimeUnit(b.delay_cost_detail.coordination_hours)}${cappedLabel}\n`;
                 const mergeDelayCost = b.delay_cost_detail.delivery_delay_cost + b.delay_cost_detail.coordination_cost;
                 const mergeDelayHours = b.delay_cost_detail.delivery_delay_hours + b.delay_cost_detail.coordination_hours;
@@ -1204,7 +1478,7 @@
             output += '  Development Costs\n';
             output += '  ─────────────────\n';
             output += `    New Development           ${formatCurrency(avgAuthorNewCodeCost).padStart(12)}    ${formatTimeUnit(avgAuthorNewCodeHours)}\n`;
-            output += `    Code Adaptation           ${formatCurrency(avgAuthorAdaptationCost).padStart(12)}    ${formatTimeUnit(avgAuthorAdaptationHours)}\n`;
+            output += `    Adaptation                ${formatCurrency(avgAuthorAdaptationCost).padStart(12)}    ${formatTimeUnit(avgAuthorAdaptationHours)}\n`;
             output += `    GitHub Activity           ${formatCurrency(avgAuthorGitHubCost).padStart(12)}    ${formatTimeUnit(avgAuthorGitHubHours)}\n`;
             output += `    GitHub Context Switching  ${formatCurrency(avgAuthorGitHubContextCost).padStart(12)}    ${formatTimeUnit(avgAuthorGitHubContextHours)}\n`;
             output += '                              ────────────\n';
@@ -1225,7 +1499,7 @@
             // Delay Costs
             output += '  Delay Costs\n';
             output += '  ───────────\n';
-            output += `    Project                   ${formatCurrency(avgDeliveryDelayCost).padStart(12)}    ${formatTimeUnit(avgDeliveryDelayHours)}\n`;
+            output += `    Workstream blockage       ${formatCurrency(avgDeliveryDelayCost).padStart(12)}    ${formatTimeUnit(avgDeliveryDelayHours)}\n`;
             output += `    Coordination              ${formatCurrency(avgCoordinationCost).padStart(12)}    ${formatTimeUnit(avgCoordinationHours)}\n`;
             const avgMergeDelayCost = avgDeliveryDelayCost + avgCoordinationCost;
             const avgMergeDelayHours = avgDeliveryDelayHours + avgCoordinationHours;
@@ -1264,14 +1538,14 @@
             return output;
         }
 
-        function formatExtrapolatedTotal(e) {
+        function formatExtrapolatedTotal(e, days) {
             let output = '';
 
             // Development Costs
             output += '  Development Costs\n';
             output += '  ─────────────────\n';
             output += `    New Development           ${formatCurrency(e.author_new_code_cost).padStart(12)}    ${formatTimeUnit(e.author_new_code_hours)}\n`;
-            output += `    Code Adaptation           ${formatCurrency(e.author_adaptation_cost).padStart(12)}    ${formatTimeUnit(e.author_adaptation_hours)}\n`;
+            output += `    Adaptation                ${formatCurrency(e.author_adaptation_cost).padStart(12)}    ${formatTimeUnit(e.author_adaptation_hours)}\n`;
             output += `    GitHub Activity           ${formatCurrency(e.author_github_cost).padStart(12)}    ${formatTimeUnit(e.author_github_hours)}\n`;
             output += `    GitHub Context Switching  ${formatCurrency(e.author_github_context_cost).padStart(12)}    ${formatTimeUnit(e.author_github_context_hours)}\n`;
             output += '                              ────────────\n';
@@ -1292,7 +1566,7 @@
             // Delay Costs
             output += '  Delay Costs\n';
             output += '  ───────────\n';
-            output += `    Project                   ${formatCurrency(e.delivery_delay_cost).padStart(12)}    ${formatTimeUnit(e.delivery_delay_hours)}\n`;
+            output += `    Workstream blockage       ${formatCurrency(e.delivery_delay_cost).padStart(12)}    ${formatTimeUnit(e.delivery_delay_hours)}\n`;
             output += `    Coordination              ${formatCurrency(e.coordination_cost).padStart(12)}    ${formatTimeUnit(e.coordination_hours)}\n`;
             const mergeDelayCost = e.delivery_delay_cost + e.coordination_cost;
             const mergeDelayHours = e.delivery_delay_hours + e.coordination_hours;
@@ -1419,7 +1693,30 @@
                     }
 
                     const data = await response.json();
-                    resultDiv.innerHTML = '<pre><code>' + formatBreakdown(data) + '</code></pre>';
+                    const b = data.breakdown;
+
+                    // Calculate efficiency for single PR
+                    const preventableHours = b.delay_cost_detail.code_churn_hours +
+                                            b.delay_cost_detail.delivery_delay_hours +
+                                            b.delay_cost_detail.coordination_hours;
+                    const preventableCost = b.delay_cost_detail.code_churn_cost +
+                                           b.delay_cost_detail.delivery_delay_cost +
+                                           b.delay_cost_detail.coordination_cost;
+                    let totalHours = b.author.total_hours + b.delay_cost_detail.total_delay_hours;
+                    if (b.participants) {
+                        b.participants.forEach(p => totalHours += p.total_hours);
+                    }
+                    const efficiencyPct = totalHours > 0 ? 100.0 * (totalHours - preventableHours) / totalHours : 100.0;
+                    const { grade, message } = efficiencyGrade(efficiencyPct);
+
+                    // Generate HTML with efficiency section at top
+                    let html = formatEfficiencyHTML(efficiencyPct, grade, message, preventableCost, preventableHours, b.total_cost, totalHours, false, 0, 0);
+                    html += '<div class="result-section">';
+                    html += '<h2>Cost Breakdown</h2>';
+                    html += '<pre><code>' + formatBreakdown(data) + '</code></pre>';
+                    html += '</div>';
+
+                    resultDiv.innerHTML = html;
                 }
 
             } catch (error) {
@@ -1503,6 +1800,33 @@
                                         html += '</div>';
                                         html += '</div>';
 
+                                        // Calculate extrapolated efficiency
+                                        const extPreventableHours = e.code_churn_hours + e.delivery_delay_hours + e.coordination_hours;
+                                        const extPreventableCost = e.code_churn_cost + e.delivery_delay_cost + e.coordination_cost;
+                                        const extEfficiencyPct = e.total_hours > 0 ? 100.0 * (e.total_hours - extPreventableHours) / e.total_hours : 100.0;
+                                        const extEfficiency = efficiencyGrade(extEfficiencyPct);
+                                        const annualMultiplier = 365.0 / parseInt(days);
+                                        const annualWasteHours = extPreventableHours * annualMultiplier;
+                                        const annualWasteCost = extPreventableCost * annualMultiplier;
+
+                                        // Workflow Efficiency section (at top)
+                                        html += formatEfficiencyHTML(extEfficiencyPct, extEfficiency.grade, extEfficiency.message, extPreventableCost, extPreventableHours, e.total_cost, e.total_hours, true, annualWasteCost, annualWasteHours, e.unique_users || 0);
+
+                                        // Calculate average PR efficiency
+                                        const totalPRs = e.total_prs;
+                                        const avgCodeChurnCost = e.code_churn_cost / totalPRs;
+                                        const avgDeliveryDelayCost = e.delivery_delay_cost / totalPRs;
+                                        const avgCoordinationCost = e.coordination_cost / totalPRs;
+                                        const avgCodeChurnHours = e.code_churn_hours / totalPRs;
+                                        const avgDeliveryDelayHours = e.delivery_delay_hours / totalPRs;
+                                        const avgCoordinationHours = e.coordination_hours / totalPRs;
+                                        const avgTotalCost = e.total_cost / totalPRs;
+                                        const avgTotalHours = e.total_hours / totalPRs;
+                                        const avgPreventableHours = avgCodeChurnHours + avgDeliveryDelayHours + avgCoordinationHours;
+                                        const avgPreventableCost = avgCodeChurnCost + avgDeliveryDelayCost + avgCoordinationCost;
+                                        const avgEfficiencyPct = avgTotalHours > 0 ? 100.0 * (avgTotalHours - avgPreventableHours) / avgTotalHours : 100.0;
+                                        const avgEfficiency = efficiencyGrade(avgEfficiencyPct);
+
                                         // Average PR section
                                         html += '<div class="result-section">';
                                         html += `<h2>Average PR (sampled over ${days} day period)</h2>`;
@@ -1511,8 +1835,8 @@
 
                                         // Extrapolated total section
                                         html += '<div class="result-section">';
-                                        html += `<h2>Estimated Total Changes (extrapolated across ${days} day period)</h2>`;
-                                        html += '<pre><code>' + formatExtrapolatedTotal(e) + '</code></pre>';
+                                        html += `<h2>${days}-day Estimated Costs</h2>`;
+                                        html += '<pre><code>' + formatExtrapolatedTotal(e, days) + '</code></pre>';
                                         html += '</div>';
 
                                         resultDiv.innerHTML = html;

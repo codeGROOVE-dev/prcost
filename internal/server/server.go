@@ -1098,15 +1098,18 @@ func (s *Server) parseRepoSampleRequest(ctx context.Context, r *http.Request) (*
 
 	// Set defaults
 	if req.SampleSize == 0 {
-		req.SampleSize = 20
+		req.SampleSize = 25
 	}
 	if req.Days == 0 {
 		req.Days = 90
 	}
 
-	// Validate reasonable limits
-	if req.SampleSize < 1 || req.SampleSize > 1000 {
-		return nil, errors.New("sample_size must be between 1 and 1000")
+	// Validate reasonable limits (silently cap at 25)
+	if req.SampleSize < 1 {
+		return nil, errors.New("sample_size must be at least 1")
+	}
+	if req.SampleSize > 25 {
+		req.SampleSize = 25
 	}
 	if req.Days < 1 || req.Days > 365 {
 		return nil, errors.New("days must be between 1 and 365")
@@ -1132,15 +1135,18 @@ func (s *Server) parseOrgSampleRequest(ctx context.Context, r *http.Request) (*O
 
 	// Set defaults
 	if req.SampleSize == 0 {
-		req.SampleSize = 20
+		req.SampleSize = 25
 	}
 	if req.Days == 0 {
 		req.Days = 90
 	}
 
-	// Validate reasonable limits
-	if req.SampleSize < 1 || req.SampleSize > 1000 {
-		return nil, errors.New("sample_size must be between 1 and 1000")
+	// Validate reasonable limits (silently cap at 25)
+	if req.SampleSize < 1 {
+		return nil, errors.New("sample_size must be at least 1")
+	}
+	if req.SampleSize > 25 {
+		req.SampleSize = 25
 	}
 	if req.Days < 1 || req.Days > 365 {
 		return nil, errors.New("days must be between 1 and 365")
