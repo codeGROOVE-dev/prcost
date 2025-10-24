@@ -378,6 +378,12 @@ func printExtrapolatedResults(title string, days int, ext *cost.ExtrapolatedBrea
 		fmt.Println()
 	}
 
+	// Average Preventable Loss Total (before grand total)
+	avgPreventableCost := avgCodeChurnCost + avgDeliveryDelayCost + avgCoordinationCost
+	avgPreventableHours := avgCodeChurnHours + avgDeliveryDelayHours + avgCoordinationHours
+	fmt.Printf("  Preventable Loss Total     $%12s    %s\n",
+		formatWithCommas(avgPreventableCost), formatTimeUnit(avgPreventableHours))
+
 	// Average total
 	fmt.Println("  ═══════════════════════════════════════════════════════════════")
 	fmt.Printf("  Average Total              $%12s    %s\n",
@@ -480,6 +486,12 @@ func printExtrapolatedResults(title string, days int, ext *cost.ExtrapolatedBrea
 			formatWithCommas(extFutureCost), formatTimeUnit(extFutureHours), pct)
 		fmt.Println()
 	}
+
+	// Preventable Loss Total (before grand total)
+	preventableCost := ext.CodeChurnCost + ext.DeliveryDelayCost + ext.CoordinationCost
+	preventableHours := ext.CodeChurnHours + ext.DeliveryDelayHours + ext.CoordinationHours
+	fmt.Printf("  Preventable Loss Total     $%12s    %s\n",
+		formatWithCommas(preventableCost), formatTimeUnit(preventableHours))
 
 	// Extrapolated grand total
 	fmt.Println("  ═══════════════════════════════════════════════════════════════")

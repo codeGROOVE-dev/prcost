@@ -1531,6 +1531,11 @@
                 output += `    Subtotal                  ${formatCurrency(avgFutureCost).padStart(12)}    ${formatTimeUnit(avgFutureHours)}  (${pct.toFixed(1)}%)\n\n`;
             }
 
+            // Average Preventable Loss Total (before grand total)
+            const avgPreventableCost = avgCodeChurnCost + avgDeliveryDelayCost + avgCoordinationCost;
+            const avgPreventableHours = avgCodeChurnHours + avgDeliveryDelayHours + avgCoordinationHours;
+            output += `  Preventable Loss Total      ${formatCurrency(avgPreventableCost).padStart(12)}    ${formatTimeUnit(avgPreventableHours)}\n`;
+
             // Average Total
             output += '  ═══════════════════════════════════════════════════════════════\n';
             output += `  Average Total               ${formatCurrency(avgTotalCost).padStart(12)}    ${formatTimeUnit(avgTotalHours)}\n\n`;
@@ -1597,6 +1602,11 @@
                 pct = (futureCost / e.total_cost) * 100;
                 output += `    Subtotal                  ${formatCurrency(futureCost).padStart(12)}    ${formatTimeUnit(futureHours)}  (${pct.toFixed(1)}%)\n\n`;
             }
+
+            // Preventable Loss Total (before grand total)
+            const preventableCost = e.code_churn_cost + e.delivery_delay_cost + e.coordination_cost;
+            const preventableHours = e.code_churn_hours + e.delivery_delay_hours + e.coordination_hours;
+            output += `  Preventable Loss Total      ${formatCurrency(preventableCost).padStart(12)}    ${formatTimeUnit(preventableHours)}\n`;
 
             // Total
             output += '  ═══════════════════════════════════════════════════════════════\n';
