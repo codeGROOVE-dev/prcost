@@ -656,3 +656,81 @@ func TestDelayHoursNeverExceedPRAge(t *testing.T) {
 		})
 	}
 }
+
+// TestCalculateFastTurnaroundNoDelay verifies that PRs merged within 30 minutes have no delay costs.
+func TestCalculateFastTurnaroundNoDelay(t *testing.T) {
+	cfg := DefaultConfig()
+
+	testCases := []struct {
+		name       string
+		openMinutes float64
+		wantDelay  float64
+	}{
+		{
+			name:       "0 minutes - instant merge",
+			openMinutes: 0,
+			wantDelay:  0,
+		},
+		{
+			name:       "15 minutes - very fast",
+			openMinutes: 15,
+			wantDelay:  0,
+		},
+		{
+			name:       "29 minutes - just under threshold",
+			openMinutes: 29,
+			wantDelay:  0,
+		},
+		{
+			name:       "31 minutes - just over threshold",
+			openMinutes: 31,
+			wantDelay:  0, // Will be > 0 since 31 > 30
+		},
+		{
+			name:       "60 minutes - one hour",
+			openMinutes: 60,
+			wantDelay:  0, // Will be > 0
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			now := time.Now()
+			createdAt := now.Add(-time.Duration(tc.openMinutes) * time.Minute)
+
+			data := PRData{
+				LinesAdded: 50,
+				Author:     "test-author",
+				Events: []ParticipantEvent{
+					{Timestamp: createdAt, Actor: "test-author", Kind: "commit"},
+				},
+				CreatedAt: createdAt,
+				ClosedAt:  now,
+			}
+
+			breakdown := Calculate(data, cfg)
+
+			// For PRs < 30 minutes, delay cost should be exactly 0
+			if tc.openMinutes < 30 {
+				if breakdown.DelayCost != 0 {
+					t.Errorf("Expected 0 delay cost for %v minute PR, got $%.2f",
+						tc.openMinutes, breakdown.DelayCost)
+				}
+				if breakdown.DelayCostDetail.DeliveryDelayCost != 0 {
+					t.Errorf("Expected 0 delivery delay cost for %v minute PR, got $%.2f",
+						tc.openMinutes, breakdown.DelayCostDetail.DeliveryDelayCost)
+				}
+				if breakdown.DelayCostDetail.CoordinationCost != 0 {
+					t.Errorf("Expected 0 coordination cost for %v minute PR, got $%.2f",
+						tc.openMinutes, breakdown.DelayCostDetail.CoordinationCost)
+				}
+			} else {
+				// For PRs >= 30 minutes, delay cost should be > 0
+				if breakdown.DelayCost == 0 {
+					t.Errorf("Expected non-zero delay cost for %v minute PR, got $0",
+						tc.openMinutes)
+				}
+			}
+		})
+	}
+}

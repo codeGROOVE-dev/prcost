@@ -11,5 +11,6 @@ func main() {
 	cfg := cost.DefaultConfig()
 	fmt.Printf("EventDuration: %v\n", cfg.EventDuration)
 	fmt.Printf("SessionGapThreshold: %v\n", cfg.SessionGapThreshold)
-	fmt.Printf("ContextSwitchDuration: %v\n", cfg.ContextSwitchDuration)
+	fmt.Printf("ContextSwitchInDuration: %v\n", cfg.ContextSwitchInDuration)
+	fmt.Printf("ContextSwitchOutDuration: %v\n", cfg.ContextSwitchOutDuration)
 }

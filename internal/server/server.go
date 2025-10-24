@@ -449,40 +449,42 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Route requests.
-	switch r.URL.Path {
-	case "/v1/calculate":
+	switch {
+	case r.URL.Path == "/v1/calculate":
 		if r.Method != http.MethodPost {
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 			return
 		}
 		s.handleCalculate(w, r)
-	case "/v1/calculate/repo":
+	case r.URL.Path == "/v1/calculate/repo":
 		if r.Method != http.MethodPost {
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 			return
 		}
 		s.handleRepoSample(w, r)
-	case "/v1/calculate/org":
+	case r.URL.Path == "/v1/calculate/org":
 		if r.Method != http.MethodPost {
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 			return
 		}
 		s.handleOrgSample(w, r)
-	case "/v1/calculate/repo/stream":
+	case r.URL.Path == "/v1/calculate/repo/stream":
 		if r.Method != http.MethodPost {
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 			return
 		}
 		s.handleRepoSampleStream(w, r)
-	case "/v1/calculate/org/stream":
+	case r.URL.Path == "/v1/calculate/org/stream":
 		if r.Method != http.MethodPost {
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 			return
 		}
 		s.handleOrgSampleStream(w, r)
-	case "/health":
+	case r.URL.Path == "/health":
 		s.handleHealth(w, r)
-	case "/":
+	case strings.HasPrefix(r.URL.Path, "/static/"):
+		s.handleStatic(w, r)
+	case r.URL.Path == "/":
 		s.handleWebUI(w, r)
 	default:
 		http.NotFound(w, r)
@@ -707,13 +709,14 @@ func (s *Server) processRequest(ctx context.Context, req *CalculateRequest, toke
 	} else {
 		// Fetch PR data using configured data source
 		var err error
+		// For single PR requests, use 1 hour ago as reference time to enable reasonable caching
+		referenceTime := time.Now().Add(-1 * time.Hour)
 		if s.dataSource == "turnserver" {
 			// Use turnserver for PR data
-			// For single PR requests, use time.Now() to get fresh data (no cache timestamp available)
-			prData, err = github.FetchPRDataViaTurnserver(ctx, req.URL, token, time.Now())
+			prData, err = github.FetchPRDataViaTurnserver(ctx, req.URL, token, referenceTime)
 		} else {
-			// Use prx with time.Now() for single PR requests (no cache timestamp available)
-			prData, err = github.FetchPRData(ctx, req.URL, token, time.Now())
+			// Use prx for PR data
+			prData, err = github.FetchPRData(ctx, req.URL, token, referenceTime)
 		}
 		if err != nil {
 			s.logger.ErrorContext(ctx, "[processRequest] Failed to fetch PR data", "url", req.URL, "source", s.dataSource, errorKey, err)
@@ -872,6 +875,43 @@ func (s *Server) handleWebUI(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 	if _, err := w.Write(htmlContent); err != nil {
 		s.logger.ErrorContext(ctx, "[handleWebUI] Error writing response", errorKey, err)
+	}
+}
+
+// handleStatic serves embedded static files.
+func (s *Server) handleStatic(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	// Strip leading slash to match embed.FS structure
+	path := strings.TrimPrefix(r.URL.Path, "/")
+
+	// Read the embedded file
+	content, err := staticFS.ReadFile(path)
+	if err != nil {
+		s.logger.WarnContext(ctx, "[handleStatic] File not found", "path", path, errorKey, err)
+		http.NotFound(w, r)
+		return
+	}
+
+	// Set content type based on file extension
+	contentType := "application/octet-stream"
+	if strings.HasSuffix(path, ".png") {
+		contentType = "image/png"
+	} else if strings.HasSuffix(path, ".jpg") || strings.HasSuffix(path, ".jpeg") {
+		contentType = "image/jpeg"
+	} else if strings.HasSuffix(path, ".ico") {
+		contentType = "image/x-icon"
+	} else if strings.HasSuffix(path, ".css") {
+		contentType = "text/css; charset=utf-8"
+	} else if strings.HasSuffix(path, ".js") {
+		contentType = "application/javascript; charset=utf-8"
+	}
+
+	w.Header().Set("Content-Type", contentType)
+	w.Header().Set("Cache-Control", "public, max-age=3600")
+	w.WriteHeader(http.StatusOK)
+	if _, err := w.Write(content); err != nil {
+		s.logger.ErrorContext(ctx, "[handleStatic] Error writing response", errorKey, err)
 	}
 }
 
@@ -1285,8 +1325,11 @@ func (*Server) mergeConfig(base cost.Config, override *cost.Config) cost.Config 
 	if override.EventDuration > 0 {
 		base.EventDuration = override.EventDuration
 	}
-	if override.ContextSwitchDuration > 0 {
-		base.ContextSwitchDuration = override.ContextSwitchDuration
+	if override.ContextSwitchInDuration > 0 {
+		base.ContextSwitchInDuration = override.ContextSwitchInDuration
+	}
+	if override.ContextSwitchOutDuration > 0 {
+		base.ContextSwitchOutDuration = override.ContextSwitchOutDuration
 	}
 	if override.SessionGapThreshold > 0 {
 		base.SessionGapThreshold = override.SessionGapThreshold
@@ -1378,6 +1421,12 @@ func (s *Server) handleRepoSampleStream(writer http.ResponseWriter, request *htt
 	writer.Header().Set("Cache-Control", "no-cache")
 	writer.Header().Set("Connection", "keep-alive")
 
+	// Flush headers immediately to establish SSE connection before processing starts.
+	// This prevents the browser from closing the connection while waiting for the first event.
+	if flusher, ok := writer.(http.Flusher); ok {
+		flusher.Flush()
+	}
+
 	// Process request with progress updates.
 	s.processRepoSampleWithProgress(ctx, req, token, writer)
 }
@@ -1444,6 +1493,12 @@ func (s *Server) handleOrgSampleStream(writer http.ResponseWriter, request *http
 	writer.Header().Set("Cache-Control", "no-cache")
 	writer.Header().Set("Connection", "keep-alive")
 
+	// Flush headers immediately to establish SSE connection before processing starts.
+	// This prevents the browser from closing the connection while waiting for the first event.
+	if flusher, ok := writer.(http.Flusher); ok {
+		flusher.Flush()
+	}
+
 	// Process request with progress updates.
 	s.processOrgSampleWithProgress(ctx, req, token, writer)
 }
@@ -1468,16 +1523,71 @@ func sendSSE(w http.ResponseWriter, update ProgressUpdate) error {
 	return nil
 }
 
+// startKeepAlive starts a goroutine that sends SSE keep-alive comments every 2 seconds.
+// This prevents client-side timeouts during long operations.
+// Returns a channel that should be closed to stop the keep-alive.
+func startKeepAlive(w http.ResponseWriter) chan struct{} {
+	stop := make(chan struct{})
+	go func() {
+		ticker := time.NewTicker(2 * time.Second)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ticker.C:
+				// Send SSE comment (keeps connection alive, ignored by client)
+				if _, err := fmt.Fprint(w, ": keepalive\n\n"); err != nil {
+					return
+				}
+				if flusher, ok := w.(http.Flusher); ok {
+					flusher.Flush()
+				}
+			case <-stop:
+				return
+			}
+		}
+	}()
+	return stop
+}
+
 // logSSEError logs an error from sendSSE if it occurs.
 // SSE errors are typically client disconnects and can be safely ignored.
 func logSSEError(ctx context.Context, logger *slog.Logger, err error) {
 	if err != nil {
-		logger.DebugContext(ctx, "SSE write failed (client may have disconnected)", errorKey, err)
+		logger.WarnContext(ctx, "SSE write failed (client may have disconnected)", errorKey, err)
 	}
 }
 
 // processRepoSampleWithProgress processes a repository sample with progress updates via SSE.
 func (s *Server) processRepoSampleWithProgress(ctx context.Context, req *RepoSampleRequest, token string, writer http.ResponseWriter) {
+	// Use background context for work to prevent client timeout from canceling operations
+	// We'll monitor the request context separately to detect client disconnects
+	workCtx := context.Background()
+
+	// Monitor request context for disconnects in background
+	disconnected := make(chan struct{})
+	go func() {
+		<-ctx.Done()
+		s.logger.WarnContext(ctx, "[processRepoSampleWithProgress] Client disconnected",
+			"error", ctx.Err(),
+			"owner", req.Owner,
+			"repo", req.Repo)
+		close(disconnected)
+	}()
+	defer func() {
+		s.logger.InfoContext(ctx, "[processRepoSampleWithProgress] Stream handler completed",
+			"owner", req.Owner,
+			"repo", req.Repo)
+	}()
+
+	// Send initial event immediately to establish SSE connection and prevent browser timeout
+	if err := sendSSE(writer, ProgressUpdate{
+		Type: "fetching",
+		PR:   0, // No specific PR yet
+	}); err != nil {
+		s.logger.ErrorContext(ctx, "[processRepoSampleWithProgress] Failed to send initial SSE event", errorKey, err)
+		return
+	}
+
 	// Use default config if not provided
 	cfg := cost.DefaultConfig()
 	if req.Config != nil {
@@ -1491,9 +1601,23 @@ func (s *Server) processRepoSampleWithProgress(ctx context.Context, req *RepoSam
 	cacheKey := fmt.Sprintf("repo:%s/%s:days=%d", req.Owner, req.Repo, req.Days)
 	prs, cached := s.getCachedPRQuery(cacheKey)
 	if !cached {
+		// Send progress update before GraphQL query
+		logSSEError(ctx, s.logger, sendSSE(writer, ProgressUpdate{
+			Type:     "fetching",
+			PR:       0,
+			Owner:    req.Owner,
+			Repo:     req.Repo,
+			Progress: "Querying GitHub for PRs...",
+		}))
+
+		// Start keep-alive to prevent client timeout during GraphQL query
+		stopKeepAlive := startKeepAlive(writer)
+		defer close(stopKeepAlive)
+
 		// Fetch all PRs modified since the date
 		var err error
-		prs, err = github.FetchPRsFromRepo(ctx, req.Owner, req.Repo, since, token)
+		//nolint:contextcheck // Using background context intentionally to prevent client timeout from canceling work
+		prs, err = github.FetchPRsFromRepo(workCtx, req.Owner, req.Repo, since, token)
 		if err != nil {
 			logSSEError(ctx, s.logger, sendSSE(writer, ProgressUpdate{
 				Type:  "error",
@@ -1517,8 +1641,17 @@ func (s *Server) processRepoSampleWithProgress(ctx context.Context, req *RepoSam
 	// Sample PRs
 	samples := github.SamplePRs(prs, req.SampleSize)
 
+	// Send progress update before processing samples
+	logSSEError(ctx, s.logger, sendSSE(writer, ProgressUpdate{
+		Type:     "fetching",
+		PR:       0,
+		Owner:    req.Owner,
+		Repo:     req.Repo,
+		Progress: fmt.Sprintf("Processing %d sampled PRs...", len(samples)),
+	}))
+
 	// Process samples in parallel with progress updates
-	breakdowns := s.processPRsInParallel(ctx, samples, req.Owner, req.Repo, token, cfg, writer)
+	breakdowns := s.processPRsInParallel(workCtx, ctx, samples, req.Owner, req.Repo, token, cfg, writer)
 
 	if len(breakdowns) == 0 {
 		logSSEError(ctx, s.logger, sendSSE(writer, ProgressUpdate{
@@ -1541,6 +1674,33 @@ func (s *Server) processRepoSampleWithProgress(ctx context.Context, req *RepoSam
 
 // processOrgSampleWithProgress processes an organization sample with progress updates via SSE.
 func (s *Server) processOrgSampleWithProgress(ctx context.Context, req *OrgSampleRequest, token string, writer http.ResponseWriter) {
+	// Use background context for work to prevent client timeout from canceling operations
+	// We'll monitor the request context separately to detect client disconnects
+	workCtx := context.Background()
+
+	// Monitor request context for disconnects in background
+	disconnected := make(chan struct{})
+	go func() {
+		<-ctx.Done()
+		s.logger.WarnContext(ctx, "[processOrgSampleWithProgress] Client disconnected",
+			"error", ctx.Err(),
+			"org", req.Org)
+		close(disconnected)
+	}()
+	defer func() {
+		s.logger.InfoContext(ctx, "[processOrgSampleWithProgress] Stream handler completed",
+			"org", req.Org)
+	}()
+
+	// Send initial event immediately to establish SSE connection and prevent browser timeout
+	if err := sendSSE(writer, ProgressUpdate{
+		Type: "fetching",
+		PR:   0, // No specific PR yet
+	}); err != nil {
+		s.logger.ErrorContext(ctx, "[processOrgSampleWithProgress] Failed to send initial SSE event", errorKey, err)
+		return
+	}
+
 	// Use default config if not provided
 	cfg := cost.DefaultConfig()
 	if req.Config != nil {
@@ -1554,9 +1714,21 @@ func (s *Server) processOrgSampleWithProgress(ctx context.Context, req *OrgSampl
 	cacheKey := fmt.Sprintf("org:%s:days=%d", req.Org, req.Days)
 	prs, cached := s.getCachedPRQuery(cacheKey)
 	if !cached {
+		// Send progress update before GraphQL query
+		logSSEError(ctx, s.logger, sendSSE(writer, ProgressUpdate{
+			Type:     "fetching",
+			PR:       0,
+			Progress: "Querying GitHub for PRs...",
+		}))
+
+		// Start keep-alive to prevent client timeout during GraphQL query
+		stopKeepAlive := startKeepAlive(writer)
+		defer close(stopKeepAlive)
+
 		// Fetch all PRs across the org modified since the date
 		var err error
-		prs, err = github.FetchPRsFromOrg(ctx, req.Org, since, token)
+		//nolint:contextcheck // Using background context intentionally to prevent client timeout from canceling work
+		prs, err = github.FetchPRsFromOrg(workCtx, req.Org, since, token)
 		if err != nil {
 			logSSEError(ctx, s.logger, sendSSE(writer, ProgressUpdate{
 				Type:  "error",
@@ -1580,8 +1752,25 @@ func (s *Server) processOrgSampleWithProgress(ctx context.Context, req *OrgSampl
 	// Sample PRs
 	samples := github.SamplePRs(prs, req.SampleSize)
 
+	s.logger.InfoContext(ctx, "[processOrgSampleWithProgress] Starting to process sampled PRs",
+		"org", req.Org,
+		"total_prs", len(prs),
+		"sample_size", len(samples))
+
+	// Send progress update before processing samples
+	logSSEError(ctx, s.logger, sendSSE(writer, ProgressUpdate{
+		Type:     "fetching",
+		PR:       0,
+		Progress: fmt.Sprintf("Processing %d sampled PRs...", len(samples)),
+	}))
+
 	// Process samples in parallel with progress updates (org mode uses empty owner/repo since it's mixed)
-	breakdowns := s.processPRsInParallel(ctx, samples, "", "", token, cfg, writer)
+	breakdowns := s.processPRsInParallel(workCtx, ctx, samples, "", "", token, cfg, writer)
+
+	s.logger.InfoContext(ctx, "[processOrgSampleWithProgress] Finished processing samples",
+		"org", req.Org,
+		"successful_samples", len(breakdowns),
+		"total_samples", len(samples))
 
 	if len(breakdowns) == 0 {
 		logSSEError(ctx, s.logger, sendSSE(writer, ProgressUpdate{
@@ -1605,7 +1794,7 @@ func (s *Server) processOrgSampleWithProgress(ctx context.Context, req *OrgSampl
 // processPRsInParallel processes PRs in parallel and sends progress updates via SSE.
 //
 //nolint:revive // line-length/use-waitgroup-go: long function signature acceptable, standard wg pattern
-func (s *Server) processPRsInParallel(ctx context.Context, samples []github.PRSummary, defaultOwner, defaultRepo, token string, cfg cost.Config, writer http.ResponseWriter) []cost.Breakdown {
+func (s *Server) processPRsInParallel(workCtx, reqCtx context.Context, samples []github.PRSummary, defaultOwner, defaultRepo, token string, cfg cost.Config, writer http.ResponseWriter) []cost.Breakdown {
 	var breakdowns []cost.Breakdown
 	var mu sync.Mutex
 
@@ -1637,8 +1826,8 @@ func (s *Server) processPRsInParallel(ctx context.Context, samples []github.PRSu
 
 			progress := fmt.Sprintf("%d/%d", index+1, totalSamples)
 
-			// Send "fetching" update
-			logSSEError(ctx, s.logger, sendSSE(writer, ProgressUpdate{
+			// Send "fetching" update using request context for SSE
+			logSSEError(reqCtx, s.logger, sendSSE(writer, ProgressUpdate{
 				Type:     "fetching",
 				PR:       prSummary.Number,
 				Owner:    owner,
@@ -1653,15 +1842,16 @@ func (s *Server) processPRsInParallel(ctx context.Context, samples []github.PRSu
 			prData, prCached := s.getCachedPRData(prCacheKey)
 			if !prCached {
 				var err error
+				// Use work context for actual API calls (not tied to client connection)
 				// Use configured data source with updatedAt for effective caching
 				if s.dataSource == "turnserver" {
-					prData, err = github.FetchPRDataViaTurnserver(ctx, prURL, token, prSummary.UpdatedAt)
+					prData, err = github.FetchPRDataViaTurnserver(workCtx, prURL, token, prSummary.UpdatedAt)
 				} else {
-					prData, err = github.FetchPRData(ctx, prURL, token, prSummary.UpdatedAt)
+					prData, err = github.FetchPRData(workCtx, prURL, token, prSummary.UpdatedAt)
 				}
 				if err != nil {
-					s.logger.WarnContext(ctx, "Failed to fetch PR data, skipping", "pr_number", prSummary.Number, "source", s.dataSource, errorKey, err)
-					logSSEError(ctx, s.logger, sendSSE(writer, ProgressUpdate{
+					s.logger.WarnContext(reqCtx, "Failed to fetch PR data, skipping", "pr_number", prSummary.Number, "source", s.dataSource, errorKey, err)
+					logSSEError(reqCtx, s.logger, sendSSE(writer, ProgressUpdate{
 						Type:     "error",
 						PR:       prSummary.Number,
 						Owner:    owner,
@@ -1676,8 +1866,8 @@ func (s *Server) processPRsInParallel(ctx context.Context, samples []github.PRSu
 				s.cachePRData(prCacheKey, prData)
 			}
 
-			// Send "processing" update
-			logSSEError(ctx, s.logger, sendSSE(writer, ProgressUpdate{
+			// Send "processing" update using request context for SSE
+			logSSEError(reqCtx, s.logger, sendSSE(writer, ProgressUpdate{
 				Type:     "processing",
 				PR:       prSummary.Number,
 				Owner:    owner,
@@ -1692,8 +1882,8 @@ func (s *Server) processPRsInParallel(ctx context.Context, samples []github.PRSu
 			breakdowns = append(breakdowns, breakdown)
 			mu.Unlock()
 
-			// Send "complete" update
-			logSSEError(ctx, s.logger, sendSSE(writer, ProgressUpdate{
+			// Send "complete" update using request context for SSE
+			logSSEError(reqCtx, s.logger, sendSSE(writer, ProgressUpdate{
 				Type:     "complete",
 				PR:       prSummary.Number,
 				Owner:    owner,

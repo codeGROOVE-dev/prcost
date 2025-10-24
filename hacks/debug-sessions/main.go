@@ -51,11 +51,13 @@ func main() {
 
 	cfg := cost.DefaultConfig()
 	gapThreshold := cfg.SessionGapThreshold
-	contextSwitch := cfg.ContextSwitchDuration
+	contextIn := cfg.ContextSwitchInDuration
+	contextOut := cfg.ContextSwitchOutDuration
 	eventDur := cfg.EventDuration
 
 	fmt.Printf("Gap Threshold: %v\n", gapThreshold)
-	fmt.Printf("Context Switch: %v\n", contextSwitch)
+	fmt.Printf("Context Switch In: %v\n", contextIn)
+	fmt.Printf("Context Switch Out: %v\n", contextOut)
 	fmt.Printf("Event Duration: %v\n\n", eventDur)
 
 	// Sort events by time
@@ -93,8 +95,8 @@ func main() {
 		fmt.Printf("Session %d: %d events\n", sessionNum, eventsInSession)
 
 		// Context in
-		totalContext += contextSwitch
-		fmt.Printf("  Context In: %v\n", contextSwitch)
+		totalContext += contextIn
+		fmt.Printf("  Context In: %v\n", contextIn)
 
 		// First event
 		totalGitHub += eventDur
@@ -112,11 +114,11 @@ func main() {
 		}
 
 		// Context out
-		totalContext += contextSwitch
-		fmt.Printf("  Context Out: %v\n", contextSwitch)
+		totalContext += contextOut
+		fmt.Printf("  Context Out: %v\n", contextOut)
 		fmt.Printf("  Session Total - GitHub: %v, Context: %v\n\n",
 			(time.Duration(eventsInSession) * eventDur),
-			2*contextSwitch)
+			contextIn+contextOut)
 
 		i = end + 1
 	}

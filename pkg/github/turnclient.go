@@ -48,9 +48,9 @@ func FetchPRDataViaTurnserver(ctx context.Context, prURL string, token string, u
 	slog.Debug("Calling turnserver API", "url", prURL, "updated_at", updatedAt.Format(time.RFC3339))
 
 	// Fetch PR data from turnserver
-	// We pass empty string for user since we're not checking for specific user actions
+	// We use a placeholder user since we're fetching all PR data, not checking for specific user actions
 	// We pass updatedAt for effective caching (turnserver caches based on this timestamp)
-	response, err := client.Check(ctx, prURL, "", updatedAt)
+	response, err := client.Check(ctx, prURL, "codeGROOVE-prcost", updatedAt)
 	if err != nil {
 		slog.Error("Turnserver API call failed", "url", prURL, "error", err)
 		return cost.PRData{}, fmt.Errorf("turnserver API call failed: %w", err)

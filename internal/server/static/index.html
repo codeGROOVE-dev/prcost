@@ -3,7 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>PR Cost Calculator</title>
+    <meta name="description" content="Calculate the real-world cost of GitHub pull requests based on COCOMO II and software engineering research">
+    <link rel="icon" type="image/x-icon" href="/static/favicon.ico">
+    <title>PR Cost Calculator - Measure Developer Time and Costs</title>
     <style>
         * {
             margin: 0;
@@ -35,7 +37,7 @@
             display: flex;
             align-items: center;
             margin-bottom: 32px;
-            border-bottom: 4px solid #3498db;
+            border-bottom: 4px solid #ffcc00;
             padding-bottom: 20px;
             position: relative;
             transition: all 0.3s cubic-bezier(0.68, -0.55, 0.265, 1.55);
@@ -44,6 +46,20 @@
         .header:hover {
             border-bottom-width: 6px;
             padding-bottom: 18px;
+        }
+
+        .logo {
+            width: 36px;
+            height: 36px;
+            margin-right: 16px;
+            transition: all 0.4s cubic-bezier(0.68, -0.55, 0.265, 1.55);
+            flex-shrink: 0;
+            filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.1));
+        }
+
+        .header:hover .logo {
+            transform: rotate(15deg) scale(1.1);
+            filter: drop-shadow(0 3px 6px rgba(255, 204, 0, 0.3));
         }
 
         h1 {
@@ -61,6 +77,10 @@
         @media (max-width: 480px) {
             h1 {
                 font-size: 22px;
+            }
+            .logo {
+                width: 32px;
+                height: 32px;
             }
         }
 
@@ -84,16 +104,33 @@
         .mode-selector {
             display: flex;
             gap: 12px;
-            margin-bottom: 24px;
+            margin-bottom: 32px;
             flex-wrap: wrap;
+            padding: 20px;
+            background: #f9f9fb;
+            border-radius: 12px;
+            border: 1px solid #e5e5ea;
+        }
+
+        .mode-selector-label {
+            font-size: 14px;
+            font-weight: 600;
+            color: #6e6e73;
+            margin-bottom: 12px;
+            display: block;
+            width: 100%;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
         }
 
         .mode-selector input[type="radio"] {
-            display: none;
+            position: absolute;
+            opacity: 0;
+            pointer-events: none;
         }
 
         .mode-selector label {
-            padding: 10px 20px;
+            padding: 12px 24px;
             border: 2px solid #d2d2d7;
             background: #fff;
             color: #1d1d1f;
@@ -103,24 +140,49 @@
             transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
             border-radius: 10px;
             white-space: nowrap;
+            flex: 1;
+            text-align: center;
+            min-width: 140px;
         }
 
         .mode-selector input[type="radio"]:checked + label {
-            background: #3498db;
-            color: white;
-            border-color: #3498db;
+            background: #ffcc00;
+            color: #1d1d1f;
+            border-color: #ffcc00;
+            box-shadow: 0 2px 8px rgba(255, 204, 0, 0.3);
+            transform: translateY(-1px);
         }
 
-        .mode-selector label:hover {
+        .mode-selector input[type="radio"]:focus + label {
+            outline: 3px solid #007aff;
+            outline-offset: 2px;
+        }
+
+        .mode-selector label:hover:not(:has(input:checked)) {
             border-color: #86868b;
+            background: #fafafa;
+        }
+
+        @media (max-width: 480px) {
+            .mode-selector label {
+                flex: 1 1 100%;
+            }
         }
 
         .form-section {
             margin-bottom: 36px;
+            padding: 24px;
+            background: #fff;
+            border: 1px solid #e5e5ea;
+            border-radius: 12px;
         }
 
         .form-group {
-            margin-bottom: 16px;
+            margin-bottom: 20px;
+        }
+
+        .form-group:last-child {
+            margin-bottom: 0;
         }
 
         .form-row {
@@ -138,13 +200,19 @@
 
         label {
             display: block;
-            margin-bottom: 6px;
-            font-weight: 500;
-            color: #555;
+            margin-bottom: 8px;
+            font-weight: 600;
+            color: #1d1d1f;
             font-size: 14px;
         }
 
+        .required-indicator {
+            color: #ff3b30;
+            margin-left: 2px;
+        }
+
         input[type="text"],
+        input[type="url"],
         input[type="number"] {
             width: 100%;
             padding: 12px 16px;
@@ -159,25 +227,42 @@
 
         @media (max-width: 480px) {
             input[type="text"],
+            input[type="url"],
             input[type="number"] {
                 font-size: 16px;
             }
         }
 
         input[type="text"]:focus,
+        input[type="url"]:focus,
         input[type="number"]:focus {
-            outline: none;
+            outline: 3px solid #007aff;
+            outline-offset: 2px;
             border-color: #007aff;
             box-shadow: 0 0 0 3px rgba(0, 122, 255, 0.15);
         }
 
+        input[type="text"]:invalid,
+        input[type="url"]:invalid,
+        input[type="number"]:invalid {
+            border-color: #ff3b30;
+        }
+
+        input[type="text"]:invalid:focus,
+        input[type="url"]:invalid:focus,
+        input[type="number"]:invalid:focus {
+            outline-color: #ff3b30;
+            box-shadow: 0 0 0 3px rgba(255, 59, 48, 0.15);
+        }
+
         input[type="text"]:hover:not(:focus),
+        input[type="url"]:hover:not(:focus),
         input[type="number"]:hover:not(:focus) {
             border-color: #86868b;
         }
 
         button {
-            padding: 12px 24px;
+            padding: 14px 32px;
             border: 2px solid #1d1d1f;
             background: #fff;
             color: #1d1d1f;
@@ -191,6 +276,7 @@
             letter-spacing: -0.01em;
             position: relative;
             overflow: hidden;
+            width: 100%;
         }
 
         button::before {
@@ -200,28 +286,34 @@
             left: -100%;
             width: 100%;
             height: 100%;
-            background: #3498db;
+            background: #ffcc00;
             transition: left 0.3s cubic-bezier(0.68, -0.55, 0.265, 1.55);
             z-index: -1;
         }
 
+        button:focus {
+            outline: none;
+            border-color: #007aff;
+            box-shadow: 0 0 0 3px rgba(0, 122, 255, 0.15);
+        }
+
         @media (max-width: 480px) {
             button {
-                width: 100%;
                 font-size: 16px;
+                padding: 12px 20px;
             }
         }
 
-        button:hover {
+        button:hover:not(:disabled) {
             transform: translateY(-1px);
-            box-shadow: 0 4px 12px rgba(52, 152, 219, 0.2);
+            box-shadow: 0 4px 12px rgba(0, 122, 255, 0.2);
         }
 
-        button:hover::before {
+        button:hover:not(:disabled)::before {
             left: 0;
         }
 
-        button:active {
+        button:active:not(:disabled) {
             transform: translateY(0) scale(0.99);
             box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
         }
@@ -241,17 +333,16 @@
 
         .advanced-toggle {
             background: transparent;
-            color: #3498db;
-            padding: 8px 0;
-            font-size: 14px;
-            margin-bottom: 15px;
-            border: none;
-        }
-
-        .advanced-toggle:hover {
-            background: transparent;
-            text-decoration: underline;
-            transform: none;
+            color: #007aff;
+            padding: 12px 16px;
+            font-size: 15px;
+            margin-bottom: 20px;
+            border: 1px solid #d2d2d7;
+            text-align: left;
+            width: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
             box-shadow: none;
         }
 
@@ -259,22 +350,97 @@
             display: none;
         }
 
+        .advanced-toggle:hover:not(:disabled) {
+            background: #f9f9fb;
+            border-color: #007aff;
+            transform: none;
+            box-shadow: none;
+        }
+
+        .advanced-toggle:hover:not(:disabled)::before {
+            display: none;
+        }
+
+        .advanced-toggle:focus {
+            outline: 3px solid #007aff;
+            outline-offset: 2px;
+        }
+
+        .advanced-toggle-icon {
+            transition: transform 0.3s ease;
+            font-size: 12px;
+        }
+
+        .advanced-toggle-icon.open {
+            transform: rotate(90deg);
+        }
+
         .advanced-config {
             display: none;
-            background: #f8f9fa;
-            padding: 20px;
+            background: #f9f9fb;
+            padding: 24px;
             border-radius: 10px;
             margin-bottom: 20px;
+            border: 1px solid #e5e5ea;
         }
 
         .advanced-config.show {
             display: block;
+            animation: slideDown 0.3s ease;
+        }
+
+        @keyframes slideDown {
+            from {
+                opacity: 0;
+                max-height: 0;
+                padding-top: 0;
+                padding-bottom: 0;
+            }
+            to {
+                opacity: 1;
+                max-height: 800px;
+                padding-top: 24px;
+                padding-bottom: 24px;
+            }
         }
 
         .help-text {
-            font-size: 12px;
-            color: #7f8c8d;
-            margin-top: 4px;
+            font-size: 13px;
+            color: #6e6e73;
+            margin-top: 6px;
+            line-height: 1.4;
+        }
+
+        .sr-only {
+            position: absolute;
+            width: 1px;
+            height: 1px;
+            padding: 0;
+            margin: -1px;
+            overflow: hidden;
+            clip: rect(0, 0, 0, 0);
+            white-space: nowrap;
+            border-width: 0;
+        }
+
+        .skip-link {
+            position: absolute;
+            top: -40px;
+            left: 0;
+            background: #ffcc00;
+            color: #1d1d1f;
+            padding: 8px 16px;
+            text-decoration: none;
+            font-weight: 600;
+            border-radius: 4px;
+            z-index: 100;
+        }
+
+        .skip-link:focus {
+            top: 10px;
+            left: 10px;
+            outline: 3px solid #007aff;
+            outline-offset: 2px;
         }
 
         .hidden {
@@ -283,6 +449,7 @@
 
         #result {
             margin-top: 30px;
+            margin-bottom: 30px;
         }
 
         #result pre {
@@ -298,30 +465,48 @@
         }
 
         .error {
-            background: #fee;
+            background: #fff5f5;
             color: #c00;
-            padding: 12px 16px;
+            padding: 16px 20px;
             border-radius: 10px;
             margin-bottom: 20px;
-            border: 1px solid #fcc;
+            border: 2px solid #ff3b30;
+            display: flex;
+            align-items: flex-start;
+            gap: 12px;
+        }
+
+        .error::before {
+            content: "⚠";
+            font-size: 20px;
+            flex-shrink: 0;
         }
 
         .loading {
-            color: #7f8c8d;
-            font-style: italic;
-            padding: 20px 0;
+            color: #1d1d1f;
+            font-weight: 500;
+            padding: 24px;
+            background: #f9f9fb;
+            border-radius: 10px;
+            text-align: center;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 12px;
         }
 
-        .loading::after {
-            content: "...";
-            display: inline-block;
-            animation: dots 1.5s ease-in-out infinite;
+        .loading::before {
+            content: "";
+            width: 20px;
+            height: 20px;
+            border: 3px solid #e5e5ea;
+            border-top-color: #ffcc00;
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
         }
 
-        @keyframes dots {
-            0%, 20% { content: "."; }
-            40% { content: ".."; }
-            60%, 100% { content: "..."; }
+        @keyframes spin {
+            to { transform: rotate(360deg); }
         }
 
         .progress-container {
@@ -351,10 +536,10 @@
             min-width: 80px;
         }
 
-        .progress-item.fetching .status { color: #3498db; }
-        .progress-item.processing .status { color: #f39c12; }
-        .progress-item.complete .status { color: #27ae60; }
-        .progress-item.error .status { color: #e74c3c; }
+        .progress-item.fetching .status { color: #007aff; }
+        .progress-item.processing .status { color: #ff9500; }
+        .progress-item.complete .status { color: #34c759; }
+        .progress-item.error .status { color: #ff3b30; }
 
         .progress-summary {
             margin-top: 12px;
@@ -378,66 +563,239 @@
             text-decoration: none;
             margin: 0 10px;
             font-weight: 500;
+            position: relative;
+            transition: all 0.2s ease;
         }
 
         .footer a:hover {
-            text-decoration: underline;
+            color: #0051d5;
+            text-decoration: none;
+        }
+
+        .footer a::after {
+            content: "";
+            position: absolute;
+            bottom: -2px;
+            left: 0;
+            width: 0;
+            height: 2px;
+            background: #ffcc00;
+            transition: width 0.3s cubic-bezier(0.68, -0.55, 0.265, 1.55);
+        }
+
+        .footer a:hover::after {
+            width: 100%;
+        }
+
+        /* Goose animation - make it honk */
+        .goose-wrapper {
+            display: inline-block;
+            transition: all 0.3s cubic-bezier(0.68, -0.55, 0.265, 1.55);
+            cursor: pointer;
+        }
+
+        .goose-wrapper:hover {
+            transform: scale(1.2) rotate(10deg);
+        }
+
+        .goose-wrapper:hover .goose {
+            animation: getOnUp 0.6s cubic-bezier(0.68, -0.55, 0.265, 1.55);
+        }
+
+        @keyframes getOnUp {
+            0%, 100% {
+                transform: rotate(0deg) scale(1);
+            }
+            15% {
+                transform: rotate(-15deg) translateY(-5px) scale(1.1);
+            }
+            30% {
+                transform: rotate(15deg) translateY(-8px) scale(1.2);
+            }
+            45% {
+                transform: rotate(-10deg) translateY(-3px) scale(1.15);
+            }
+            60% {
+                transform: rotate(10deg) translateY(-6px) scale(1.1);
+            }
+            75% {
+                transform: rotate(-5deg) translateY(-2px) scale(1.05);
+            }
+            90% {
+                transform: rotate(5deg) translateY(-1px) scale(1.02);
+            }
+        }
+
+        .applications-box {
+            margin-bottom: 32px;
+            padding: 24px;
+            background: linear-gradient(135deg, #f9f9fb 0%, #ffffff 100%);
+            border: 1px solid #d2d2d7;
+            border-radius: 12px;
+            font-size: 15px;
+            color: #1d1d1f;
+            position: relative;
+            transition: all 0.3s cubic-bezier(0.68, -0.55, 0.265, 1.55);
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+            overflow: hidden;
+        }
+
+        .applications-box:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 16px rgba(255, 204, 0, 0.12);
+            background: linear-gradient(135deg, #fff 0%, #fffbf0 100%);
+        }
+
+        .applications-box::before {
+            content: "";
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 4px;
+            height: 100%;
+            background: linear-gradient(180deg, #ffcc00 0%, #ff9500 100%);
+        }
+
+        .applications-box h3 {
+            margin: 0 0 12px 0;
+            font-size: 17px;
+            color: #1d1d1f;
+            font-weight: 600;
+            letter-spacing: -0.02em;
+        }
+
+        .applications-box p {
+            margin: 0 0 12px 0;
+            line-height: 1.5;
+        }
+
+        .applications-box p:last-child {
+            margin-bottom: 0;
+        }
+
+        a {
+            color: #007aff;
+            text-decoration: none;
+            position: relative;
+            transition: all 0.2s ease;
+            font-weight: 500;
+        }
+
+        a:hover {
+            text-decoration: none;
+            color: #0051d5;
+        }
+
+        a::after {
+            content: "";
+            position: absolute;
+            bottom: -2px;
+            left: 0;
+            width: 0;
+            height: 2px;
+            background: #ffcc00;
+            transition: width 0.3s cubic-bezier(0.68, -0.55, 0.265, 1.55);
+        }
+
+        a:hover::after {
+            width: 100%;
+        }
+
+        .footer a {
+            margin: 0 10px;
+        }
+
+        .footer a[style*="margin: 0"] {
+            margin: 0;
         }
     </style>
 </head>
 <body>
-    <div class="header">
-        <h1>PR Cost Calculator</h1>
-    </div>
+    <a href="#main-content" class="skip-link">Skip to main content</a>
 
-    <p class="intro-text">
-        Calculate the real-world cost of GitHub pull requests, repositories, or entire organizations.
-    </p>
-
-    <form id="costForm">
-        <div class="mode-selector">
-            <input type="radio" id="modePR" name="mode" value="pr" checked>
-            <label for="modePR">Single PR</label>
-
-            <input type="radio" id="modeRepo" name="mode" value="repo">
-            <label for="modeRepo">Repository Sample</label>
-
-            <input type="radio" id="modeOrg" name="mode" value="org">
-            <label for="modeOrg">Organization Sample</label>
+    <header role="banner">
+        <div class="header">
+            <img src="/static/logo.png" alt="PR Cost" class="logo" />
+            <h1>PR Cost Calculator</h1>
         </div>
 
-        <div class="form-section">
-            <div id="prFields">
+        <p class="intro-text">
+            Calculate the estimated development cost of a pull request - for a single PR, or extrapolate across a sample set within a repository or organization.
+            Based on <a href="https://github.com/codeGROOVE-dev/prcost#how-it-works">recent software engineering research</a> (COCOMO II, Microsoft, IEEE, Fagan inspection studies).
+        </p>
+    </header>
+
+    <main id="main-content" role="main">
+        <form id="costForm" aria-label="PR Cost Calculation Form">
+            <fieldset class="mode-selector" aria-labelledby="mode-selector-label">
+                <legend id="mode-selector-label" class="mode-selector-label">Select Analysis Mode</legend>
+
+                <input type="radio" id="modePR" name="mode" value="pr" checked aria-describedby="modePR-desc">
+                <label for="modePR">Single PR</label>
+
+                <input type="radio" id="modeRepo" name="mode" value="repo" aria-describedby="modeRepo-desc">
+                <label for="modeRepo">Repository Sample</label>
+
+                <input type="radio" id="modeOrg" name="mode" value="org" aria-describedby="modeOrg-desc">
+                <label for="modeOrg">Organization Sample</label>
+            </fieldset>
+
+            <div class="sr-only">
+                <p id="modePR-desc">Calculate costs for a single pull request</p>
+                <p id="modeRepo-desc">Calculate average costs across a repository</p>
+                <p id="modeOrg-desc">Calculate average costs across an entire organization</p>
+            </div>
+
+            <div id="prFields" class="form-section">
                 <div class="form-group">
-                    <label for="prUrl">GitHub PR URL</label>
+                    <label for="prUrl">
+                        GitHub PR URL
+                        <span class="required-indicator" aria-label="required">*</span>
+                    </label>
                     <input
-                        type="text"
+                        type="url"
                         id="prUrl"
-                        placeholder="https://github.com/codeGROOVE-dev/slacker/pull/49"
+                        value="https://github.com/codeGROOVE-dev/slacker/pull/49"
+                        required
+                        pattern="https://github\.com/.+/.+/pull/\d+"
+                        aria-describedby="prUrl-help"
+                        placeholder="https://github.com/owner/repo/pull/123"
                     >
-                    <div class="help-text">Enter the full URL of a GitHub pull request</div>
+                    <div id="prUrl-help" class="help-text">Enter the full URL of a GitHub pull request</div>
                 </div>
             </div>
 
-            <div id="repoFields" class="hidden">
+            <div id="repoFields" class="hidden form-section">
                 <div class="form-row">
                     <div class="form-group">
-                        <label for="repoOwner">Owner</label>
+                        <label for="repoOwner">
+                            Owner
+                            <span class="required-indicator" aria-label="required">*</span>
+                        </label>
                         <input
                             type="text"
                             id="repoOwner"
+                            value="codeGROOVE-dev"
+                            required
+                            aria-describedby="repoOwner-help"
                             placeholder="codeGROOVE-dev"
                         >
-                        <div class="help-text">Repository owner or organization</div>
+                        <div id="repoOwner-help" class="help-text">Repository owner or organization</div>
                     </div>
                     <div class="form-group">
-                        <label for="repoName">Repository</label>
+                        <label for="repoName">
+                            Repository
+                            <span class="required-indicator" aria-label="required">*</span>
+                        </label>
                         <input
                             type="text"
                             id="repoName"
-                            placeholder="goose"
+                            value="goose"
+                            required
+                            aria-describedby="repoName-help"
+                            placeholder="repository-name"
                         >
-                        <div class="help-text">Repository name</div>
+                        <div id="repoName-help" class="help-text">Repository name</div>
                     </div>
                 </div>
                 <div class="form-row">
@@ -446,7 +804,7 @@
                         <input
                             type="number"
                             id="repoSampleSize"
-                            placeholder="20"
+                            value="20"
                             min="1"
                             max="1000"
                         >
@@ -457,7 +815,7 @@
                         <input
                             type="number"
                             id="repoDays"
-                            placeholder="90"
+                            value="90"
                             min="1"
                             max="365"
                         >
@@ -466,15 +824,21 @@
                 </div>
             </div>
 
-            <div id="orgFields" class="hidden">
+            <div id="orgFields" class="hidden form-section">
                 <div class="form-group">
-                    <label for="orgName">Organization</label>
+                    <label for="orgName">
+                        Organization
+                        <span class="required-indicator" aria-label="required">*</span>
+                    </label>
                     <input
                         type="text"
                         id="orgName"
-                        placeholder="codeGROOVE-dev"
+                        value="codeGROOVE-dev"
+                        required
+                        aria-describedby="orgName-help"
+                        placeholder="organization-name"
                     >
-                    <div class="help-text">GitHub organization name</div>
+                    <div id="orgName-help" class="help-text">GitHub organization name</div>
                 </div>
                 <div class="form-row">
                     <div class="form-group">
@@ -482,7 +846,7 @@
                         <input
                             type="number"
                             id="orgSampleSize"
-                            placeholder="20"
+                            value="20"
                             min="1"
                             max="1000"
                         >
@@ -493,7 +857,7 @@
                         <input
                             type="number"
                             id="orgDays"
-                            placeholder="90"
+                            value="90"
                             min="1"
                             max="365"
                         >
@@ -502,8 +866,9 @@
                 </div>
             </div>
 
-            <button type="button" class="advanced-toggle" onclick="toggleAdvanced()">
-                ▸ Advanced Configuration
+            <button type="button" class="advanced-toggle" onclick="toggleAdvanced()" aria-expanded="false" aria-controls="advancedConfig">
+                <span>Advanced Configuration</span>
+                <span class="advanced-toggle-icon" aria-hidden="true">▸</span>
             </button>
 
             <div id="advancedConfig" class="advanced-config">
@@ -511,12 +876,12 @@
                     <div class="form-group">
                         <label for="salary">Annual Salary ($)</label>
                         <input type="number" id="salary" placeholder="249000">
-                        <div class="help-text">Default: $249,000</div>
+                        <div class="help-text">Default: $249,000 (2025 Glassdoor avg for Staff SWE)</div>
                     </div>
                     <div class="form-group">
                         <label for="benefits">Benefits Multiplier</label>
                         <input type="number" id="benefits" step="0.1" placeholder="1.3">
-                        <div class="help-text">Default: 1.3 (30% benefits)</div>
+                        <div class="help-text">Default: 1.3 (30% overhead for benefits)</div>
                     </div>
                 </div>
 
@@ -524,25 +889,36 @@
                     <div class="form-group">
                         <label for="eventMinutes">Event Duration (minutes)</label>
                         <input type="number" id="eventMinutes" placeholder="10">
-                        <div class="help-text">Default: 10 minutes</div>
+                        <div class="help-text">Default: 10 min (time per GitHub event)</div>
                     </div>
                     <div class="form-group">
-                        <label for="contextMinutes">Context Switch (minutes)</label>
-                        <input type="number" id="contextMinutes" placeholder="20">
-                        <div class="help-text">Default: 20 minutes</div>
+                        <label for="contextInMinutes">Context In (minutes)</label>
+                        <input type="number" id="contextInMinutes" step="0.1" placeholder="3">
+                        <div class="help-text">Default: 3 min (start session - <a href="https://erichorvitz.com/CHI_2007_Iqbal_Horvitz.pdf" target="_blank" rel="noopener">Microsoft Research</a>)</div>
                     </div>
                 </div>
 
                 <div class="form-row">
                     <div class="form-group">
+                        <label for="contextOutMinutes">Context Out (minutes)</label>
+                        <input type="number" id="contextOutMinutes" step="0.1" placeholder="16.55">
+                        <div class="help-text">Default: 16.55 min (end session - <a href="https://erichorvitz.com/CHI_2007_Iqbal_Horvitz.pdf" target="_blank" rel="noopener">Microsoft Research</a>)</div>
+                    </div>
+                    <div class="form-group">
                         <label for="sessionGap">Session Gap (minutes)</label>
                         <input type="number" id="sessionGap" placeholder="20">
-                        <div class="help-text">Default: 20 minutes</div>
+                        <div class="help-text">Default: 20 min (events within this are one session)</div>
                     </div>
+                </div>
+
+                <div class="form-row">
                     <div class="form-group">
                         <label for="inspectionRate">Review Rate (LOC/hour)</label>
                         <input type="number" id="inspectionRate" placeholder="275">
-                        <div class="help-text">Default: 275 LOC/hour</div>
+                        <div class="help-text">Default: 275 LOC/hr (IEEE/Fagan optimal range avg)</div>
+                    </div>
+                    <div class="form-group">
+                        <!-- Empty cell for grid alignment -->
                     </div>
                 </div>
 
@@ -550,26 +926,45 @@
                     <div class="form-group">
                         <label for="delayFactor">Delivery Delay Factor</label>
                         <input type="number" id="delayFactor" step="0.01" placeholder="0.15">
-                        <div class="help-text">Default: 0.15 (15%)</div>
+                        <div class="help-text">Default: 0.15 (15% opportunity cost of blocked value)</div>
                     </div>
                     <div class="form-group">
                         <label for="coordFactor">Coordination Factor</label>
                         <input type="number" id="coordFactor" step="0.01" placeholder="0.05">
-                        <div class="help-text">Default: 0.05 (5%)</div>
+                        <div class="help-text">Default: 0.05 (5% mental overhead of tracking unmerged PRs)</div>
                     </div>
                 </div>
             </div>
 
-            <button type="submit" id="submitBtn">Calculate Cost</button>
-        </div>
-    </form>
+            <div class="form-section">
+                <button type="submit" id="submitBtn" aria-label="Calculate PR costs">
+                    Calculate Cost
+                </button>
+            </div>
+        </form>
 
-    <div id="result"></div>
+        <div id="result" role="region" aria-live="polite" aria-atomic="true"></div>
+    </main>
 
-    <div class="footer">
-        <a href="https://github.com/codeGROOVE-dev/prcost">GitHub</a>
-        <span>made by <a href="https://codegroove.dev/">codeGROOVE</a></span>
+    <div class="applications-box">
+        <h3>Why calculate PR costs?</h3>
+        <p>
+            Understanding the true cost of pull requests helps teams make data-driven decisions about
+            process improvements, tooling investments, and workflow optimization.
+        </p>
+        <p>
+            Track costs across repositories to identify bottlenecks, justify automation efforts,
+            or demonstrate ROI on developer productivity initiatives.
+        </p>
     </div>
+
+    <footer role="contentinfo" class="footer">
+        <a href="https://github.com/codeGROOVE-dev/prcost" aria-label="View project on GitHub">GitHub</a>
+        <span>made with
+            <span class="goose-wrapper" aria-label="goose emoji"><span class="goose" role="img" aria-label="goose">🪿</span></span>
+            by
+            <a href="https://codegroove.dev/" style="margin: 0" aria-label="Visit codeGROOVE website">codeGROOVE</a></span>
+    </footer>
 
     <script>
         // Mode switching
@@ -585,8 +980,12 @@
         function toggleAdvanced() {
             const config = document.getElementById('advancedConfig');
             const btn = document.querySelector('.advanced-toggle');
-            config.classList.toggle('show');
-            btn.textContent = config.classList.contains('show') ? '▾ Advanced Configuration' : '▸ Advanced Configuration';
+            const icon = btn.querySelector('.advanced-toggle-icon');
+            const isOpen = config.classList.toggle('show');
+
+            btn.setAttribute('aria-expanded', isOpen);
+            icon.classList.toggle('open');
+            icon.textContent = isOpen ? '▾' : '▸';
         }
 
         function formatCurrency(amount) {
@@ -595,7 +994,7 @@
 
         function formatTimeUnit(hours) {
             if (hours < 1) {
-                return Math.round(hours * 60) + ' min';
+                return (hours * 60).toFixed(1) + ' min';
             }
             return hours.toFixed(1) + ' hrs';
         }
@@ -613,11 +1012,11 @@
             } else {
                 output += `  ${document.getElementById('orgName').value}\n`;
             }
-            output += `  Rate: ${formatCurrency(b.hourly_rate)}/hr  •  Salary: ${formatCurrency(b.annual_salary)}  •  Benefits: ${b.benefits_multiplier.toFixed(1)}x\n\n`;
+            output += `  Rate: ${formatCurrency(b.hourly_rate)}/hr  •  Benefits multiplier: ${b.benefits_multiplier.toFixed(1)}x\n\n`;
 
             // Author
-            output += '  Author\n';
-            output += '  ──────\n';
+            output += '  Development Costs\n';
+            output += '  ─────────────────\n';
             // Show development and adaptation separately
             if (b.author.new_lines > 0) {
                 output += `    New Development           ${formatCurrency(b.author.new_code_cost).padStart(12)}    ${b.author.new_lines} LOC • ${formatTimeUnit(b.author.new_code_hours)}\n`;
@@ -625,8 +1024,12 @@
             if (b.author.modified_lines > 0) {
                 output += `    Code Adaptation           ${formatCurrency(b.author.adaptation_cost).padStart(12)}    ${b.author.modified_lines} LOC • ${formatTimeUnit(b.author.adaptation_hours)}\n`;
             }
-            output += `    GitHub Activity           ${formatCurrency(b.author.github_cost).padStart(12)}    ${b.author.sessions} sessions • ${formatTimeUnit(b.author.github_hours)}\n`;
-            output += `    GitHub Context Switching  ${formatCurrency(b.author.github_context_cost).padStart(12)}    ${formatTimeUnit(b.author.github_context_hours)}\n`;
+            if (b.author.github_hours > 0) {
+                output += `    GitHub Activity           ${formatCurrency(b.author.github_cost).padStart(12)}    ${b.author.sessions} sessions • ${formatTimeUnit(b.author.github_hours)}\n`;
+            }
+            if (b.author.github_context_hours > 0) {
+                output += `    GitHub Context Switching  ${formatCurrency(b.author.github_context_cost).padStart(12)}    ${formatTimeUnit(b.author.github_context_hours)}\n`;
+            }
             output += '                              ────────────\n';
             output += `    Subtotal                  ${formatCurrency(b.author.total_cost).padStart(12)}    ${formatTimeUnit(b.author.total_hours)}\n\n`;
 
@@ -639,8 +1042,8 @@
                     totalParticipantHours += p.total_hours;
                 });
 
-                output += '  Participants\n';
-                output += '  ────────────\n';
+                output += '  Participant Costs\n';
+                output += '  ─────────────────\n';
                 b.participants.forEach(p => {
                     output += `    ${p.actor}\n`;
                     output += `      Review Activity         ${formatCurrency(p.github_cost).padStart(12)}    ${p.sessions} sessions • ${formatTimeUnit(p.github_hours)}\n`;
@@ -650,46 +1053,49 @@
                 output += `    Subtotal                  ${formatCurrency(totalParticipantCost).padStart(12)}    ${formatTimeUnit(totalParticipantHours)}\n\n`;
             }
 
-            // Merge Delay
-            output += '  Merge Delay\n';
-            output += '  ───────────\n';
-            const cappedLabel = b.delay_capped ? ' (capped)' : '';
-            output += `    Delivery                  ${formatCurrency(b.delay_cost_detail.delivery_delay_cost).padStart(12)}    ${formatTimeUnit(b.delay_cost_detail.delivery_delay_hours)}${cappedLabel}\n`;
-            output += `    Coordination              ${formatCurrency(b.delay_cost_detail.coordination_cost).padStart(12)}    ${formatTimeUnit(b.delay_cost_detail.coordination_hours)}${cappedLabel}\n`;
-            const mergeDelayCost = b.delay_cost_detail.delivery_delay_cost + b.delay_cost_detail.coordination_cost;
-            const mergeDelayHours = b.delay_cost_detail.delivery_delay_hours + b.delay_cost_detail.coordination_hours;
-            output += '                              ────────────\n';
-            output += `    Subtotal                ${formatCurrency(mergeDelayCost).padStart(12)}    ${formatTimeUnit(mergeDelayHours)}\n\n`;
-
-            // Future Costs
-            const hasFuture = b.delay_cost_detail.rework_percentage > 0 ||
-                             b.delay_cost_detail.future_review_cost > 0 ||
-                             b.delay_cost_detail.future_merge_cost > 0 ||
-                             b.delay_cost_detail.future_context_cost > 0;
-
-            if (hasFuture) {
-                output += '  Future Costs\n';
-                output += '  ────────────\n';
-
-                if (b.delay_cost_detail.rework_percentage > 0) {
-                    output += `    Code Churn (${Math.round(b.delay_cost_detail.rework_percentage)}% drift) ${formatCurrency(b.delay_cost_detail.code_churn_cost).padStart(12)}    ${formatTimeUnit(b.delay_cost_detail.code_churn_hours)}\n`;
-                }
-                if (b.delay_cost_detail.future_review_cost > 0) {
-                    output += `    Review                  ${formatCurrency(b.delay_cost_detail.future_review_cost).padStart(12)}    ${formatTimeUnit(b.delay_cost_detail.future_review_hours)}\n`;
-                }
-                if (b.delay_cost_detail.future_merge_cost > 0) {
-                    output += `    Merge                   ${formatCurrency(b.delay_cost_detail.future_merge_cost).padStart(12)}    ${formatTimeUnit(b.delay_cost_detail.future_merge_hours)}\n`;
-                }
-                if (b.delay_cost_detail.future_context_cost > 0) {
-                    output += `    Context Switching       ${formatCurrency(b.delay_cost_detail.future_context_cost).padStart(12)}    ${formatTimeUnit(b.delay_cost_detail.future_context_hours)}\n`;
-                }
-
-                const futureCost = b.delay_cost_detail.code_churn_cost + b.delay_cost_detail.future_review_cost +
-                                  b.delay_cost_detail.future_merge_cost + b.delay_cost_detail.future_context_cost;
-                const futureHours = b.delay_cost_detail.code_churn_hours + b.delay_cost_detail.future_review_hours +
-                                   b.delay_cost_detail.future_merge_hours + b.delay_cost_detail.future_context_hours;
+            // Delay and Future Costs - only show if there are any delay costs
+            if (b.delay_cost > 0) {
+                // Merge Delay
+                output += '  Merge Delay\n';
+                output += '  ───────────\n';
+                const cappedLabel = b.delay_capped ? ' (capped)' : '';
+                output += `    Delivery                  ${formatCurrency(b.delay_cost_detail.delivery_delay_cost).padStart(12)}    ${formatTimeUnit(b.delay_cost_detail.delivery_delay_hours)}${cappedLabel}\n`;
+                output += `    Coordination              ${formatCurrency(b.delay_cost_detail.coordination_cost).padStart(12)}    ${formatTimeUnit(b.delay_cost_detail.coordination_hours)}${cappedLabel}\n`;
+                const mergeDelayCost = b.delay_cost_detail.delivery_delay_cost + b.delay_cost_detail.coordination_cost;
+                const mergeDelayHours = b.delay_cost_detail.delivery_delay_hours + b.delay_cost_detail.coordination_hours;
                 output += '                              ────────────\n';
-                output += `    Subtotal                ${formatCurrency(futureCost).padStart(12)}    ${formatTimeUnit(futureHours)}\n\n`;
+                output += `    Subtotal                ${formatCurrency(mergeDelayCost).padStart(12)}    ${formatTimeUnit(mergeDelayHours)}\n\n`;
+
+                // Future Costs
+                const hasFuture = b.delay_cost_detail.rework_percentage > 0 ||
+                                 b.delay_cost_detail.future_review_cost > 0 ||
+                                 b.delay_cost_detail.future_merge_cost > 0 ||
+                                 b.delay_cost_detail.future_context_cost > 0;
+
+                if (hasFuture) {
+                    output += '  Future Costs\n';
+                    output += '  ────────────\n';
+
+                    if (b.delay_cost_detail.rework_percentage > 0) {
+                        output += `    Code Churn (${Math.round(b.delay_cost_detail.rework_percentage)}% drift)   ${formatCurrency(b.delay_cost_detail.code_churn_cost).padStart(12)}    ${formatTimeUnit(b.delay_cost_detail.code_churn_hours)}\n`;
+                    }
+                    if (b.delay_cost_detail.future_review_cost > 0) {
+                        output += `    Review                    ${formatCurrency(b.delay_cost_detail.future_review_cost).padStart(12)}    ${formatTimeUnit(b.delay_cost_detail.future_review_hours)}\n`;
+                    }
+                    if (b.delay_cost_detail.future_merge_cost > 0) {
+                        output += `    Merge                     ${formatCurrency(b.delay_cost_detail.future_merge_cost).padStart(12)}    ${formatTimeUnit(b.delay_cost_detail.future_merge_hours)}\n`;
+                    }
+                    if (b.delay_cost_detail.future_context_cost > 0) {
+                        output += `    Context Switching         ${formatCurrency(b.delay_cost_detail.future_context_cost).padStart(12)}    ${formatTimeUnit(b.delay_cost_detail.future_context_hours)}\n`;
+                    }
+
+                    const futureCost = b.delay_cost_detail.code_churn_cost + b.delay_cost_detail.future_review_cost +
+                                      b.delay_cost_detail.future_merge_cost + b.delay_cost_detail.future_context_cost;
+                    const futureHours = b.delay_cost_detail.code_churn_hours + b.delay_cost_detail.future_review_hours +
+                                       b.delay_cost_detail.future_merge_hours + b.delay_cost_detail.future_context_hours;
+                    output += '                              ────────────\n';
+                    output += `    Subtotal                ${formatCurrency(futureCost).padStart(12)}    ${formatTimeUnit(futureHours)}\n\n`;
+                }
             }
 
             // Total
@@ -755,8 +1161,8 @@
 
             // Participants
             if (e.participant_total_cost > 0) {
-                output += '  Participants\n';
-                output += '  ────────────\n';
+                output += '  Participant Costs\n';
+                output += '  ─────────────────\n';
                 output += `    Review Activity           ${formatCurrency(avgParticipantGitHubCost).padStart(12)}    ${formatTimeUnit(avgParticipantGitHubHours)}\n`;
                 output += `    Context Switching         ${formatCurrency(avgParticipantContextCost).padStart(12)}    ${formatTimeUnit(avgParticipantContextHours)}\n`;
                 output += '                              ────────────\n';
@@ -779,16 +1185,16 @@
                 output += '  Future Costs\n';
                 output += '  ────────────\n';
                 if (e.code_churn_cost > 0.01) {
-                    output += `    Code Churn              ${formatCurrency(avgCodeChurnCost).padStart(12)}    ${formatTimeUnit(avgCodeChurnHours)}\n`;
+                    output += `    Code Churn                ${formatCurrency(avgCodeChurnCost).padStart(12)}    ${formatTimeUnit(avgCodeChurnHours)}\n`;
                 }
                 if (e.future_review_cost > 0.01) {
-                    output += `    Review                  ${formatCurrency(avgFutureReviewCost).padStart(12)}    ${formatTimeUnit(avgFutureReviewHours)}\n`;
+                    output += `    Review                    ${formatCurrency(avgFutureReviewCost).padStart(12)}    ${formatTimeUnit(avgFutureReviewHours)}\n`;
                 }
                 if (e.future_merge_cost > 0.01) {
-                    output += `    Merge                   ${formatCurrency(avgFutureMergeCost).padStart(12)}    ${formatTimeUnit(avgFutureMergeHours)}\n`;
+                    output += `    Merge                     ${formatCurrency(avgFutureMergeCost).padStart(12)}    ${formatTimeUnit(avgFutureMergeHours)}\n`;
                 }
                 if (e.future_context_cost > 0.01) {
-                    output += `    Context Switching       ${formatCurrency(avgFutureContextCost).padStart(12)}    ${formatTimeUnit(avgFutureContextHours)}\n`;
+                    output += `    Context Switching         ${formatCurrency(avgFutureContextCost).padStart(12)}    ${formatTimeUnit(avgFutureContextHours)}\n`;
                 }
                 const avgFutureCost = avgCodeChurnCost + avgFutureReviewCost + avgFutureMergeCost + avgFutureContextCost;
                 const avgFutureHours = avgCodeChurnHours + avgFutureReviewHours + avgFutureMergeHours + avgFutureContextHours;
@@ -818,8 +1224,8 @@
 
             // Participants
             if (e.participant_total_cost > 0) {
-                output += '  Participants\n';
-                output += '  ────────────\n';
+                output += '  Participant Costs\n';
+                output += '  ─────────────────\n';
                 output += `    Review Activity           ${formatCurrency(e.participant_github_cost).padStart(12)}    ${formatTimeUnit(e.participant_github_hours)}\n`;
                 output += `    Context Switching         ${formatCurrency(e.participant_context_cost).padStart(12)}    ${formatTimeUnit(e.participant_context_hours)}\n`;
                 output += '                              ────────────\n';
@@ -842,16 +1248,16 @@
                 output += '  Future Costs\n';
                 output += '  ────────────\n';
                 if (e.code_churn_cost > 0.01) {
-                    output += `    Code Churn              ${formatCurrency(e.code_churn_cost).padStart(12)}    ${formatTimeUnit(e.code_churn_hours)}\n`;
+                    output += `    Code Churn                ${formatCurrency(e.code_churn_cost).padStart(12)}    ${formatTimeUnit(e.code_churn_hours)}\n`;
                 }
                 if (e.future_review_cost > 0.01) {
-                    output += `    Review                  ${formatCurrency(e.future_review_cost).padStart(12)}    ${formatTimeUnit(e.future_review_hours)}\n`;
+                    output += `    Review                    ${formatCurrency(e.future_review_cost).padStart(12)}    ${formatTimeUnit(e.future_review_hours)}\n`;
                 }
                 if (e.future_merge_cost > 0.01) {
-                    output += `    Merge                   ${formatCurrency(e.future_merge_cost).padStart(12)}    ${formatTimeUnit(e.future_merge_hours)}\n`;
+                    output += `    Merge                     ${formatCurrency(e.future_merge_cost).padStart(12)}    ${formatTimeUnit(e.future_merge_hours)}\n`;
                 }
                 if (e.future_context_cost > 0.01) {
-                    output += `    Context Switching       ${formatCurrency(e.future_context_cost).padStart(12)}    ${formatTimeUnit(e.future_context_hours)}\n`;
+                    output += `    Context Switching         ${formatCurrency(e.future_context_cost).padStart(12)}    ${formatTimeUnit(e.future_context_hours)}\n`;
                 }
                 const futureCost = e.code_churn_cost + e.future_review_cost + e.future_merge_cost + e.future_context_cost;
                 const futureHours = e.code_churn_hours + e.future_review_hours + e.future_merge_hours + e.future_context_hours;
@@ -882,7 +1288,8 @@
             const salary = document.getElementById('salary').value;
             const benefits = document.getElementById('benefits').value;
             const eventMinutes = document.getElementById('eventMinutes').value;
-            const contextMinutes = document.getElementById('contextMinutes').value;
+            const contextInMinutes = document.getElementById('contextInMinutes').value;
+            const contextOutMinutes = document.getElementById('contextOutMinutes').value;
             const sessionGap = document.getElementById('sessionGap').value;
             const inspectionRate = document.getElementById('inspectionRate').value;
             const delayFactor = document.getElementById('delayFactor').value;
@@ -891,7 +1298,8 @@
             if (salary) config.annual_salary = parseFloat(salary);
             if (benefits) config.benefits_multiplier = parseFloat(benefits);
             if (eventMinutes) config.event_duration = parseFloat(eventMinutes) * 60 * 1000000000;
-            if (contextMinutes) config.context_switch_duration = parseFloat(contextMinutes) * 60 * 1000000000;
+            if (contextInMinutes) config.context_switch_in_duration = parseFloat(contextInMinutes) * 60 * 1000000000;
+            if (contextOutMinutes) config.context_switch_out_duration = parseFloat(contextOutMinutes) * 60 * 1000000000;
             if (sessionGap) config.session_gap_threshold = parseFloat(sessionGap) * 60 * 1000000000;
             if (inspectionRate) config.review_inspection_rate = parseFloat(inspectionRate);
             if (delayFactor) config.delivery_delay_factor = parseFloat(delayFactor);
@@ -963,101 +1371,128 @@
         });
 
         async function handleStreamingRequest(endpoint, request, resultDiv) {
-            const response = await fetch(endpoint, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify(request)
+            // EventSource doesn't support POST, so we need a different approach
+            // We'll use fetch to initiate, but handle it as a proper SSE stream
+            return new Promise((resolve, reject) => {
+                const progressMap = new Map();
+                let progressContainer;
+
+                // Make the POST request with fetch
+                fetch(endpoint, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(request)
+                }).then(response => {
+                    if (!response.ok) {
+                        return response.text().then(error => {
+                            throw new Error(error || `HTTP ${response.status}`);
+                        });
+                    }
+
+                    // Use the proper streaming API with ReadableStream
+                    const reader = response.body.getReader();
+                    const decoder = new TextDecoder();
+                    let buffer = '';
+
+                    function read() {
+                        reader.read().then(({done, value}) => {
+                            if (done) {
+                                resolve();
+                                return;
+                            }
+
+                            buffer += decoder.decode(value, {stream: true});
+                            const lines = buffer.split('\n');
+                            buffer = lines.pop() || '';
+
+                            for (const line of lines) {
+                                if (!line.startsWith('data: ')) continue;
+
+                                try {
+                                    const data = JSON.parse(line.substring(6));
+
+                                    if (data.type === 'error' && !data.pr) {
+                                        // Global error
+                                        reader.cancel();
+                                        reject(new Error(data.error));
+                                        return;
+                                    }
+
+                                    if (data.type === 'done') {
+                                        // Final result - show both average and extrapolated in separate sections
+                                        const mode = document.querySelector('input[name="mode"]:checked').value;
+                                        const e = data.result;
+
+                                        // Header with source info
+                                        let header = '\n';
+                                        if (mode === 'repo') {
+                                            header += `  ${document.getElementById('repoOwner').value}/${document.getElementById('repoName').value}\n`;
+                                        } else {
+                                            header += `  ${document.getElementById('orgName').value}\n`;
+                                        }
+                                        header += `  Period: Last ${document.getElementById(mode + 'Days').value || '90'} days  •  Total PRs: ${e.total_prs}  •  Sampled: ${e.successful_samples}\n\n`;
+
+                                        // Combine both sections
+                                        const avgSection = formatAveragePR(e);
+                                        const extSection = formatExtrapolatedTotal(e);
+
+                                        resultDiv.innerHTML = '<pre><code>' + header + avgSection + '\n' + extSection + '</code></pre>';
+                                        resolve();
+                                        return;
+                                    }
+
+                                    // Handle PR-specific progress
+                                    if (data.pr) {
+                                        if (!progressContainer) {
+                                            progressContainer = document.createElement('div');
+                                            progressContainer.className = 'progress-container';
+                                            progressContainer.innerHTML = '<div class="progress-header">Processing PRs...</div>';
+                                            resultDiv.innerHTML = '';
+                                            resultDiv.appendChild(progressContainer);
+                                        }
+
+                                        let progressItem = progressMap.get(data.pr);
+                                        if (!progressItem) {
+                                            progressItem = document.createElement('div');
+                                            progressItem.className = 'progress-item';
+                                            progressContainer.appendChild(progressItem);
+                                            progressMap.set(data.pr, progressItem);
+                                        }
+
+                                        const repo = data.owner && data.repo ? `${data.owner}/${data.repo}` : '';
+                                        const prLink = repo ? `${repo}#${data.pr}` : `#${data.pr}`;
+
+                                        progressItem.className = `progress-item ${data.type}`;
+                                        if (data.type === 'fetching') {
+                                            progressItem.innerHTML = `<span class="status">Fetching</span> ${prLink} ${data.progress || ''}`;
+                                        } else if (data.type === 'processing') {
+                                            progressItem.innerHTML = `<span class="status">Processing</span> ${prLink} ${data.progress || ''}`;
+                                        } else if (data.type === 'complete') {
+                                            progressItem.innerHTML = `<span class="status">✓ Complete</span> ${prLink} ${data.progress || ''}`;
+                                        } else if (data.type === 'error') {
+                                            progressItem.innerHTML = `<span class="status">✗ Error</span> ${prLink}: ${data.error}`;
+                                        }
+                                    }
+                                } catch (parseError) {
+                                    console.warn('Failed to parse SSE event:', line, parseError);
+                                }
+                            }
+
+                            // Continue reading
+                            read();
+                        }).catch(error => {
+                            reject(error);
+                        });
+                    }
+
+                    // Start reading
+                    read();
+                }).catch(error => {
+                    reject(error);
+                });
             });
-
-            if (!response.ok) {
-                const error = await response.text();
-                throw new Error(error || `HTTP ${response.status}`);
-            }
-
-            // Set up SSE reader
-            const reader = response.body.getReader();
-            const decoder = new TextDecoder();
-            let buffer = '';
-
-            const progressMap = new Map();
-            let progressContainer;
-
-            while (true) {
-                const {done, value} = await reader.read();
-                if (done) break;
-
-                buffer += decoder.decode(value, {stream: true});
-                const lines = buffer.split('\n');
-                buffer = lines.pop() || '';
-
-                for (const line of lines) {
-                    if (!line.startsWith('data: ')) continue;
-
-                    const data = JSON.parse(line.substring(6));
-
-                    if (data.type === 'error' && !data.pr) {
-                        // Global error
-                        throw new Error(data.error);
-                    }
-
-                    if (data.type === 'done') {
-                        // Final result - show both average and extrapolated in separate sections
-                        const mode = document.querySelector('input[name="mode"]:checked').value;
-                        const e = data.result;
-
-                        // Header with source info
-                        let header = '\n';
-                        if (mode === 'repo') {
-                            header += `  ${document.getElementById('repoOwner').value}/${document.getElementById('repoName').value}\n`;
-                        } else {
-                            header += `  ${document.getElementById('orgName').value}\n`;
-                        }
-                        header += `  Period: Last ${document.getElementById(mode + 'Days').value || '90'} days  •  Total PRs: ${e.total_prs}  •  Sampled: ${e.successful_samples}\n\n`;
-
-                        // Combine both sections
-                        const avgSection = formatAveragePR(e);
-                        const extSection = formatExtrapolatedTotal(e);
-
-                        resultDiv.innerHTML = '<pre><code>' + header + avgSection + '\n' + extSection + '</code></pre>';
-                        return;
-                    }
-
-                    // Handle PR-specific progress
-                    if (data.pr) {
-                        if (!progressContainer) {
-                            progressContainer = document.createElement('div');
-                            progressContainer.className = 'progress-container';
-                            progressContainer.innerHTML = '<div class="progress-header">Processing PRs...</div>';
-                            resultDiv.innerHTML = '';
-                            resultDiv.appendChild(progressContainer);
-                        }
-
-                        let progressItem = progressMap.get(data.pr);
-                        if (!progressItem) {
-                            progressItem = document.createElement('div');
-                            progressItem.className = 'progress-item';
-                            progressContainer.appendChild(progressItem);
-                            progressMap.set(data.pr, progressItem);
-                        }
-
-                        const repo = data.owner && data.repo ? `${data.owner}/${data.repo}` : '';
-                        const prLink = repo ? `${repo}#${data.pr}` : `#${data.pr}`;
-
-                        progressItem.className = `progress-item ${data.type}`;
-                        if (data.type === 'fetching') {
-                            progressItem.innerHTML = `<span class="status">Fetching</span> ${prLink} (${data.progress})`;
-                        } else if (data.type === 'processing') {
-                            progressItem.innerHTML = `<span class="status">Processing</span> ${prLink} (${data.progress})`;
-                        } else if (data.type === 'complete') {
-                            progressItem.innerHTML = `<span class="status">✓ Complete</span> ${prLink} (${data.progress})`;
-                        } else if (data.type === 'error') {
-                            progressItem.innerHTML = `<span class="status">✗ Error</span> ${prLink}: ${data.error}`;
-                        }
-                    }
-                }
-            }
         }
     </script>
 </body>

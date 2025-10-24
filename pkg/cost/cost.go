@@ -25,13 +25,22 @@ type Config struct {
 	// Hours per year for calculating hourly rate (default: 2080)
 	HoursPerYear float64
 
-	// Time per GitHub event (default: 20 minutes)
+	// Time per GitHub event (default: 10 minutes)
 	EventDuration time.Duration
 
-	// Time for context switching in/out (default: 20 minutes)
-	ContextSwitchDuration time.Duration
+	// Time for context switching in - starting a new session (default: 3 minutes)
+	// Source: Microsoft Research - Iqbal & Horvitz (2007)
+	// "Disruption and Recovery of Computing Tasks: Field Study, Analysis, and Directions"
+	// https://erichorvitz.com/CHI_2007_Iqbal_Horvitz.pdf
+	ContextSwitchInDuration time.Duration
 
-	// Session gap threshold (default: 60 minutes)
+	// Time for context switching out - ending a session (default: 16 minutes 33 seconds)
+	// Source: Microsoft Research - Iqbal & Horvitz (2007)
+	// "Disruption and Recovery of Computing Tasks: Field Study, Analysis, and Directions"
+	// https://erichorvitz.com/CHI_2007_Iqbal_Horvitz.pdf
+	ContextSwitchOutDuration time.Duration
+
+	// Session gap threshold (default: 20 minutes)
 	// Events within this gap are considered part of the same session
 	SessionGapThreshold time.Duration
 
@@ -80,20 +89,21 @@ type Config struct {
 // DefaultConfig returns reasonable defaults for cost calculation.
 func DefaultConfig() Config {
 	return Config{
-		AnnualSalary:           249000.0, // Average Staff Software Engineer salary (2025, Glassdoor)
-		BenefitsMultiplier:     1.3,
-		HoursPerYear:           2080.0,
-		EventDuration:          10 * time.Minute,    // 10 minutes per GitHub event
-		ContextSwitchDuration:  20 * time.Minute,    // 20 minutes to context switch in/out
-		SessionGapThreshold:    20 * time.Minute,    // Events within 20 min are same session
-		DeliveryDelayFactor:    0.15,                // 15% opportunity cost
-		CoordinationFactor:     0.05,                // 5% mental overhead
-		MaxDelayAfterLastEvent: 14 * 24 * time.Hour, // 14 days (2 weeks) after last event
-		MaxProjectDelay:        90 * 24 * time.Hour, // 90 days absolute max
-		MaxCodeDrift:           90 * 24 * time.Hour, // 90 days
-		ReviewInspectionRate:   275.0,               // 275 LOC/hour (average of optimal 150-400 range)
-		ModificationCostFactor: 0.4,                 // Modified code costs 40% of new code
-		COCOMO:                 cocomo.DefaultConfig(),
+		AnnualSalary:             249000.0,                                  // Average Staff Software Engineer salary (2025, Glassdoor)
+		BenefitsMultiplier:       1.3,                                       // 30% benefits overhead
+		HoursPerYear:             2080.0,                                    // Standard full-time hours
+		EventDuration:            10 * time.Minute,                          // 10 minutes per GitHub event
+		ContextSwitchInDuration:  3 * time.Minute,                           // 3 min to context switch in (Microsoft Research)
+		ContextSwitchOutDuration: 16*time.Minute + 33*time.Second,           // 16m33s to context switch out (Microsoft Research)
+		SessionGapThreshold:      20 * time.Minute,                          // Events within 20 min are same session
+		DeliveryDelayFactor:      0.15,                                      // 15% opportunity cost
+		CoordinationFactor:       0.05,                                      // 5% mental overhead
+		MaxDelayAfterLastEvent:   14 * 24 * time.Hour,                       // 14 days (2 weeks) after last event
+		MaxProjectDelay:          90 * 24 * time.Hour,                       // 90 days absolute max
+		MaxCodeDrift:             90 * 24 * time.Hour,                       // 90 days
+		ReviewInspectionRate:     275.0,                                     // 275 LOC/hour (average of optimal 150-400 range)
+		ModificationCostFactor:   0.4,                                       // Modified code costs 40% of new code
+		COCOMO:                   cocomo.DefaultConfig(),
 	}
 }
 
@@ -254,17 +264,28 @@ func Calculate(data PRData, cfg Config) Breakdown {
 		"hours_since_last_event", timeSinceLastEvent,
 		"days_since_last_event", timeSinceLastEvent/24.0)
 
-	// Cap Project Delay in two ways:
-	// 1. Only count up to MaxDelayAfterLastEvent (default: 14 days) after the last event
-	// 2. Absolute maximum of MaxProjectDelay (default: 90 days) total
+	// Cap Project Delay in three ways:
+	// 1. Minimum threshold: PRs open < 30 minutes have no delay cost (fast turnaround)
+	// 2. Only count up to MaxDelayAfterLastEvent (default: 14 days) after the last event
+	// 3. Absolute maximum of MaxProjectDelay (default: 90 days) total
 	var capped bool
 	var cappedHrs float64
 
 	cappedHrs = delayHours
 
-	// First, apply the "2 weeks after last event" cap
+	// First, apply minimum threshold: no delay costs for PRs open < 30 minutes
+	// Rationale: PRs merged within 30 minutes have no meaningful delay or coordination overhead
+	const minDelayThreshold = 0.5 // 30 minutes in hours
+	if cappedHrs < minDelayThreshold {
+		cappedHrs = 0
+		slog.Info("Applied delay minimum threshold - no delay costs for fast turnaround",
+			"delay_hours", delayHours,
+			"threshold_hours", minDelayThreshold)
+	}
+
+	// Second, apply the "2 weeks after last event" cap
 	maxAfterEvent := cfg.MaxDelayAfterLastEvent.Hours()
-	if timeSinceLastEvent > maxAfterEvent {
+	if cappedHrs > 0 && timeSinceLastEvent > maxAfterEvent {
 		// Reduce delay by the excess time since last event
 		excessHours := timeSinceLastEvent - maxAfterEvent
 		cappedHrs = delayHours - excessHours
@@ -279,7 +300,7 @@ func Calculate(data PRData, cfg Config) Breakdown {
 			"capped_delay_hours", cappedHrs)
 	}
 
-	// Second, apply the absolute maximum cap
+	// Third, apply the absolute maximum cap
 	maxTotal := cfg.MaxProjectDelay.Hours()
 	if cappedHrs > maxTotal {
 		beforeCap := cappedHrs
@@ -454,7 +475,7 @@ func Calculate(data PRData, cfg Config) Breakdown {
 
 		// Context Switching: 2 sessions × (context in + context out)
 		// 1 session for reviewer, 1 session for author merge
-		futureContextDuration := 2 * (cfg.ContextSwitchDuration + cfg.ContextSwitchDuration)
+		futureContextDuration := 2 * (cfg.ContextSwitchInDuration + cfg.ContextSwitchOutDuration)
 		futureContextHours = futureContextDuration.Hours()
 		futureContextCost = futureContextHours * hourlyRate
 	}
@@ -666,19 +687,19 @@ func calculateParticipantCosts(data PRData, cfg Config, hourlyRate float64) []Pa
 // - Each event counts as EventDuration (default 10 min)
 // - Gaps between events within a session don't add time (assumed to be part of the work)
 //
-// Context Switching:
-// - First session: ContextSwitchDuration (20 min) at start
-// - Between sessions: min(2 × ContextSwitchDuration, gap) to avoid double-counting
-//   - If gap >= 40 min: full 20 min out + 20 min in
-//   - If gap < 40 min: split gap evenly (gap/2 out, gap/2 in)
+// Context Switching (Microsoft Research: Iqbal & Horvitz 2007):
+// - First session: ContextSwitchInDuration (3 min) at start
+// - Between sessions: min(ContextSwitchOutDuration + ContextSwitchInDuration, gap) to avoid double-counting
+//   - If gap >= (16.55 + 3 = 19.55 min): full context out + context in
+//   - If gap < 19.55 min: split gap proportionally based on in/out ratio
 //
-// - Last session: ContextSwitchDuration (20 min) at end
+// - Last session: ContextSwitchOutDuration (16.55 min) at end
 //
 // Example: 3 events in one session, then 1 event 30 min later
-// - Session 1: 20 (context in) + 3×10 (events) + 20 (context out, but see gap)
-// - Gap: 30 min (< 40), so context overhead = 30 min total (15 out, 15 in)
-// - Session 2: (15 context in from gap) + 1×10 (event) + 20 (context out)
-// - Total context: 20 + 30 + 20 = 70 min.
+// - Session 1: 3 (context in) + 3×10 (events) + (context out handled by gap)
+// - Gap: 30 min (> 19.55), so full context overhead = 16.55 out + 3 in
+// - Session 2: (3 context in from gap) + 1×10 (event) + 16.55 (context out)
+// - Total context: 3 + 16.55 + 3 + 16.55 = 39.1 min.
 func calculateSessionCosts(events []ParticipantEvent, cfg Config) (githubHours, contextHours float64, sessions int) {
 	if len(events) == 0 {
 		return 0, 0, 0
@@ -692,7 +713,8 @@ func calculateSessionCosts(events []ParticipantEvent, cfg Config) (githubHours, 
 	})
 
 	gapThreshold := cfg.SessionGapThreshold
-	contextSwitch := cfg.ContextSwitchDuration
+	contextIn := cfg.ContextSwitchInDuration
+	contextOut := cfg.ContextSwitchOutDuration
 	eventDur := cfg.EventDuration
 
 	// Group events into sessions
@@ -741,7 +763,7 @@ func calculateSessionCosts(events []ParticipantEvent, cfg Config) (githubHours, 
 	}
 
 	// First session: context in
-	contextTime += contextSwitch
+	contextTime += contextIn
 
 	// Between sessions: context out + context in, capped by gap
 	for i := range len(sessionGroups) - 1 {
@@ -749,18 +771,19 @@ func calculateSessionCosts(events []ParticipantEvent, cfg Config) (githubHours, 
 		firstEventOfNextSession := sorted[sessionGroups[i+1].start].Timestamp
 		gap := firstEventOfNextSession.Sub(lastEventOfSession)
 
-		// Maximum context switch is 2 × contextSwitch (out + in)
-		maxContextSwitch := 2 * contextSwitch
+		// Maximum context switch is contextOut + contextIn
+		maxContextSwitch := contextOut + contextIn
 		if gap >= maxContextSwitch {
 			contextTime += maxContextSwitch
 		} else {
-			// Cap at gap (implicitly split as gap/2 out + gap/2 in)
+			// Cap at gap - split proportionally based on out/in ratio
+			// This maintains the asymmetry (16.55 min out vs 3 min in)
 			contextTime += gap
 		}
 	}
 
 	// Last session: context out
-	contextTime += contextSwitch
+	contextTime += contextOut
 
 	githubHours = githubTime.Hours()
 	contextHours = contextTime.Hours()

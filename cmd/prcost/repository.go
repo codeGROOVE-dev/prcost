@@ -177,7 +177,8 @@ func formatTimeUnit(hours float64) string {
 	// Show minutes for values less than 1 hour
 	if hours < 1.0 {
 		minutes := hours * 60.0
-		return fmt.Sprintf("%.0f min", minutes)
+		// Use 1 decimal place for better precision and clearer addition
+		return fmt.Sprintf("%.1f min", minutes)
 	}
 
 	if hours < 48 {
@@ -248,8 +249,8 @@ func printExtrapolatedResults(title string, days int, ext *cost.ExtrapolatedBrea
 	fmt.Println()
 
 	// Authors section
-	fmt.Println("  Development Cost")
-	fmt.Println("  ────────────────")
+	fmt.Println("  Development Costs")
+	fmt.Println("  ─────────────────")
 	fmt.Printf("    New Development           %12s    %s\n",
 		formatWithCommas(avgAuthorNewCodeCost), formatTimeUnit(avgAuthorNewCodeHours))
 	fmt.Printf("    Adaptation                %12s    %s\n",
@@ -265,8 +266,8 @@ func printExtrapolatedResults(title string, days int, ext *cost.ExtrapolatedBrea
 
 	// Participants section (if any participants)
 	if ext.ParticipantTotalCost > 0 {
-		fmt.Println("  Participant Cost")
-		fmt.Println("  ────────────────")
+		fmt.Println("  Participant Costs")
+		fmt.Println("  ─────────────────")
 		if avgParticipantReviewCost > 0 {
 			fmt.Printf("    Review Activity           %12s    %s\n",
 				formatWithCommas(avgParticipantReviewCost), formatTimeUnit(avgParticipantReviewHours))
@@ -312,21 +313,21 @@ func printExtrapolatedResults(title string, days int, ext *cost.ExtrapolatedBrea
 		fmt.Println("  Future Costs")
 		fmt.Println("  ────────────")
 		if ext.CodeChurnCost > 0.01 {
-			fmt.Printf("    Code Churn              %12s    %s\n",
+			fmt.Printf("    Code Churn                %12s    %s\n",
 				formatWithCommas(avgCodeChurnCost), formatTimeUnit(avgCodeChurnHours))
 		}
 		if ext.FutureReviewCost > 0.01 {
-			fmt.Printf("    %-24s%12s    %s\n",
+			fmt.Printf("    %-26s%12s    %s\n",
 				"Review",
 				formatWithCommas(avgFutureReviewCost), formatTimeUnit(avgFutureReviewHours))
 		}
 		if ext.FutureMergeCost > 0.01 {
-			fmt.Printf("    %-24s%12s    %s\n",
+			fmt.Printf("    %-26s%12s    %s\n",
 				"Merge",
 				formatWithCommas(avgFutureMergeCost), formatTimeUnit(avgFutureMergeHours))
 		}
 		if ext.FutureContextCost > 0.01 {
-			fmt.Printf("    %-24s%12s    %s\n",
+			fmt.Printf("    %-26s%12s    %s\n",
 				"Context Switching",
 				formatWithCommas(avgFutureContextCost), formatTimeUnit(avgFutureContextHours))
 		}
@@ -350,8 +351,8 @@ func printExtrapolatedResults(title string, days int, ext *cost.ExtrapolatedBrea
 	fmt.Println()
 
 	// Authors section (extrapolated)
-	fmt.Println("  Development Cost")
-	fmt.Println("  ────────────────")
+	fmt.Println("  Development Costs")
+	fmt.Println("  ─────────────────")
 	fmt.Printf("    New Development           %12s    %s\n",
 		formatWithCommas(ext.AuthorNewCodeCost), formatTimeUnit(ext.AuthorNewCodeHours))
 	fmt.Printf("    Adaptation                %12s    %s\n",
@@ -367,8 +368,8 @@ func printExtrapolatedResults(title string, days int, ext *cost.ExtrapolatedBrea
 
 	// Participants section (extrapolated, if any participants)
 	if ext.ParticipantTotalCost > 0 {
-		fmt.Println("  Participant Cost")
-		fmt.Println("  ────────────────")
+		fmt.Println("  Participant Costs")
+		fmt.Println("  ─────────────────")
 		if ext.ParticipantReviewCost > 0 {
 			fmt.Printf("    Review Activity           %12s    %s\n",
 				formatWithCommas(ext.ParticipantReviewCost), formatTimeUnit(ext.ParticipantReviewHours))
@@ -407,21 +408,21 @@ func printExtrapolatedResults(title string, days int, ext *cost.ExtrapolatedBrea
 		fmt.Println("  Future Costs")
 		fmt.Println("  ────────────")
 		if ext.CodeChurnCost > 0.01 {
-			fmt.Printf("    Code Churn              %12s    %s\n",
+			fmt.Printf("    Code Churn                %12s    %s\n",
 				formatWithCommas(ext.CodeChurnCost), formatTimeUnit(ext.CodeChurnHours))
 		}
 		if ext.FutureReviewCost > 0.01 {
-			fmt.Printf("    %-24s%12s    %s\n",
+			fmt.Printf("    %-26s%12s    %s\n",
 				"Review",
 				formatWithCommas(ext.FutureReviewCost), formatTimeUnit(ext.FutureReviewHours))
 		}
 		if ext.FutureMergeCost > 0.01 {
-			fmt.Printf("    %-24s%12s    %s\n",
+			fmt.Printf("    %-26s%12s    %s\n",
 				"Merge",
 				formatWithCommas(ext.FutureMergeCost), formatTimeUnit(ext.FutureMergeHours))
 		}
 		if ext.FutureContextCost > 0.01 {
-			fmt.Printf("    %-24s%12s    %s\n",
+			fmt.Printf("    %-26s%12s    %s\n",
 				"Context Switching",
 				formatWithCommas(ext.FutureContextCost), formatTimeUnit(ext.FutureContextHours))
 		}
