@@ -331,7 +331,7 @@ The formula models cumulative probability that any given line in the PR becomes 
 2. **Dependency Propagation**: Changes in one area often necessitate updates elsewhere
 3. **API Evolution**: Interface changes require downstream adaptation
 
-**Empirical Calibration**: Nagappan et al. analyzed Windows Vista development and found organizational churndirectly correlated with defect density [10]. Active codebases exhibit 4-8% weekly churn; we use the conservative 4% baseline. The model predicts that a PR open for 30 days has ~16% of its code requiring updates, matching empirical observations of merge conflict rates.
+**Empirical Calibration**: Nagappan et al. analyzed Windows Vista development and found organizational churn directly correlated with defect density [10]. Active codebases exhibit 4-8% weekly churn; we use the conservative 4% baseline. The model predicts that a PR open for 30 days has ~16% of its code requiring updates, matching empirical observations of merge conflict rates.
 
 **References**:
 [10] Nagappan, N., Murphy, B., & Basili, V. (2008). The Influence of Organizational Structure on Software Quality: An Empirical Case Study. *ICSE '08: Proceedings of the 30th International Conference on Software Engineering*, 521-530. DOI: 10.1145/1368088.1368160
@@ -397,7 +397,7 @@ Where:
 - 2 sessions: 1 for reviewer, 1 for author merge
 - Total: 2 × 40 min = 80 min (1.33 hours)
 
-**Justification**: Based on Microsoft Research findings that context switches require ~20 minutes to restore working memory [2].
+**Justification**: Based on Microsoft Research findings that context switches require ~20 minutes to restore working memory [4].
 
 **Total Future Cost Example** (649 LOC PR):
 - Review: 2.4 hours (size-dependent, 649 / 275)

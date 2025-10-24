@@ -903,7 +903,7 @@
 
         <p class="intro-text">
             Calculate the estimated development cost of a pull request - for a single PR, or extrapolate across a sample set within a repository or organization.
-            Based on <a href="https://github.com/codeGROOVE-dev/prcost#how-it-works">recent software engineering research</a> (COCOMO II, Microsoft, IEEE, Fagan inspection studies).
+            Based on <a href="https://github.com/codeGROOVE-dev/prcost?tab=readme-ov-file#cost-model-scientific-foundations">recent software engineering research</a> (COCOMO II, Microsoft, IEEE, Fagan inspection studies).
         </p>
     </header>
 
@@ -1257,7 +1257,7 @@
             }
         }
 
-        function formatEfficiencyHTML(efficiencyPct, grade, message, preventableCost, preventableHours, totalCost, totalHours, isAnnual = false, annualWasteCost = 0, annualWasteHours = 0, userCount = 0) {
+        function formatEfficiencyHTML(efficiencyPct, grade, message, preventableCost, preventableHours, totalCost, totalHours, isAnnual = false, annualWasteCost = 0, annualWasteHours = 0, userCount = 0, salary = 250000, benefitsMultiplier = 1.2, analysisType = 'project') {
             let html = '<div class="efficiency-section">';
             html += '<h2>Workflow Efficiency</h2>';
 
@@ -1276,7 +1276,9 @@
             if (isAnnual) {
                 html += '<div class="efficiency-annual">';
                 html += '<div class="efficiency-annual-label">Annual Wasted Effort</div>';
-                html += `<div class="efficiency-annual-value">${formatCurrency(annualWasteCost)}</div>`;
+                const annualWasteRounded = Math.round(annualWasteCost);
+                const annualWasteFormatted = '$' + annualWasteRounded.toLocaleString('en-US');
+                html += `<div class="efficiency-annual-value">${annualWasteFormatted}</div>`;
                 html += `<div class="efficiency-annual-time">${formatEngTimeUnit(annualWasteHours)}</div>`;
                 html += '</div>';
             }
@@ -1288,9 +1290,9 @@
                                grade === 'C-' || grade === 'D+' || grade === 'D' || grade === 'D-' || grade === 'F';
 
             if (showCallout && isAnnual) {
-                // Calculate savings potential at 90% efficiency
+                // Calculate savings potential at 94% efficiency
                 const totalAnnualCost = totalCost * (annualWasteCost / preventableCost);
-                const targetWaste = totalAnnualCost * 0.10; // 10% waste at 90% efficiency
+                const targetWaste = totalAnnualCost * 0.06; // 6% waste at 94% efficiency
                 const currentWaste = annualWasteCost;
                 let savings = currentWaste - targetWaste;
 
@@ -1299,9 +1301,20 @@
                 savings -= pricingCost;
 
                 if (savings > 0) {
+                    // Format savings without decimals
+                    const savingsRounded = Math.round(savings);
+                    const savingsFormatted = '$' + savingsRounded.toLocaleString('en-US');
+
+                    // Calculate headcount savings (fully-loaded salary)
+                    const fullyLoadedSalary = salary * benefitsMultiplier;
+                    const headcountSavings = Math.round(savings / fullyLoadedSalary);
+
+                    // Strip + from grade if present (e.g., "C+" → "C")
+                    const gradeForDisplay = grade.replace('+', '');
+
                     html += '<div class="efficiency-callout">';
-                    html += `<p><strong>Tired of being a ${grade} student?</strong></p>`;
-                    html += `<p>Come talk to us at <a href="mailto:go-faster@codeGROOVE.dev">go-faster@codeGROOVE.dev</a> to save at least <strong>${formatCurrency(savings)} a year</strong> in lost development velocity.</p>`;
+                    html += `<p><strong>Tired of being a ${gradeForDisplay} ${analysisType}?</strong></p>`;
+                    html += `<p>Come talk to us at <a href="mailto:go-faster@codeGROOVE.dev">go-faster@codeGROOVE.dev</a> to save at least <strong>${savingsFormatted} a year</strong> in lost development velocity. We're serious. That's like <strong>${headcountSavings} free headcount</strong> on your team. It's free for open-source projects.</p>`;
                     html += '</div>';
                 }
             }
@@ -1534,7 +1547,8 @@
             // Average Preventable Loss Total (before grand total)
             const avgPreventableCost = avgCodeChurnCost + avgDeliveryDelayCost + avgCoordinationCost;
             const avgPreventableHours = avgCodeChurnHours + avgDeliveryDelayHours + avgCoordinationHours;
-            output += `  Preventable Loss Total      ${formatCurrency(avgPreventableCost).padStart(12)}    ${formatTimeUnit(avgPreventableHours)}\n`;
+            const avgPreventablePct = (avgPreventableCost / avgTotalCost) * 100;
+            output += `  Preventable Loss Total      ${formatCurrency(avgPreventableCost).padStart(12)}    ${formatTimeUnit(avgPreventableHours)}  (${avgPreventablePct.toFixed(1)}%)\n`;
 
             // Average Total
             output += '  ═══════════════════════════════════════════════════════════════\n';
@@ -1606,7 +1620,8 @@
             // Preventable Loss Total (before grand total)
             const preventableCost = e.code_churn_cost + e.delivery_delay_cost + e.coordination_cost;
             const preventableHours = e.code_churn_hours + e.delivery_delay_hours + e.coordination_hours;
-            output += `  Preventable Loss Total      ${formatCurrency(preventableCost).padStart(12)}    ${formatTimeUnit(preventableHours)}\n`;
+            const preventablePct = (preventableCost / e.total_cost) * 100;
+            output += `  Preventable Loss Total      ${formatCurrency(preventableCost).padStart(12)}    ${formatTimeUnit(preventableHours)}  (${preventablePct.toFixed(1)}%)\n`;
 
             // Total
             output += '  ═══════════════════════════════════════════════════════════════\n';
@@ -1805,7 +1820,7 @@
                                         html += `<h2>${sourceName}</h2>`;
                                         html += '<div class="meta">';
                                         html += `<strong>Period:</strong> Last ${days} days &nbsp;•&nbsp; `;
-                                        html += `<strong>Total PRs:</strong> ${e.total_prs} &nbsp;•&nbsp; `;
+                                        html += `<strong>Total public PRs:</strong> ${e.total_prs} &nbsp;•&nbsp; `;
                                         html += `<strong>Sampled:</strong> ${e.successful_samples}`;
                                         html += '</div>';
                                         html += '</div>';
@@ -1820,7 +1835,10 @@
                                         const annualWasteCost = extPreventableCost * annualMultiplier;
 
                                         // Workflow Efficiency section (at top)
-                                        html += formatEfficiencyHTML(extEfficiencyPct, extEfficiency.grade, extEfficiency.message, extPreventableCost, extPreventableHours, e.total_cost, e.total_hours, true, annualWasteCost, annualWasteHours, e.unique_users || 0);
+                                        const salary = request.config?.annual_salary || 250000;
+                                        const benefitsMultiplier = request.config?.benefits_multiplier || 1.2;
+                                        const analysisType = mode === 'org' ? 'organization' : 'project';
+                                        html += formatEfficiencyHTML(extEfficiencyPct, extEfficiency.grade, extEfficiency.message, extPreventableCost, extPreventableHours, e.total_cost, e.total_hours, true, annualWasteCost, annualWasteHours, e.unique_users || 0, salary, benefitsMultiplier, analysisType);
 
                                         // Calculate average PR efficiency
                                         const totalPRs = e.total_prs;
