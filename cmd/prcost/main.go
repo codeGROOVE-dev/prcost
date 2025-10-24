@@ -25,6 +25,7 @@ func main() {
 	eventMinutes := flag.Float64("event-minutes", 10, "Minutes per GitHub event (commits, comments, etc.)")
 	format := flag.String("format", "human", "Output format: human or json")
 	verbose := flag.Bool("verbose", false, "Show verbose logging output")
+	dataSource := flag.String("data-source", "prx", "Data source for PR data: prx (direct GitHub API) or turnserver")
 
 	// Org/Repo sampling flags
 	org := flag.String("org", "", "GitHub organization to analyze (optionally with --repo for single repo)")
@@ -124,7 +125,7 @@ func main() {
 				"samples", *samples,
 				"days", *days)
 
-			err := analyzeRepository(ctx, *org, *repo, *samples, *days, cfg, token)
+			err := analyzeRepository(ctx, *org, *repo, *samples, *days, cfg, token, *dataSource)
 			if err != nil {
 				log.Fatalf("Repository analysis failed: %v", err)
 			}
@@ -135,7 +136,7 @@ func main() {
 				"samples", *samples,
 				"days", *days)
 
-			err := analyzeOrganization(ctx, *org, *samples, *days, cfg, token)
+			err := analyzeOrganization(ctx, *org, *samples, *days, cfg, token, *dataSource)
 			if err != nil {
 				log.Fatalf("Organization analysis failed: %v", err)
 			}
@@ -151,11 +152,19 @@ func main() {
 
 		slog.Info("Starting PR cost analysis", "pr_url", prURL, "format", *format)
 
-		// Fetch PR data
-		slog.Info("Fetching PR data from GitHub")
-		prData, err := github.FetchPRData(ctx, prURL, token)
+		// Fetch PR data using configured data source
+		slog.Info("Fetching PR data", "source", *dataSource)
+		var prData cost.PRData
+		var err error
+		if *dataSource == "turnserver" {
+			// Use turnserver - pass time.Now() since we don't have updatedAt for single PR requests
+			prData, err = github.FetchPRDataViaTurnserver(ctx, prURL, token, time.Now())
+		} else {
+			// Use prx - pass time.Now() since we don't have updatedAt for single PR requests
+			prData, err = github.FetchPRData(ctx, prURL, token, time.Now())
+		}
 		if err != nil {
-			slog.Error("Failed to fetch PR data", "error", err)
+			slog.Error("Failed to fetch PR data", "source", *dataSource, "error", err)
 			log.Fatalf("Failed to fetch PR data: %v", err)
 		}
 		slog.Info("Successfully fetched PR data",

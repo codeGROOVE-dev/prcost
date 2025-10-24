@@ -5,6 +5,7 @@ go 1.25.3
 require (
 	github.com/codeGROOVE-dev/gsm v0.0.0-20251019065141-833fe2363d22
 	github.com/codeGROOVE-dev/prx v0.0.0-20251024000018-35ba2605d031
+	github.com/codeGROOVE-dev/turnclient v0.0.0-20251022064427-5a712e1e10e6
 	golang.org/x/time v0.14.0
 )
 

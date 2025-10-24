@@ -14,7 +14,7 @@ import (
 // analyzeRepository performs repository-wide cost analysis by sampling PRs.
 // Uses library functions from pkg/github and pkg/cost for fetching, sampling,
 // and extrapolation - all functionality is available to external clients.
-func analyzeRepository(ctx context.Context, owner, repo string, sampleSize, days int, cfg cost.Config, token string) error {
+func analyzeRepository(ctx context.Context, owner, repo string, sampleSize, days int, cfg cost.Config, token string, dataSource string) error {
 	slog.Info("Fetching PR list from repository")
 
 	// Calculate since date
@@ -55,10 +55,18 @@ func analyzeRepository(ctx context.Context, owner, repo string, sampleSize, days
 			"number", pr.Number,
 			"progress", fmt.Sprintf("%d/%d", i+1, len(samples)))
 
-		// Fetch full PR data
-		prData, err := github.FetchPRData(ctx, prURL, token)
+		// Fetch full PR data using configured data source
+		var prData cost.PRData
+		var err error
+		if dataSource == "turnserver" {
+			// Use turnserver with updatedAt for effective caching
+			prData, err = github.FetchPRDataViaTurnserver(ctx, prURL, token, pr.UpdatedAt)
+		} else {
+			// Use prx with updatedAt for effective caching
+			prData, err = github.FetchPRData(ctx, prURL, token, pr.UpdatedAt)
+		}
 		if err != nil {
-			slog.Warn("Failed to fetch PR data, skipping", "pr_number", pr.Number, "error", err)
+			slog.Warn("Failed to fetch PR data, skipping", "pr_number", pr.Number, "source", dataSource, "error", err)
 			continue
 		}
 
@@ -83,7 +91,7 @@ func analyzeRepository(ctx context.Context, owner, repo string, sampleSize, days
 // analyzeOrganization performs organization-wide cost analysis by sampling PRs across all repos.
 // Uses library functions from pkg/github and pkg/cost for fetching, sampling,
 // and extrapolation - all functionality is available to external clients.
-func analyzeOrganization(ctx context.Context, org string, sampleSize, days int, cfg cost.Config, token string) error {
+func analyzeOrganization(ctx context.Context, org string, sampleSize, days int, cfg cost.Config, token string, dataSource string) error {
 	slog.Info("Fetching PR list from organization")
 
 	// Calculate since date
@@ -124,10 +132,18 @@ func analyzeOrganization(ctx context.Context, org string, sampleSize, days int, 
 			"number", pr.Number,
 			"progress", fmt.Sprintf("%d/%d", i+1, len(samples)))
 
-		// Fetch full PR data
-		prData, err := github.FetchPRData(ctx, prURL, token)
+		// Fetch full PR data using configured data source
+		var prData cost.PRData
+		var err error
+		if dataSource == "turnserver" {
+			// Use turnserver with updatedAt for effective caching
+			prData, err = github.FetchPRDataViaTurnserver(ctx, prURL, token, pr.UpdatedAt)
+		} else {
+			// Use prx with updatedAt for effective caching
+			prData, err = github.FetchPRData(ctx, prURL, token, pr.UpdatedAt)
+		}
 		if err != nil {
-			slog.Warn("Failed to fetch PR data, skipping", "pr_number", pr.Number, "error", err)
+			slog.Warn("Failed to fetch PR data, skipping", "pr_number", pr.Number, "source", dataSource, "error", err)
 			continue
 		}
 
