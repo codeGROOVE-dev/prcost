@@ -296,85 +296,7 @@ func printHumanReadable(breakdown *cost.Breakdown, prURL string) {
 
 	// Delay and Future Costs - only show if there are any delay costs
 	if breakdown.DelayCost > 0 {
-		// Merge Delay Costs
-		fmt.Println("  Delay Costs")
-		fmt.Println("  ───────────")
-		if breakdown.DelayCostDetail.DeliveryDelayHours > 0 {
-			if breakdown.DelayCapped {
-				fmt.Printf("    Delivery                  %12s    %s (capped)\n",
-					formatCurrency(breakdown.DelayCostDetail.DeliveryDelayCost), formatTimeUnit(breakdown.DelayCostDetail.DeliveryDelayHours))
-			} else {
-				fmt.Printf("    Delivery                  %12s    %s\n",
-					formatCurrency(breakdown.DelayCostDetail.DeliveryDelayCost), formatTimeUnit(breakdown.DelayCostDetail.DeliveryDelayHours))
-			}
-		}
-
-		if breakdown.DelayCostDetail.CoordinationHours > 0 {
-			if breakdown.DelayCapped {
-				fmt.Printf("    Coordination              %12s    %s (capped)\n",
-					formatCurrency(breakdown.DelayCostDetail.CoordinationCost), formatTimeUnit(breakdown.DelayCostDetail.CoordinationHours))
-			} else {
-				fmt.Printf("    Coordination              %12s    %s\n",
-					formatCurrency(breakdown.DelayCostDetail.CoordinationCost), formatTimeUnit(breakdown.DelayCostDetail.CoordinationHours))
-			}
-		}
-
-		mergeDelayCost := breakdown.DelayCostDetail.DeliveryDelayCost + breakdown.DelayCostDetail.CoordinationCost
-		mergeDelayHours := breakdown.DelayCostDetail.DeliveryDelayHours + breakdown.DelayCostDetail.CoordinationHours
-		fmt.Println("                              ────────────")
-		fmt.Printf("    Subtotal                  %12s    %s\n",
-			formatCurrency(mergeDelayCost), formatTimeUnit(mergeDelayHours))
-		fmt.Println()
-
-		// Future Costs
-		hasFutureCosts := breakdown.DelayCostDetail.ReworkPercentage > 0 ||
-			breakdown.DelayCostDetail.FutureReviewCost > 0 ||
-			breakdown.DelayCostDetail.FutureMergeCost > 0 ||
-			breakdown.DelayCostDetail.FutureContextCost > 0
-
-		if hasFutureCosts {
-			fmt.Println("  Future Costs")
-			fmt.Println("  ────────────")
-
-			if breakdown.DelayCostDetail.ReworkPercentage > 0 {
-				label := fmt.Sprintf("Code Churn (%.0f%% drift)", breakdown.DelayCostDetail.ReworkPercentage)
-				fmt.Printf("    %-26s%12s    %s\n",
-					label,
-					formatCurrency(breakdown.DelayCostDetail.CodeChurnCost),
-					formatTimeUnit(breakdown.DelayCostDetail.CodeChurnHours))
-			}
-
-			if breakdown.DelayCostDetail.FutureReviewCost > 0 {
-				fmt.Printf("    %-26s%12s    %s\n",
-					"Review",
-					formatCurrency(breakdown.DelayCostDetail.FutureReviewCost), formatTimeUnit(breakdown.DelayCostDetail.FutureReviewHours))
-			}
-
-			if breakdown.DelayCostDetail.FutureMergeCost > 0 {
-				fmt.Printf("    %-26s%12s    %s\n",
-					"Merge",
-					formatCurrency(breakdown.DelayCostDetail.FutureMergeCost), formatTimeUnit(breakdown.DelayCostDetail.FutureMergeHours))
-			}
-
-			if breakdown.DelayCostDetail.FutureContextCost > 0 {
-				fmt.Printf("    %-26s%12s    %s\n",
-					"Context Switching",
-					formatCurrency(breakdown.DelayCostDetail.FutureContextCost), formatTimeUnit(breakdown.DelayCostDetail.FutureContextHours))
-			}
-
-			futureCost := breakdown.DelayCostDetail.CodeChurnCost +
-				breakdown.DelayCostDetail.FutureReviewCost +
-				breakdown.DelayCostDetail.FutureMergeCost +
-				breakdown.DelayCostDetail.FutureContextCost
-			futureHours := breakdown.DelayCostDetail.CodeChurnHours +
-				breakdown.DelayCostDetail.FutureReviewHours +
-				breakdown.DelayCostDetail.FutureMergeHours +
-				breakdown.DelayCostDetail.FutureContextHours
-			fmt.Println("                              ────────────")
-			fmt.Printf("    Subtotal                  %12s    %s\n",
-				formatCurrency(futureCost), formatTimeUnit(futureHours))
-			fmt.Println()
-		}
+		printDelayCosts(breakdown, formatCurrency)
 	}
 
 	// Grand Total
@@ -385,6 +307,100 @@ func printHumanReadable(breakdown *cost.Breakdown, prURL string) {
 	fmt.Println("  ═══════════════════════════════════════════════════════════════")
 	fmt.Printf("  Total                       %12s    %s\n",
 		formatCurrency(breakdown.TotalCost), formatTimeUnit(totalHours))
+	fmt.Println()
+}
+
+// printDelayCosts prints delay and future costs section.
+func printDelayCosts(breakdown *cost.Breakdown, formatCurrency func(float64) string) {
+	// Merge Delay Costs
+	fmt.Println("  Delay Costs")
+	fmt.Println("  ───────────")
+
+	if breakdown.DelayCostDetail.DeliveryDelayHours > 0 {
+		cappedSuffix := ""
+		if breakdown.DelayCapped {
+			cappedSuffix = " (capped)"
+		}
+		fmt.Printf("    Delivery                  %12s    %s%s\n",
+			formatCurrency(breakdown.DelayCostDetail.DeliveryDelayCost),
+			formatTimeUnit(breakdown.DelayCostDetail.DeliveryDelayHours),
+			cappedSuffix)
+	}
+
+	if breakdown.DelayCostDetail.CoordinationHours > 0 {
+		cappedSuffix := ""
+		if breakdown.DelayCapped {
+			cappedSuffix = " (capped)"
+		}
+		fmt.Printf("    Coordination              %12s    %s%s\n",
+			formatCurrency(breakdown.DelayCostDetail.CoordinationCost),
+			formatTimeUnit(breakdown.DelayCostDetail.CoordinationHours),
+			cappedSuffix)
+	}
+
+	mergeDelayCost := breakdown.DelayCostDetail.DeliveryDelayCost + breakdown.DelayCostDetail.CoordinationCost
+	mergeDelayHours := breakdown.DelayCostDetail.DeliveryDelayHours + breakdown.DelayCostDetail.CoordinationHours
+	fmt.Println("                              ────────────")
+	fmt.Printf("    Subtotal                  %12s    %s\n",
+		formatCurrency(mergeDelayCost), formatTimeUnit(mergeDelayHours))
+	fmt.Println()
+
+	// Future Costs
+	hasFutureCosts := breakdown.DelayCostDetail.ReworkPercentage > 0 ||
+		breakdown.DelayCostDetail.FutureReviewCost > 0 ||
+		breakdown.DelayCostDetail.FutureMergeCost > 0 ||
+		breakdown.DelayCostDetail.FutureContextCost > 0
+
+	if hasFutureCosts {
+		printFutureCosts(breakdown, formatCurrency)
+	}
+}
+
+// printFutureCosts prints future costs subsection.
+func printFutureCosts(breakdown *cost.Breakdown, formatCurrency func(float64) string) {
+	fmt.Println("  Future Costs")
+	fmt.Println("  ────────────")
+
+	if breakdown.DelayCostDetail.ReworkPercentage > 0 {
+		label := fmt.Sprintf("Code Churn (%.0f%% drift)", breakdown.DelayCostDetail.ReworkPercentage)
+		fmt.Printf("    %-26s%12s    %s\n",
+			label,
+			formatCurrency(breakdown.DelayCostDetail.CodeChurnCost),
+			formatTimeUnit(breakdown.DelayCostDetail.CodeChurnHours))
+	}
+
+	if breakdown.DelayCostDetail.FutureReviewCost > 0 {
+		fmt.Printf("    %-26s%12s    %s\n",
+			"Review",
+			formatCurrency(breakdown.DelayCostDetail.FutureReviewCost),
+			formatTimeUnit(breakdown.DelayCostDetail.FutureReviewHours))
+	}
+
+	if breakdown.DelayCostDetail.FutureMergeCost > 0 {
+		fmt.Printf("    %-26s%12s    %s\n",
+			"Merge",
+			formatCurrency(breakdown.DelayCostDetail.FutureMergeCost),
+			formatTimeUnit(breakdown.DelayCostDetail.FutureMergeHours))
+	}
+
+	if breakdown.DelayCostDetail.FutureContextCost > 0 {
+		fmt.Printf("    %-26s%12s    %s\n",
+			"Context Switching",
+			formatCurrency(breakdown.DelayCostDetail.FutureContextCost),
+			formatTimeUnit(breakdown.DelayCostDetail.FutureContextHours))
+	}
+
+	futureCost := breakdown.DelayCostDetail.CodeChurnCost +
+		breakdown.DelayCostDetail.FutureReviewCost +
+		breakdown.DelayCostDetail.FutureMergeCost +
+		breakdown.DelayCostDetail.FutureContextCost
+	futureHours := breakdown.DelayCostDetail.CodeChurnHours +
+		breakdown.DelayCostDetail.FutureReviewHours +
+		breakdown.DelayCostDetail.FutureMergeHours +
+		breakdown.DelayCostDetail.FutureContextHours
+	fmt.Println("                              ────────────")
+	fmt.Printf("    Subtotal                  %12s    %s\n",
+		formatCurrency(futureCost), formatTimeUnit(futureHours))
 	fmt.Println()
 }
 

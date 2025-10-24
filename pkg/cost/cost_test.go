@@ -662,34 +662,34 @@ func TestCalculateFastTurnaroundNoDelay(t *testing.T) {
 	cfg := DefaultConfig()
 
 	testCases := []struct {
-		name       string
+		name        string
 		openMinutes float64
-		wantDelay  float64
+		wantDelay   float64
 	}{
 		{
-			name:       "0 minutes - instant merge",
+			name:        "0 minutes - instant merge",
 			openMinutes: 0,
-			wantDelay:  0,
+			wantDelay:   0,
 		},
 		{
-			name:       "15 minutes - very fast",
+			name:        "15 minutes - very fast",
 			openMinutes: 15,
-			wantDelay:  0,
+			wantDelay:   0,
 		},
 		{
-			name:       "29 minutes - just under threshold",
+			name:        "29 minutes - just under threshold",
 			openMinutes: 29,
-			wantDelay:  0,
+			wantDelay:   0,
 		},
 		{
-			name:       "31 minutes - just over threshold",
+			name:        "31 minutes - just over threshold",
 			openMinutes: 31,
-			wantDelay:  0, // Will be > 0 since 31 > 30
+			wantDelay:   0, // Will be > 0 since 31 > 30
 		},
 		{
-			name:       "60 minutes - one hour",
+			name:        "60 minutes - one hour",
 			openMinutes: 60,
-			wantDelay:  0, // Will be > 0
+			wantDelay:   0, // Will be > 0
 		},
 	}
 
@@ -724,12 +724,10 @@ func TestCalculateFastTurnaroundNoDelay(t *testing.T) {
 					t.Errorf("Expected 0 coordination cost for %v minute PR, got $%.2f",
 						tc.openMinutes, breakdown.DelayCostDetail.CoordinationCost)
 				}
-			} else {
+			} else if breakdown.DelayCost == 0 {
 				// For PRs >= 30 minutes, delay cost should be > 0
-				if breakdown.DelayCost == 0 {
-					t.Errorf("Expected non-zero delay cost for %v minute PR, got $0",
-						tc.openMinutes)
-				}
+				t.Errorf("Expected non-zero delay cost for %v minute PR, got $0",
+					tc.openMinutes)
 			}
 		})
 	}

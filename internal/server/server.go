@@ -894,17 +894,20 @@ func (s *Server) handleStatic(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Set content type based on file extension
-	contentType := "application/octet-stream"
-	if strings.HasSuffix(path, ".png") {
+	var contentType string
+	switch {
+	case strings.HasSuffix(path, ".png"):
 		contentType = "image/png"
-	} else if strings.HasSuffix(path, ".jpg") || strings.HasSuffix(path, ".jpeg") {
+	case strings.HasSuffix(path, ".jpg"), strings.HasSuffix(path, ".jpeg"):
 		contentType = "image/jpeg"
-	} else if strings.HasSuffix(path, ".ico") {
+	case strings.HasSuffix(path, ".ico"):
 		contentType = "image/x-icon"
-	} else if strings.HasSuffix(path, ".css") {
+	case strings.HasSuffix(path, ".css"):
 		contentType = "text/css; charset=utf-8"
-	} else if strings.HasSuffix(path, ".js") {
+	case strings.HasSuffix(path, ".js"):
 		contentType = "application/javascript; charset=utf-8"
+	default:
+		contentType = "application/octet-stream"
 	}
 
 	w.Header().Set("Content-Type", contentType)
@@ -1560,19 +1563,9 @@ func logSSEError(ctx context.Context, logger *slog.Logger, err error) {
 // processRepoSampleWithProgress processes a repository sample with progress updates via SSE.
 func (s *Server) processRepoSampleWithProgress(ctx context.Context, req *RepoSampleRequest, token string, writer http.ResponseWriter) {
 	// Use background context for work to prevent client timeout from canceling operations
-	// We'll monitor the request context separately to detect client disconnects
+	// The request context (ctx) is only used for SSE writes and logging
 	workCtx := context.Background()
 
-	// Monitor request context for disconnects in background
-	disconnected := make(chan struct{})
-	go func() {
-		<-ctx.Done()
-		s.logger.WarnContext(ctx, "[processRepoSampleWithProgress] Client disconnected",
-			"error", ctx.Err(),
-			"owner", req.Owner,
-			"repo", req.Repo)
-		close(disconnected)
-	}()
 	defer func() {
 		s.logger.InfoContext(ctx, "[processRepoSampleWithProgress] Stream handler completed",
 			"owner", req.Owner,
@@ -1675,18 +1668,9 @@ func (s *Server) processRepoSampleWithProgress(ctx context.Context, req *RepoSam
 // processOrgSampleWithProgress processes an organization sample with progress updates via SSE.
 func (s *Server) processOrgSampleWithProgress(ctx context.Context, req *OrgSampleRequest, token string, writer http.ResponseWriter) {
 	// Use background context for work to prevent client timeout from canceling operations
-	// We'll monitor the request context separately to detect client disconnects
+	// The request context (ctx) is only used for SSE writes and logging
 	workCtx := context.Background()
 
-	// Monitor request context for disconnects in background
-	disconnected := make(chan struct{})
-	go func() {
-		<-ctx.Done()
-		s.logger.WarnContext(ctx, "[processOrgSampleWithProgress] Client disconnected",
-			"error", ctx.Err(),
-			"org", req.Org)
-		close(disconnected)
-	}()
 	defer func() {
 		s.logger.InfoContext(ctx, "[processOrgSampleWithProgress] Stream handler completed",
 			"org", req.Org)
@@ -1797,6 +1781,7 @@ func (s *Server) processOrgSampleWithProgress(ctx context.Context, req *OrgSampl
 func (s *Server) processPRsInParallel(workCtx, reqCtx context.Context, samples []github.PRSummary, defaultOwner, defaultRepo, token string, cfg cost.Config, writer http.ResponseWriter) []cost.Breakdown {
 	var breakdowns []cost.Breakdown
 	var mu sync.Mutex
+	var sseMu sync.Mutex // Protects SSE writes to prevent corrupted chunked encoding
 
 	// Use a buffered channel for worker pool pattern
 	concurrency := 5 // Process up to 5 PRs concurrently
@@ -1827,6 +1812,7 @@ func (s *Server) processPRsInParallel(workCtx, reqCtx context.Context, samples [
 			progress := fmt.Sprintf("%d/%d", index+1, totalSamples)
 
 			// Send "fetching" update using request context for SSE
+			sseMu.Lock()
 			logSSEError(reqCtx, s.logger, sendSSE(writer, ProgressUpdate{
 				Type:     "fetching",
 				PR:       prSummary.Number,
@@ -1834,6 +1820,7 @@ func (s *Server) processPRsInParallel(workCtx, reqCtx context.Context, samples [
 				Repo:     repo,
 				Progress: progress,
 			}))
+			sseMu.Unlock()
 
 			prURL := fmt.Sprintf("https://github.com/%s/%s/pull/%d", owner, repo, prSummary.Number)
 
@@ -1851,6 +1838,7 @@ func (s *Server) processPRsInParallel(workCtx, reqCtx context.Context, samples [
 				}
 				if err != nil {
 					s.logger.WarnContext(reqCtx, "Failed to fetch PR data, skipping", "pr_number", prSummary.Number, "source", s.dataSource, errorKey, err)
+					sseMu.Lock()
 					logSSEError(reqCtx, s.logger, sendSSE(writer, ProgressUpdate{
 						Type:     "error",
 						PR:       prSummary.Number,
@@ -1859,6 +1847,7 @@ func (s *Server) processPRsInParallel(workCtx, reqCtx context.Context, samples [
 						Progress: progress,
 						Error:    fmt.Sprintf("Failed to fetch PR data: %v", err),
 					}))
+					sseMu.Unlock()
 					return
 				}
 
@@ -1867,6 +1856,7 @@ func (s *Server) processPRsInParallel(workCtx, reqCtx context.Context, samples [
 			}
 
 			// Send "processing" update using request context for SSE
+			sseMu.Lock()
 			logSSEError(reqCtx, s.logger, sendSSE(writer, ProgressUpdate{
 				Type:     "processing",
 				PR:       prSummary.Number,
@@ -1874,6 +1864,7 @@ func (s *Server) processPRsInParallel(workCtx, reqCtx context.Context, samples [
 				Repo:     repo,
 				Progress: progress,
 			}))
+			sseMu.Unlock()
 
 			breakdown := cost.Calculate(prData, cfg)
 
@@ -1883,6 +1874,7 @@ func (s *Server) processPRsInParallel(workCtx, reqCtx context.Context, samples [
 			mu.Unlock()
 
 			// Send "complete" update using request context for SSE
+			sseMu.Lock()
 			logSSEError(reqCtx, s.logger, sendSSE(writer, ProgressUpdate{
 				Type:     "complete",
 				PR:       prSummary.Number,
@@ -1890,6 +1882,7 @@ func (s *Server) processPRsInParallel(workCtx, reqCtx context.Context, samples [
 				Repo:     repo,
 				Progress: progress,
 			}))
+			sseMu.Unlock()
 		}(idx, pr)
 	}
 
