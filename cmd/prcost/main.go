@@ -255,8 +255,9 @@ func printHumanReadable(breakdown *cost.Breakdown, prURL string) {
 				formatCurrency(breakdown.Author.GitHubContextCost), formatTimeUnit(breakdown.Author.GitHubContextHours))
 		}
 		fmt.Println("                              ────────────")
-		fmt.Printf("    Subtotal                  %12s    %s\n",
-			formatCurrency(breakdown.Author.TotalCost), formatTimeUnit(breakdown.Author.TotalHours))
+		pct := (breakdown.Author.TotalCost / breakdown.TotalCost) * 100
+		fmt.Printf("    Subtotal                  %12s    %s  (%.1f%%)\n",
+			formatCurrency(breakdown.Author.TotalCost), formatTimeUnit(breakdown.Author.TotalHours), pct)
 		fmt.Println()
 	}
 
@@ -291,8 +292,9 @@ func printHumanReadable(breakdown *cost.Breakdown, prURL string) {
 			}
 		}
 		fmt.Println("                              ────────────")
-		fmt.Printf("    Subtotal                  %12s    %s\n",
-			formatCurrency(totalParticipantCost), formatTimeUnit(totalParticipantHours))
+		pct := (totalParticipantCost / breakdown.TotalCost) * 100
+		fmt.Printf("    Subtotal                  %12s    %s  (%.1f%%)\n",
+			formatCurrency(totalParticipantCost), formatTimeUnit(totalParticipantHours), pct)
 		fmt.Println()
 	}
 
@@ -343,8 +345,9 @@ func printDelayCosts(breakdown *cost.Breakdown, formatCurrency func(float64) str
 	mergeDelayCost := breakdown.DelayCostDetail.DeliveryDelayCost + breakdown.DelayCostDetail.CoordinationCost
 	mergeDelayHours := breakdown.DelayCostDetail.DeliveryDelayHours + breakdown.DelayCostDetail.CoordinationHours
 	fmt.Println("                              ────────────")
-	fmt.Printf("    Subtotal                  %12s    %s\n",
-		formatCurrency(mergeDelayCost), formatTimeUnit(mergeDelayHours))
+	pct := (mergeDelayCost / breakdown.TotalCost) * 100
+	fmt.Printf("    Subtotal                  %12s    %s  (%.1f%%)\n",
+		formatCurrency(mergeDelayCost), formatTimeUnit(mergeDelayHours), pct)
 	fmt.Println()
 
 	// Future Costs
@@ -401,8 +404,9 @@ func printFutureCosts(breakdown *cost.Breakdown, formatCurrency func(float64) st
 		breakdown.DelayCostDetail.FutureMergeHours +
 		breakdown.DelayCostDetail.FutureContextHours
 	fmt.Println("                              ────────────")
-	fmt.Printf("    Subtotal                  %12s    %s\n",
-		formatCurrency(futureCost), formatTimeUnit(futureHours))
+	pct := (futureCost / breakdown.TotalCost) * 100
+	fmt.Printf("    Subtotal                  %12s    %s  (%.1f%%)\n",
+		formatCurrency(futureCost), formatTimeUnit(futureHours), pct)
 	fmt.Println()
 }
 
