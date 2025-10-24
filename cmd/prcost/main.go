@@ -182,7 +182,9 @@ func main() {
 		case "human":
 			printHumanReadable(&breakdown, prURL)
 		case "json":
-			if err := printJSON(&breakdown); err != nil {
+			encoder := json.NewEncoder(os.Stdout)
+			encoder.SetIndent("", "  ")
+			if err := encoder.Encode(&breakdown); err != nil {
 				log.Fatalf("Failed to output results: %v", err)
 			}
 		default:
@@ -321,7 +323,7 @@ func printDelayCosts(breakdown *cost.Breakdown, formatCurrency func(float64) str
 		if breakdown.DelayCapped {
 			cappedSuffix = " (capped)"
 		}
-		fmt.Printf("    Delivery                  %12s    %s%s\n",
+		fmt.Printf("    Project                   %12s    %s%s\n",
 			formatCurrency(breakdown.DelayCostDetail.DeliveryDelayCost),
 			formatTimeUnit(breakdown.DelayCostDetail.DeliveryDelayHours),
 			cappedSuffix)
@@ -424,11 +426,4 @@ func formatWithCommas(amount float64) string {
 	}
 
 	return string(result) + "." + decPart
-}
-
-// printJSON outputs the cost breakdown in JSON format.
-func printJSON(breakdown *cost.Breakdown) error {
-	encoder := json.NewEncoder(os.Stdout)
-	encoder.SetIndent("", "  ")
-	return encoder.Encode(breakdown)
 }

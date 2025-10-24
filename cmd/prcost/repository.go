@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"strconv"
 	"time"
 
 	"github.com/codeGROOVE-dev/prcost/pkg/cost"
@@ -244,8 +245,10 @@ func printExtrapolatedResults(title string, days int, ext *cost.ExtrapolatedBrea
 	avgTotalCost := ext.TotalCost / float64(ext.TotalPRs)
 	avgTotalHours := ext.TotalHours / float64(ext.TotalPRs)
 
-	// Show average PR breakdown
-	fmt.Println("  Average PR (from sample):")
+	// Show average PR breakdown with improved visual hierarchy
+	fmt.Println("  ┌─────────────────────────────────────────────────────────────┐")
+	fmt.Printf("  │ Average PR (sampled over %d day period)%*s│\n", days, 51-len(strconv.Itoa(days)), "")
+	fmt.Println("  └─────────────────────────────────────────────────────────────┘")
 	fmt.Println()
 
 	// Authors section
@@ -287,7 +290,7 @@ func printExtrapolatedResults(title string, days int, ext *cost.ExtrapolatedBrea
 	// Merge Delay section
 	fmt.Println("  Delay Costs")
 	fmt.Println("  ───────────")
-	fmt.Printf("    Delivery                  %12s    %s\n",
+	fmt.Printf("    Project                   %12s    %s\n",
 		formatWithCommas(avgDeliveryDelayCost), formatTimeUnit(avgDeliveryDelayHours))
 	fmt.Printf("    Coordination              %12s    %s\n",
 		formatWithCommas(avgCoordinationCost), formatTimeUnit(avgCoordinationHours))
@@ -346,8 +349,11 @@ func printExtrapolatedResults(title string, days int, ext *cost.ExtrapolatedBrea
 	fmt.Println()
 	fmt.Println()
 
-	// Extrapolated total section
-	fmt.Printf("  Extrapolated Total (%d PRs):\n", ext.TotalPRs)
+	// Extrapolated total section with improved visual hierarchy
+	fmt.Println("  ┌─────────────────────────────────────────────────────────────┐")
+	fmt.Printf("  │ Estimated Total Changes (extrapolated across %d day period)%*s│\n", days, 35-len(strconv.Itoa(days)), "")
+	fmt.Printf("  │ Total PRs: %d%*s│\n", ext.TotalPRs, 60-len(strconv.Itoa(ext.TotalPRs)), "")
+	fmt.Println("  └─────────────────────────────────────────────────────────────┘")
 	fmt.Println()
 
 	// Authors section (extrapolated)
@@ -389,7 +395,7 @@ func printExtrapolatedResults(title string, days int, ext *cost.ExtrapolatedBrea
 	// Merge Delay section (extrapolated)
 	fmt.Println("  Delay Costs")
 	fmt.Println("  ───────────")
-	fmt.Printf("    Delivery                  %12s    %s\n",
+	fmt.Printf("    Project                   %12s    %s\n",
 		formatWithCommas(ext.DeliveryDelayCost), formatTimeUnit(ext.DeliveryDelayHours))
 	fmt.Printf("    Coordination              %12s    %s\n",
 		formatWithCommas(ext.CoordinationCost), formatTimeUnit(ext.CoordinationHours))

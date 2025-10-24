@@ -464,6 +464,53 @@
             box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
         }
 
+        .result-summary {
+            background: linear-gradient(135deg, #f9f9fb 0%, #ffffff 100%);
+            padding: 24px;
+            border-radius: 12px;
+            border: 1px solid #d2d2d7;
+            margin-bottom: 32px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+        }
+
+        .result-summary h2 {
+            font-size: 20px;
+            font-weight: 700;
+            margin: 0 0 12px 0;
+            color: #1d1d1f;
+            letter-spacing: -0.02em;
+        }
+
+        .result-summary .meta {
+            font-size: 15px;
+            color: #6e6e73;
+            line-height: 1.6;
+        }
+
+        .result-summary .meta strong {
+            color: #1d1d1f;
+            font-weight: 600;
+        }
+
+        .result-section {
+            margin-bottom: 32px;
+        }
+
+        .result-section h2 {
+            font-size: 19px;
+            font-weight: 700;
+            margin: 0 0 16px 0;
+            color: #1d1d1f;
+            letter-spacing: -0.02em;
+            padding-bottom: 12px;
+            border-bottom: 3px solid #ffcc00;
+            display: inline-block;
+        }
+
+        .result-section pre {
+            margin-top: 0;
+        }
+
         .error {
             background: #fff5f5;
             color: #c00;
@@ -1055,11 +1102,11 @@
 
             // Delay and Future Costs - only show if there are any delay costs
             if (b.delay_cost > 0) {
-                // Merge Delay
-                output += '  Merge Delay\n';
+                // Delay Costs
+                output += '  Delay Costs\n';
                 output += '  ───────────\n';
                 const cappedLabel = b.delay_capped ? ' (capped)' : '';
-                output += `    Delivery                  ${formatCurrency(b.delay_cost_detail.delivery_delay_cost).padStart(12)}    ${formatTimeUnit(b.delay_cost_detail.delivery_delay_hours)}${cappedLabel}\n`;
+                output += `    Project                   ${formatCurrency(b.delay_cost_detail.delivery_delay_cost).padStart(12)}    ${formatTimeUnit(b.delay_cost_detail.delivery_delay_hours)}${cappedLabel}\n`;
                 output += `    Coordination              ${formatCurrency(b.delay_cost_detail.coordination_cost).padStart(12)}    ${formatTimeUnit(b.delay_cost_detail.coordination_hours)}${cappedLabel}\n`;
                 const mergeDelayCost = b.delay_cost_detail.delivery_delay_cost + b.delay_cost_detail.coordination_cost;
                 const mergeDelayHours = b.delay_cost_detail.delivery_delay_hours + b.delay_cost_detail.coordination_hours;
@@ -1147,11 +1194,11 @@
             const avgTotalCost = e.total_cost / totalPRs;
             const avgTotalHours = e.total_hours / totalPRs;
 
-            let output = '  Average PR (from sample):\n\n';
+            let output = '';
 
-            // Authors
-            output += '  Authors\n';
-            output += '  ───────\n';
+            // Development Costs
+            output += '  Development Costs\n';
+            output += '  ─────────────────\n';
             output += `    New Development           ${formatCurrency(avgAuthorNewCodeCost).padStart(12)}    ${formatTimeUnit(avgAuthorNewCodeHours)}\n`;
             output += `    Code Adaptation           ${formatCurrency(avgAuthorAdaptationCost).padStart(12)}    ${formatTimeUnit(avgAuthorAdaptationHours)}\n`;
             output += `    GitHub Activity           ${formatCurrency(avgAuthorGitHubCost).padStart(12)}    ${formatTimeUnit(avgAuthorGitHubHours)}\n`;
@@ -1169,10 +1216,10 @@
                 output += `    Subtotal                  ${formatCurrency(avgParticipantTotalCost).padStart(12)}    ${formatTimeUnit(avgParticipantTotalHours)}\n\n`;
             }
 
-            // Merge Delay
-            output += '  Merge Delay\n';
+            // Delay Costs
+            output += '  Delay Costs\n';
             output += '  ───────────\n';
-            output += `    Delivery                  ${formatCurrency(avgDeliveryDelayCost).padStart(12)}    ${formatTimeUnit(avgDeliveryDelayHours)}\n`;
+            output += `    Project                   ${formatCurrency(avgDeliveryDelayCost).padStart(12)}    ${formatTimeUnit(avgDeliveryDelayHours)}\n`;
             output += `    Coordination              ${formatCurrency(avgCoordinationCost).padStart(12)}    ${formatTimeUnit(avgCoordinationHours)}\n`;
             const avgMergeDelayCost = avgDeliveryDelayCost + avgCoordinationCost;
             const avgMergeDelayHours = avgDeliveryDelayHours + avgCoordinationHours;
@@ -1210,11 +1257,11 @@
         }
 
         function formatExtrapolatedTotal(e) {
-            let output = `  Extrapolated Total (${e.total_prs} PRs):\n\n`;
+            let output = '';
 
-            // Authors
-            output += '  Authors\n';
-            output += '  ───────\n';
+            // Development Costs
+            output += '  Development Costs\n';
+            output += '  ─────────────────\n';
             output += `    New Development           ${formatCurrency(e.author_new_code_cost).padStart(12)}    ${formatTimeUnit(e.author_new_code_hours)}\n`;
             output += `    Code Adaptation           ${formatCurrency(e.author_adaptation_cost).padStart(12)}    ${formatTimeUnit(e.author_adaptation_hours)}\n`;
             output += `    GitHub Activity           ${formatCurrency(e.author_github_cost).padStart(12)}    ${formatTimeUnit(e.author_github_hours)}\n`;
@@ -1232,10 +1279,10 @@
                 output += `    Subtotal                  ${formatCurrency(e.participant_total_cost).padStart(12)}    ${formatTimeUnit(e.participant_total_hours)}\n\n`;
             }
 
-            // Merge Delay
-            output += '  Merge Delay\n';
+            // Delay Costs
+            output += '  Delay Costs\n';
             output += '  ───────────\n';
-            output += `    Delivery                  ${formatCurrency(e.delivery_delay_cost).padStart(12)}    ${formatTimeUnit(e.delivery_delay_hours)}\n`;
+            output += `    Project                   ${formatCurrency(e.delivery_delay_cost).padStart(12)}    ${formatTimeUnit(e.delivery_delay_hours)}\n`;
             output += `    Coordination              ${formatCurrency(e.coordination_cost).padStart(12)}    ${formatTimeUnit(e.coordination_hours)}\n`;
             const mergeDelayCost = e.delivery_delay_cost + e.coordination_cost;
             const mergeDelayHours = e.delivery_delay_hours + e.coordination_hours;
@@ -1424,21 +1471,39 @@
                                         // Final result - show both average and extrapolated in separate sections
                                         const mode = document.querySelector('input[name="mode"]:checked').value;
                                         const e = data.result;
+                                        const days = document.getElementById(mode + 'Days').value || '90';
 
-                                        // Header with source info
-                                        let header = '\n';
+                                        // Get source name
+                                        let sourceName;
                                         if (mode === 'repo') {
-                                            header += `  ${document.getElementById('repoOwner').value}/${document.getElementById('repoName').value}\n`;
+                                            sourceName = `${document.getElementById('repoOwner').value}/${document.getElementById('repoName').value}`;
                                         } else {
-                                            header += `  ${document.getElementById('orgName').value}\n`;
+                                            sourceName = document.getElementById('orgName').value;
                                         }
-                                        header += `  Period: Last ${document.getElementById(mode + 'Days').value || '90'} days  •  Total PRs: ${e.total_prs}  •  Sampled: ${e.successful_samples}\n\n`;
 
-                                        // Combine both sections
-                                        const avgSection = formatAveragePR(e);
-                                        const extSection = formatExtrapolatedTotal(e);
+                                        // Build elegant HTML structure
+                                        let html = '<div class="result-summary">';
+                                        html += `<h2>${sourceName}</h2>`;
+                                        html += '<div class="meta">';
+                                        html += `<strong>Period:</strong> Last ${days} days &nbsp;•&nbsp; `;
+                                        html += `<strong>Total PRs:</strong> ${e.total_prs} &nbsp;•&nbsp; `;
+                                        html += `<strong>Sampled:</strong> ${e.successful_samples}`;
+                                        html += '</div>';
+                                        html += '</div>';
 
-                                        resultDiv.innerHTML = '<pre><code>' + header + avgSection + '\n' + extSection + '</code></pre>';
+                                        // Average PR section
+                                        html += '<div class="result-section">';
+                                        html += `<h2>Average PR (sampled over ${days} day period)</h2>`;
+                                        html += '<pre><code>' + formatAveragePR(e) + '</code></pre>';
+                                        html += '</div>';
+
+                                        // Extrapolated total section
+                                        html += '<div class="result-section">';
+                                        html += `<h2>Estimated Total Changes (extrapolated across ${days} day period)</h2>`;
+                                        html += '<pre><code>' + formatExtrapolatedTotal(e) + '</code></pre>';
+                                        html += '</div>';
+
+                                        resultDiv.innerHTML = html;
                                         resolve();
                                         return;
                                     }

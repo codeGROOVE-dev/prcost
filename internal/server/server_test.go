@@ -491,7 +491,7 @@ func TestRateLimiting(t *testing.T) {
 	req1.RemoteAddr = "192.168.1.1:12345"
 
 	// Get rate limiter for this IP
-	limiter := s.getLimiter(req1.Context(), "192.168.1.1")
+	limiter := s.limiter(req1.Context(), "192.168.1.1")
 
 	// First request - allowed
 	if !limiter.Allow() {

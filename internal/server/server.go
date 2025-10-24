@@ -185,7 +185,7 @@ func New() *Server {
 
 	// Load GitHub token at startup and cache in memory for performance and billing.
 	// This avoids repeated GSM API calls which cost money.
-	token := server.getFallbackToken(ctx)
+	token := server.token(ctx)
 	if token != "" {
 		logger.InfoContext(ctx, "GitHub fallback token loaded at startup")
 	} else {
@@ -256,8 +256,8 @@ func (s *Server) SetDataSource(source string) {
 	s.logger.InfoContext(ctx, "Data source configured", "source", source)
 }
 
-// getLimiter returns a rate limiter for the given IP address.
-func (s *Server) getLimiter(ctx context.Context, ip string) *rate.Limiter {
+// limiter returns a rate limiter for the given IP address.
+func (s *Server) limiter(ctx context.Context, ip string) *rate.Limiter {
 	s.ipLimitersMu.RLock()
 	limiter, exists := s.ipLimiters[ip]
 	s.ipLimitersMu.RUnlock()
@@ -325,8 +325,8 @@ func (s *Server) clearCache(mu *sync.RWMutex, cache map[string]*cacheEntry, name
 	}
 }
 
-// getCachedPRQuery retrieves cached PR query results.
-func (s *Server) getCachedPRQuery(key string) ([]github.PRSummary, bool) {
+// cachedPRQuery retrieves cached PR query results.
+func (s *Server) cachedPRQuery(key string) ([]github.PRSummary, bool) {
 	s.prQueryCacheMu.RLock()
 	defer s.prQueryCacheMu.RUnlock()
 
@@ -349,8 +349,8 @@ func (s *Server) cachePRQuery(key string, prs []github.PRSummary) {
 	}
 }
 
-// getCachedPRData retrieves cached PR data.
-func (s *Server) getCachedPRData(key string) (cost.PRData, bool) {
+// cachedPRData retrieves cached PR data.
+func (s *Server) cachedPRData(key string) (cost.PRData, bool) {
 	s.prDataCacheMu.RLock()
 	defer s.prDataCacheMu.RUnlock()
 
@@ -496,7 +496,9 @@ func (s *Server) handleCalculate(writer http.ResponseWriter, request *http.Reque
 	ctx := request.Context()
 
 	// Extract client IP for rate limiting and logging.
-	// Check X-Forwarded-For (only trust if behind known proxy).
+	// SECURITY: X-Forwarded-For is trusted because Cloud Run (GCP) sanitizes it.
+	// Cloud Run strips client-provided XFF headers and replaces with actual client IP.
+	// For non-Cloud Run deployments, consider validating source or using RemoteAddr only.
 	clientIP := request.RemoteAddr
 	if xff := request.Header.Get("X-Forwarded-For"); xff != "" {
 		if idx := strings.Index(xff, ","); idx > 0 {
@@ -512,7 +514,7 @@ func (s *Server) handleCalculate(writer http.ResponseWriter, request *http.Reque
 	s.logger.InfoContext(ctx, "[handleCalculate] Incoming request", "client_ip", clientIP, "method", request.Method, "path", request.URL.Path)
 
 	// Per-IP rate limiting (SECURITY: Prevents single client from DoS-ing all users).
-	limiter := s.getLimiter(ctx, clientIP)
+	limiter := s.limiter(ctx, clientIP)
 	if !limiter.Allow() {
 		s.logger.WarnContext(ctx, "[handleCalculate] Rate limit exceeded", "client_ip", clientIP, "path", request.URL.Path)
 		http.Error(writer, "Rate limit exceeded", http.StatusTooManyRequests)
@@ -531,7 +533,7 @@ func (s *Server) handleCalculate(writer http.ResponseWriter, request *http.Reque
 	token := s.extractToken(request)
 	if token == "" {
 		// Try fallback token (GITHUB_TOKEN env var or GITHUB_SECRET from GSM)
-		token = s.getFallbackToken(ctx)
+		token = s.token(ctx)
 		if token == "" {
 			s.logger.WarnContext(ctx, "[handleCalculate] No GitHub token available", "remote_addr", request.RemoteAddr)
 			http.Error(writer, "GitHub token required (set GITHUB_TOKEN env var or provide Authorization header)", http.StatusUnauthorized)
@@ -647,10 +649,10 @@ func (*Server) extractToken(r *http.Request) string {
 	return auth
 }
 
-// getFallbackToken retrieves a GitHub token from environment or Google Secret Manager.
+// token retrieves a GitHub token from environment or Google Secret Manager.
 // Results are cached in memory to avoid repeated API calls (performance and billing).
 // Priority: GITHUB_TOKEN env var, then GITHUB_TOKEN from GSM.
-func (s *Server) getFallbackToken(ctx context.Context) string {
+func (s *Server) token(ctx context.Context) string {
 	// Check cache first (read lock)
 	s.fallbackTokenMu.RLock()
 	if s.fallbackToken != "" {
@@ -703,7 +705,7 @@ func (s *Server) processRequest(ctx context.Context, req *CalculateRequest, toke
 
 	// Try cache first
 	cacheKey := fmt.Sprintf("pr:%s", req.URL)
-	prData, cached := s.getCachedPRData(cacheKey)
+	prData, cached := s.cachedPRData(cacheKey)
 	if cached {
 		s.logger.InfoContext(ctx, "[processRequest] Using cached PR data", "url", req.URL)
 	} else {
@@ -923,6 +925,9 @@ func (s *Server) handleRepoSample(writer http.ResponseWriter, request *http.Requ
 	ctx := request.Context()
 
 	// Extract client IP for rate limiting and logging.
+	// SECURITY: X-Forwarded-For is trusted because Cloud Run (GCP) sanitizes it.
+	// Cloud Run strips client-provided XFF headers and replaces with actual client IP.
+	// For non-Cloud Run deployments, consider validating source or using RemoteAddr only.
 	clientIP := request.RemoteAddr
 	if xff := request.Header.Get("X-Forwarded-For"); xff != "" {
 		if idx := strings.Index(xff, ","); idx > 0 {
@@ -938,7 +943,7 @@ func (s *Server) handleRepoSample(writer http.ResponseWriter, request *http.Requ
 	s.logger.InfoContext(ctx, "[handleRepoSample] Incoming request", "client_ip", clientIP)
 
 	// Per-IP rate limiting.
-	limiter := s.getLimiter(ctx, clientIP)
+	limiter := s.limiter(ctx, clientIP)
 	if !limiter.Allow() {
 		s.logger.WarnContext(ctx, "[handleRepoSample] Rate limit exceeded", "client_ip", clientIP)
 		http.Error(writer, "Rate limit exceeded", http.StatusTooManyRequests)
@@ -956,7 +961,7 @@ func (s *Server) handleRepoSample(writer http.ResponseWriter, request *http.Requ
 	// Get auth token - try Authorization header first, then fallback.
 	token := s.extractToken(request)
 	if token == "" {
-		token = s.getFallbackToken(ctx)
+		token = s.token(ctx)
 		if token == "" {
 			s.logger.WarnContext(ctx, "[handleRepoSample] No GitHub token available", "remote_addr", request.RemoteAddr)
 			http.Error(writer, "GitHub token required (set GITHUB_TOKEN env var or provide Authorization header)", http.StatusUnauthorized)
@@ -999,6 +1004,9 @@ func (s *Server) handleOrgSample(writer http.ResponseWriter, request *http.Reque
 	ctx := request.Context()
 
 	// Extract client IP for rate limiting and logging.
+	// SECURITY: X-Forwarded-For is trusted because Cloud Run (GCP) sanitizes it.
+	// Cloud Run strips client-provided XFF headers and replaces with actual client IP.
+	// For non-Cloud Run deployments, consider validating source or using RemoteAddr only.
 	clientIP := request.RemoteAddr
 	if xff := request.Header.Get("X-Forwarded-For"); xff != "" {
 		if idx := strings.Index(xff, ","); idx > 0 {
@@ -1014,7 +1022,7 @@ func (s *Server) handleOrgSample(writer http.ResponseWriter, request *http.Reque
 	s.logger.InfoContext(ctx, "[handleOrgSample] Incoming request", "client_ip", clientIP)
 
 	// Per-IP rate limiting.
-	limiter := s.getLimiter(ctx, clientIP)
+	limiter := s.limiter(ctx, clientIP)
 	if !limiter.Allow() {
 		s.logger.WarnContext(ctx, "[handleOrgSample] Rate limit exceeded", "client_ip", clientIP)
 		http.Error(writer, "Rate limit exceeded", http.StatusTooManyRequests)
@@ -1032,7 +1040,7 @@ func (s *Server) handleOrgSample(writer http.ResponseWriter, request *http.Reque
 	// Get auth token - try Authorization header first, then fallback.
 	token := s.extractToken(request)
 	if token == "" {
-		token = s.getFallbackToken(ctx)
+		token = s.token(ctx)
 		if token == "" {
 			s.logger.WarnContext(ctx, "[handleOrgSample] No GitHub token available", "remote_addr", request.RemoteAddr)
 			http.Error(writer, "GitHub token required (set GITHUB_TOKEN env var or provide Authorization header)", http.StatusUnauthorized)
@@ -1154,7 +1162,7 @@ func (s *Server) processRepoSample(ctx context.Context, req *RepoSampleRequest, 
 
 	// Try cache first
 	cacheKey := fmt.Sprintf("repo:%s/%s:days=%d", req.Owner, req.Repo, req.Days)
-	prs, cached := s.getCachedPRQuery(cacheKey)
+	prs, cached := s.cachedPRQuery(cacheKey)
 	if cached {
 		s.logger.InfoContext(ctx, "Using cached PR query results",
 			"owner", req.Owner, "repo", req.Repo, "total_prs", len(prs))
@@ -1192,7 +1200,7 @@ func (s *Server) processRepoSample(ctx context.Context, req *RepoSampleRequest, 
 
 		// Try cache first
 		prCacheKey := fmt.Sprintf("pr:%s", prURL)
-		prData, prCached := s.getCachedPRData(prCacheKey)
+		prData, prCached := s.cachedPRData(prCacheKey)
 		if !prCached {
 			var err error
 			// Use configured data source with updatedAt for effective caching
@@ -1241,7 +1249,7 @@ func (s *Server) processOrgSample(ctx context.Context, req *OrgSampleRequest, to
 
 	// Try cache first
 	cacheKey := fmt.Sprintf("org:%s:days=%d", req.Org, req.Days)
-	prs, cached := s.getCachedPRQuery(cacheKey)
+	prs, cached := s.cachedPRQuery(cacheKey)
 	if cached {
 		s.logger.InfoContext(ctx, "Using cached PR query results",
 			"org", req.Org, "total_prs", len(prs))
@@ -1278,7 +1286,7 @@ func (s *Server) processOrgSample(ctx context.Context, req *OrgSampleRequest, to
 
 		// Try cache first
 		prCacheKey := fmt.Sprintf("pr:%s", prURL)
-		prData, prCached := s.getCachedPRData(prCacheKey)
+		prData, prCached := s.cachedPRData(prCacheKey)
 		if !prCached {
 			var err error
 			// Use configured data source with updatedAt for effective caching
@@ -1368,6 +1376,9 @@ func (s *Server) handleRepoSampleStream(writer http.ResponseWriter, request *htt
 	ctx := request.Context()
 
 	// Extract client IP for rate limiting and logging.
+	// SECURITY: X-Forwarded-For is trusted because Cloud Run (GCP) sanitizes it.
+	// Cloud Run strips client-provided XFF headers and replaces with actual client IP.
+	// For non-Cloud Run deployments, consider validating source or using RemoteAddr only.
 	clientIP := request.RemoteAddr
 	if xff := request.Header.Get("X-Forwarded-For"); xff != "" {
 		if idx := strings.Index(xff, ","); idx > 0 {
@@ -1382,7 +1393,7 @@ func (s *Server) handleRepoSampleStream(writer http.ResponseWriter, request *htt
 	s.logger.InfoContext(ctx, "[handleRepoSampleStream] Incoming request", "client_ip", clientIP)
 
 	// Per-IP rate limiting.
-	limiter := s.getLimiter(ctx, clientIP)
+	limiter := s.limiter(ctx, clientIP)
 	if !limiter.Allow() {
 		s.logger.WarnContext(ctx, "[handleRepoSampleStream] Rate limit exceeded", "client_ip", clientIP)
 		http.Error(writer, "Rate limit exceeded", http.StatusTooManyRequests)
@@ -1401,7 +1412,7 @@ func (s *Server) handleRepoSampleStream(writer http.ResponseWriter, request *htt
 	// Get auth token - try Authorization header first, then fallback.
 	token := s.extractToken(request)
 	if token == "" {
-		token = s.getFallbackToken(ctx)
+		token = s.token(ctx)
 		if token == "" {
 			s.logger.WarnContext(ctx, "[handleRepoSampleStream] No GitHub token available", "remote_addr", request.RemoteAddr)
 			http.Error(writer, "GitHub token required (set GITHUB_TOKEN env var or provide Authorization header)", http.StatusUnauthorized)
@@ -1441,6 +1452,9 @@ func (s *Server) handleOrgSampleStream(writer http.ResponseWriter, request *http
 	ctx := request.Context()
 
 	// Extract client IP for rate limiting and logging.
+	// SECURITY: X-Forwarded-For is trusted because Cloud Run (GCP) sanitizes it.
+	// Cloud Run strips client-provided XFF headers and replaces with actual client IP.
+	// For non-Cloud Run deployments, consider validating source or using RemoteAddr only.
 	clientIP := request.RemoteAddr
 	if xff := request.Header.Get("X-Forwarded-For"); xff != "" {
 		if idx := strings.Index(xff, ","); idx > 0 {
@@ -1455,7 +1469,7 @@ func (s *Server) handleOrgSampleStream(writer http.ResponseWriter, request *http
 	s.logger.InfoContext(ctx, "[handleOrgSampleStream] Incoming request", "client_ip", clientIP)
 
 	// Per-IP rate limiting.
-	limiter := s.getLimiter(ctx, clientIP)
+	limiter := s.limiter(ctx, clientIP)
 	if !limiter.Allow() {
 		s.logger.WarnContext(ctx, "[handleOrgSampleStream] Rate limit exceeded", "client_ip", clientIP)
 		http.Error(writer, "Rate limit exceeded", http.StatusTooManyRequests)
@@ -1473,7 +1487,7 @@ func (s *Server) handleOrgSampleStream(writer http.ResponseWriter, request *http
 	// Get auth token - try Authorization header first, then fallback.
 	token := s.extractToken(request)
 	if token == "" {
-		token = s.getFallbackToken(ctx)
+		token = s.token(ctx)
 		if token == "" {
 			s.logger.WarnContext(ctx, "[handleOrgSampleStream] No GitHub token available", "remote_addr", request.RemoteAddr)
 			http.Error(writer, "GitHub token required (set GITHUB_TOKEN env var or provide Authorization header)", http.StatusUnauthorized)
@@ -1592,7 +1606,7 @@ func (s *Server) processRepoSampleWithProgress(ctx context.Context, req *RepoSam
 
 	// Try cache first
 	cacheKey := fmt.Sprintf("repo:%s/%s:days=%d", req.Owner, req.Repo, req.Days)
-	prs, cached := s.getCachedPRQuery(cacheKey)
+	prs, cached := s.cachedPRQuery(cacheKey)
 	if !cached {
 		// Send progress update before GraphQL query
 		logSSEError(ctx, s.logger, sendSSE(writer, ProgressUpdate{
@@ -1696,7 +1710,7 @@ func (s *Server) processOrgSampleWithProgress(ctx context.Context, req *OrgSampl
 
 	// Try cache first
 	cacheKey := fmt.Sprintf("org:%s:days=%d", req.Org, req.Days)
-	prs, cached := s.getCachedPRQuery(cacheKey)
+	prs, cached := s.cachedPRQuery(cacheKey)
 	if !cached {
 		// Send progress update before GraphQL query
 		logSSEError(ctx, s.logger, sendSSE(writer, ProgressUpdate{
@@ -1826,7 +1840,7 @@ func (s *Server) processPRsInParallel(workCtx, reqCtx context.Context, samples [
 
 			// Try cache first
 			prCacheKey := fmt.Sprintf("pr:%s", prURL)
-			prData, prCached := s.getCachedPRData(prCacheKey)
+			prData, prCached := s.cachedPRData(prCacheKey)
 			if !prCached {
 				var err error
 				// Use work context for actual API calls (not tied to client connection)
