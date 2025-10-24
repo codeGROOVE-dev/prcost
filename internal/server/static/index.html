@@ -1257,7 +1257,7 @@
             }
         }
 
-        function formatEfficiencyHTML(efficiencyPct, grade, message, preventableCost, preventableHours, totalCost, totalHours, isAnnual = false, annualWasteCost = 0, annualWasteHours = 0, userCount = 0, salary = 250000, benefitsMultiplier = 1.2, analysisType = 'project') {
+        function formatEfficiencyHTML(efficiencyPct, grade, message, preventableCost, preventableHours, totalCost, totalHours, isAnnual = false, annualWasteCost = 0, annualWasteHours = 0, userCount = 0, salary = 250000, benefitsMultiplier = 1.2, analysisType = 'project', sourceName = '') {
             let html = '<div class="efficiency-section">';
             html += '<h2>Workflow Efficiency</h2>';
 
@@ -1303,18 +1303,32 @@
                 if (savings > 0) {
                     // Format savings without decimals
                     const savingsRounded = Math.round(savings);
-                    const savingsFormatted = '$' + savingsRounded.toLocaleString('en-US');
+
+                    // Format savings in millions or thousands
+                    let savingsFormatted;
+                    if (savingsRounded >= 1000000) {
+                        const millions = (savingsRounded / 1000000).toFixed(1);
+                        savingsFormatted = '$' + millions + 'M';
+                    } else if (savingsRounded >= 1000) {
+                        const thousands = Math.round(savingsRounded / 1000);
+                        savingsFormatted = '$' + thousands + 'K';
+                    } else {
+                        savingsFormatted = '$' + savingsRounded.toLocaleString('en-US');
+                    }
 
                     // Calculate headcount savings (fully-loaded salary)
                     const fullyLoadedSalary = salary * benefitsMultiplier;
                     const headcountSavings = Math.round(savings / fullyLoadedSalary);
 
-                    // Strip + from grade if present (e.g., "C+" → "C")
-                    const gradeForDisplay = grade.replace('+', '');
+                    // Use sourceName if available, otherwise default to "you"
+                    const targetName = sourceName || 'you';
 
                     html += '<div class="efficiency-callout">';
-                    html += `<p><strong>Tired of being a ${gradeForDisplay} ${analysisType}?</strong></p>`;
-                    html += `<p>Come talk to us at <a href="mailto:go-faster@codeGROOVE.dev">go-faster@codeGROOVE.dev</a> to save at least <strong>${savingsFormatted} a year</strong> in lost development velocity. We're serious. That's like <strong>${headcountSavings} free headcount</strong> on your team. It's free for open-source projects.</p>`;
+                    html += '<p style="font-size: 20px; font-weight: 600; margin-bottom: 20px; line-height: 1.4;">Your eng team isn't slow. Your process is.</p>';
+                    html += `<p style="font-size: 17px; margin-bottom: 16px;">Code review latency costs <strong>${targetName}</strong> <strong>${savingsFormatted}+ annually</strong>—the output of <strong>${headcountSavings} senior engineers</strong> just evaporating.</p>`;
+                    html += '<p style="font-size: 17px; margin-bottom: 20px;">We collapse review cycles so your team ships faster. <strong>ROI shows week one.</strong></p>';
+                    html += '<p style="font-size: 15px; color: #6e6e73; margin-bottom: 16px;">Free forever for open-source projects.</p>';
+                    html += '<p style="margin: 0;"><a href="mailto:go-faster@codeGROOVE.dev" style="font-size: 17px;">go-faster@codeGROOVE.dev</a></p>';
                     html += '</div>';
                 }
             }
@@ -1838,7 +1852,7 @@
                                         const salary = request.config?.annual_salary || 250000;
                                         const benefitsMultiplier = request.config?.benefits_multiplier || 1.2;
                                         const analysisType = mode === 'org' ? 'organization' : 'project';
-                                        html += formatEfficiencyHTML(extEfficiencyPct, extEfficiency.grade, extEfficiency.message, extPreventableCost, extPreventableHours, e.total_cost, e.total_hours, true, annualWasteCost, annualWasteHours, e.unique_users || 0, salary, benefitsMultiplier, analysisType);
+                                        html += formatEfficiencyHTML(extEfficiencyPct, extEfficiency.grade, extEfficiency.message, extPreventableCost, extPreventableHours, e.total_cost, e.total_hours, true, annualWasteCost, annualWasteHours, e.unique_users || 0, salary, benefitsMultiplier, analysisType, sourceName);
 
                                         // Calculate average PR efficiency
                                         const totalPRs = e.total_prs;
