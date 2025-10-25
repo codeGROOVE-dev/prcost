@@ -50,6 +50,10 @@ $ prcost https://github.com/chainguard-dev/apko/pull/1860
 
 ```
 
+## Web Interface
+
+Try https://cost.github.codegroove.app/ - it only has access to public repositories, so if you need to take that account for accuracy, run prcost locally.
+
 ## Caveats
 
 * Due to limited input, results may not be accurate for single PRs, but should be accurate on average across a larger sample size of PRs
@@ -96,6 +100,12 @@ prcost --org chainguard-dev
 
 # Custom sampling parameters
 prcost --org myorg --samples 100 --days 60
+```
+
+### Web Interface
+
+```bash
+go run ./cmd/server
 ```
 
 ### Sampling Strategy
