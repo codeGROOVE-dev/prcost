@@ -983,14 +983,11 @@
                 <div class="form-row">
                     <div class="form-group">
                         <label for="repoSampleSize">Sample Size</label>
-                        <input
-                            type="number"
-                            id="repoSampleSize"
-                            value="25"
-                            min="1"
-                            max="50"
-                        >
-                        <div class="help-text">25 (fast, ±20% accuracy) or 50 (slower, ±14% accuracy)</div>
+                        <select id="repoSampleSize">
+                            <option value="25" selected>25 PRs (fast, ±20% accuracy)</option>
+                            <option value="50">50 PRs (slower, ±14% accuracy)</option>
+                        </select>
+                        <div class="help-text">Number of PRs to sample</div>
                     </div>
                     <div class="form-group">
                         <label for="repoDays">Days Back</label>
@@ -1023,14 +1020,11 @@
                 <div class="form-row">
                     <div class="form-group">
                         <label for="orgSampleSize">Sample Size</label>
-                        <input
-                            type="number"
-                            id="orgSampleSize"
-                            value="25"
-                            min="1"
-                            max="50"
-                        >
-                        <div class="help-text">25 (fast, ±20% accuracy) or 50 (slower, ±14% accuracy)</div>
+                        <select id="orgSampleSize">
+                            <option value="25" selected>25 PRs (fast, ±20% accuracy)</option>
+                            <option value="50">50 PRs (slower, ±14% accuracy)</option>
+                        </select>
+                        <div class="help-text">Number of PRs to sample</div>
                     </div>
                     <div class="form-group">
                         <label for="orgDays">Days Back</label>
