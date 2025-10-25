@@ -988,10 +988,9 @@
                             id="repoSampleSize"
                             value="25"
                             min="1"
-                            max="25"
-                            disabled
+                            max="50"
                         >
-                        <div class="help-text">Fixed at 25 PRs</div>
+                        <div class="help-text">25 (fast, ±20% accuracy) or 50 (slower, ±14% accuracy)</div>
                     </div>
                     <div class="form-group">
                         <label for="repoDays">Days Back</label>
@@ -1029,10 +1028,9 @@
                             id="orgSampleSize"
                             value="25"
                             min="1"
-                            max="25"
-                            disabled
+                            max="50"
                         >
-                        <div class="help-text">Fixed at 25 PRs</div>
+                        <div class="help-text">25 (fast, ±20% accuracy) or 50 (slower, ±14% accuracy)</div>
                     </div>
                     <div class="form-group">
                         <label for="orgDays">Days Back</label>
@@ -1301,33 +1299,27 @@
                 savings -= pricingCost;
 
                 if (savings > 0) {
-                    // Format savings without decimals
-                    const savingsRounded = Math.round(savings);
+                    // Calculate average waste per PR
+                    const avgWasteHoursPerPR = extPreventableHours / e.total_prs;
+                    const avgWasteCostPerPR = extPreventableCost / e.total_prs;
 
-                    // Format savings in millions or thousands
-                    let savingsFormatted;
-                    if (savingsRounded >= 1000000) {
-                        const millions = (savingsRounded / 1000000).toFixed(1);
-                        savingsFormatted = '$' + millions + 'M';
-                    } else if (savingsRounded >= 1000) {
-                        const thousands = Math.round(savingsRounded / 1000);
-                        savingsFormatted = '$' + thousands + 'K';
-                    } else {
-                        savingsFormatted = '$' + savingsRounded.toLocaleString('en-US');
-                    }
+                    // Estimate PRs per author: total PRs in period / unique users in sample
+                    const daysInPeriod = parseInt(days);
+                    const prsPerPersonInPeriod = e.total_prs / userCount;
+                    const prsPerPersonPerYear = prsPerPersonInPeriod * (365 / daysInPeriod);
 
-                    // Calculate headcount savings (fully-loaded salary)
-                    const fullyLoadedSalary = salary * benefitsMultiplier;
-                    const headcountSavings = Math.round(savings / fullyLoadedSalary);
+                    // Calculate annual waste per author
+                    const annualWasteHoursPerAuthor = avgWasteHoursPerPR * prsPerPersonPerYear;
+                    const annualWasteCostPerAuthor = avgWasteCostPerPR * prsPerPersonPerYear;
 
-                    // Use sourceName if available, otherwise default to "you"
-                    const targetName = sourceName || 'you';
+                    // Weekly waste per author
+                    const weeklyWastePerAuthor = annualWasteHoursPerAuthor / 52;
+                    const hoursPerWeek = weeklyWastePerAuthor.toFixed(1);
+                    const costPerPersonFormatted = '$' + Math.round(annualWasteCostPerAuthor).toLocaleString('en-US');
 
                     html += '<div class="efficiency-callout">';
-                    html += "<p style=\"font-size: 20px; font-weight: 600; margin-bottom: 20px; line-height: 1.4;\">Your eng team isn't slow. Your process is.</p>";
-                    html += `<p style="font-size: 17px; margin-bottom: 16px;">codeGROOVE can save <strong>${targetName}</strong> <strong>${savingsFormatted}+ annually</strong>—that's <strong>${headcountSavings} senior engineers</strong> worth of productivity back on your team.</p>`;
-                    html += '<p style="font-size: 17px; margin-bottom: 20px;">We collapse review cycles so your team ships faster. <strong>ROI shows week one.</strong> Free forever for open-source projects.</p>';
-                    html += '<p style="margin: 0;"><a href="mailto:go-faster@codeGROOVE.dev" style="font-size: 17px;">go-faster@codeGROOVE.dev</a></p>';
+                    html += `<p style="font-size: 16px; margin-bottom: 16px; line-height: 1.5;">Your devs lose <strong>${hoursPerWeek} hours/week</strong> waiting on code reviews. That's <strong>${costPerPersonFormatted}/year per person</strong>. Ready-to-Review fixes this.</p>`;
+                    html += '<p style="font-size: 16px; margin-bottom: 0; line-height: 1.5;">Free for OSS, $5/dev/month for private. Beta begins November 3rd: <a href="mailto:beta@codeGROOVE.dev">beta@codeGROOVE.dev</a></p>';
                     html += '</div>';
                 }
             }

@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"os/exec"
 	"regexp"
 	"strings"
 	"sync"
@@ -678,6 +679,23 @@ func (s *Server) token(ctx context.Context) string {
 		return token
 	}
 
+	// Try gh auth token if gh is in PATH
+	if ghPath, err := exec.LookPath("gh"); err == nil {
+		s.logger.InfoContext(ctx, "Found gh CLI in PATH", "path", ghPath)
+		cmd := exec.CommandContext(ctx, "gh", "auth", "token")
+		output, err := cmd.Output()
+		if err == nil {
+			token := strings.TrimSpace(string(output))
+			if token != "" {
+				s.logger.InfoContext(ctx, "Using GITHUB_TOKEN from gh auth token")
+				s.fallbackToken = token
+				return token
+			}
+		} else {
+			s.logger.WarnContext(ctx, "Failed to get token from gh auth token", errorKey, err)
+		}
+	}
+
 	// Try Google Secret Manager for GITHUB_TOKEN
 	token, err := gsm.Fetch(ctx, "GITHUB_TOKEN")
 	if err != nil {
@@ -691,7 +709,7 @@ func (s *Server) token(ctx context.Context) string {
 		return token
 	}
 
-	s.logger.WarnContext(ctx, "No fallback GitHub token found (tried GITHUB_TOKEN env and GITHUB_TOKEN GSM)")
+	s.logger.WarnContext(ctx, "No fallback GitHub token found (tried GITHUB_TOKEN env, gh auth token, and GITHUB_TOKEN GSM)")
 	return ""
 }
 

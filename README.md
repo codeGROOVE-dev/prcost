@@ -95,12 +95,16 @@ Analyze all PRs across an entire organization:
 prcost --org chainguard-dev
 
 # Custom sampling parameters
-prcost --org myorg --samples 100 --days 60
+prcost --org myorg --samples 50 --days 60
 ```
 
 ### Sampling Strategy
 
 Repository and organization modes use time-bucket sampling to ensure even distribution across the time period. This provides more representative estimates than random sampling by avoiding temporal clustering.
+
+**Sample Size Options:**
+- **25 samples** (default): Fast analysis with ±20% confidence interval
+- **50 samples**: Slower but more accurate with ±14% confidence interval (1.4× better accuracy)
 
 ## Library Usage
 

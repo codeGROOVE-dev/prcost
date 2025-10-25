@@ -30,7 +30,7 @@ func main() {
 	// Org/Repo sampling flags
 	org := flag.String("org", "", "GitHub organization to analyze (optionally with --repo for single repo)")
 	repo := flag.String("repo", "", "GitHub repository to analyze (requires --org)")
-	samples := flag.Int("samples", 20, "Number of PRs to sample for extrapolation")
+	samples := flag.Int("samples", 25, "Number of PRs to sample for extrapolation (25=fast/±20%, 50=slower/±14%)")
 	days := flag.Int("days", 90, "Number of days to look back for PR modifications")
 
 	flag.Usage = func() {
@@ -52,7 +52,7 @@ func main() {
 		fmt.Fprintf(os.Stderr, "    %s --org myorg --repo myrepo --samples 50 --days 30\n\n", os.Args[0])
 		fmt.Fprint(os.Stderr, "  Organization-wide analysis:\n")
 		fmt.Fprintf(os.Stderr, "    %s --org chainguard-dev\n", os.Args[0])
-		fmt.Fprintf(os.Stderr, "    %s --org myorg --samples 100 --days 60\n", os.Args[0])
+		fmt.Fprintf(os.Stderr, "    %s --org myorg --samples 50 --days 60\n", os.Args[0])
 	}
 
 	flag.Parse()
