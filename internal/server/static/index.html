@@ -600,29 +600,42 @@
             margin-top: 24px;
         }
 
-        .efficiency-callout p {
+        .efficiency-callout-success {
+            background: linear-gradient(135deg, #e8f5e9 0%, #ffffff 100%);
+            border: 2px solid #4caf50;
+            border-radius: 12px;
+            padding: 24px;
+            margin-top: 24px;
+        }
+
+        .efficiency-callout p,
+        .efficiency-callout-success p {
             margin: 0 0 16px 0;
             font-size: 16px;
             line-height: 1.6;
             color: #1d1d1f;
         }
 
-        .efficiency-callout p:last-child {
+        .efficiency-callout p:last-child,
+        .efficiency-callout-success p:last-child {
             margin-bottom: 0;
         }
 
-        .efficiency-callout strong {
+        .efficiency-callout strong,
+        .efficiency-callout-success strong {
             color: #000;
             font-weight: 600;
         }
 
-        .efficiency-callout a {
+        .efficiency-callout a,
+        .efficiency-callout-success a {
             color: #007aff;
             text-decoration: none;
             font-weight: 600;
         }
 
-        .efficiency-callout a:hover {
+        .efficiency-callout a:hover,
+        .efficiency-callout-success a:hover {
             text-decoration: underline;
         }
 
@@ -698,30 +711,11 @@
             margin-bottom: 20px;
         }
 
-        .progress-header {
-            font-weight: 600;
-            margin-bottom: 12px;
-            color: #333;
-        }
-
-        .progress-item {
-            padding: 8px 0;
-            font-size: 14px;
+        .progress-status {
+            font-size: 15px;
             color: #555;
-            display: flex;
-            align-items: center;
-            gap: 8px;
-        }
-
-        .progress-item .status {
             font-weight: 500;
-            min-width: 80px;
         }
-
-        .progress-item.fetching .status { color: #007aff; }
-        .progress-item.processing .status { color: #ff9500; }
-        .progress-item.complete .status { color: #34c759; }
-        .progress-item.error .status { color: #ff3b30; }
 
         .progress-summary {
             margin-top: 12px;
@@ -983,20 +977,25 @@
                 <div class="form-row">
                     <div class="form-group">
                         <label for="repoSampleSize">Sample Size</label>
-                        <select id="repoSampleSize">
-                            <option value="25" selected>25 PRs (fast, ±20% accuracy)</option>
-                            <option value="50">50 PRs (slower, ±14% accuracy)</option>
-                        </select>
-                        <div class="help-text">Number of PRs to sample</div>
+                        <input
+                            type="number"
+                            id="repoSampleSize"
+                            value="25"
+                            min="1"
+                            max="50"
+                        >
+                        <div class="help-text">25 (fast, ±20% accuracy) or 50 (slower, ±14% accuracy)</div>
                     </div>
                     <div class="form-group">
                         <label for="repoDays">Days Back</label>
-                        <select id="repoDays">
-                            <option value="10">10 days</option>
-                            <option value="30">30 days</option>
-                            <option value="90" selected>90 days</option>
-                        </select>
-                        <div class="help-text">Time period for analysis</div>
+                        <input
+                            type="number"
+                            id="repoDays"
+                            value="90"
+                            min="1"
+                            max="365"
+                        >
+                        <div class="help-text">Number of days to look back</div>
                     </div>
                 </div>
             </div>
@@ -1020,20 +1019,25 @@
                 <div class="form-row">
                     <div class="form-group">
                         <label for="orgSampleSize">Sample Size</label>
-                        <select id="orgSampleSize">
-                            <option value="25" selected>25 PRs (fast, ±20% accuracy)</option>
-                            <option value="50">50 PRs (slower, ±14% accuracy)</option>
-                        </select>
-                        <div class="help-text">Number of PRs to sample</div>
+                        <input
+                            type="number"
+                            id="orgSampleSize"
+                            value="25"
+                            min="1"
+                            max="50"
+                        >
+                        <div class="help-text">25 (fast, ±20% accuracy) or 50 (slower, ±14% accuracy)</div>
                     </div>
                     <div class="form-group">
                         <label for="orgDays">Days Back</label>
-                        <select id="orgDays">
-                            <option value="10">10 days</option>
-                            <option value="30">30 days</option>
-                            <option value="90" selected>90 days</option>
-                        </select>
-                        <div class="help-text">Time period for analysis</div>
+                        <input
+                            type="number"
+                            id="orgDays"
+                            value="90"
+                            min="1"
+                            max="365"
+                        >
+                        <div class="help-text">Number of days to look back</div>
                     </div>
                 </div>
             </div>
@@ -1249,7 +1253,7 @@
             }
         }
 
-        function formatEfficiencyHTML(efficiencyPct, grade, message, preventableCost, preventableHours, totalCost, totalHours, isAnnual = false, annualWasteCost = 0, annualWasteHours = 0, userCount = 0, salary = 250000, benefitsMultiplier = 1.2, analysisType = 'project', sourceName = '') {
+        function formatEfficiencyHTML(efficiencyPct, grade, message, preventableCost, preventableHours, totalCost, totalHours, isAnnual = false, annualWasteCost = 0, annualWasteHours = 0, userCount = 0, salary = 250000, benefitsMultiplier = 1.2, analysisType = 'project', sourceName = '', totalPRs = 0, daysInPeriod = 90) {
             let html = '<div class="efficiency-section">';
             html += '<h2>Workflow Efficiency</h2>';
 
@@ -1277,42 +1281,35 @@
 
             html += '</div>'; // Close efficiency-content
 
-            // Callout for B or lower (not B+, not A-, not A, not A+)
-            const showCallout = grade === 'B' || grade === 'B-' || grade === 'C+' || grade === 'C' ||
-                               grade === 'C-' || grade === 'D+' || grade === 'D' || grade === 'D-' || grade === 'F';
+            if (isAnnual) {
+                // Calculate per-author metrics for callout
+                const avgWasteHoursPerPR = preventableHours / totalPRs;
+                const avgWasteCostPerPR = preventableCost / totalPRs;
+                const prsPerPersonInPeriod = totalPRs / userCount;
+                const prsPerPersonPerYear = prsPerPersonInPeriod * (365 / daysInPeriod);
+                const annualWasteHoursPerAuthor = avgWasteHoursPerPR * prsPerPersonPerYear;
+                const annualWasteCostPerAuthor = avgWasteCostPerPR * prsPerPersonPerYear;
+                const weeklyWastePerAuthor = annualWasteHoursPerAuthor / 52;
+                const hoursPerWeek = weeklyWastePerAuthor.toFixed(1);
 
-            if (showCallout && isAnnual) {
-                // Calculate savings potential at 94% efficiency
-                const totalAnnualCost = totalCost * (annualWasteCost / preventableCost);
-                const targetWaste = totalAnnualCost * 0.06; // 6% waste at 94% efficiency
-                const currentWaste = annualWasteCost;
-                let savings = currentWaste - targetWaste;
+                // Check if B+ or higher (A+, A, A-, B+)
+                const isHighPerformer = grade === 'A+' || grade === 'A' || grade === 'A-' || grade === 'B+';
 
-                // Subtract our pricing: $5/month * 12 months * number of users
-                const pricingCost = 5 * 12 * userCount;
-                savings -= pricingCost;
+                // Check if B or lower
+                const showStrongCallout = grade === 'B' || grade === 'B-' || grade === 'C+' || grade === 'C' ||
+                                         grade === 'C-' || grade === 'D+' || grade === 'D' || grade === 'D-' || grade === 'F';
 
-                if (savings > 0) {
-                    // Calculate average waste per PR
-                    const avgWasteHoursPerPR = extPreventableHours / e.total_prs;
-                    const avgWasteCostPerPR = extPreventableCost / e.total_prs;
-
-                    // Estimate PRs per author: total PRs in period / unique users in sample
-                    const daysInPeriod = parseInt(days);
-                    const prsPerPersonInPeriod = e.total_prs / userCount;
-                    const prsPerPersonPerYear = prsPerPersonInPeriod * (365 / daysInPeriod);
-
-                    // Calculate annual waste per author
-                    const annualWasteHoursPerAuthor = avgWasteHoursPerPR * prsPerPersonPerYear;
-                    const annualWasteCostPerAuthor = avgWasteCostPerPR * prsPerPersonPerYear;
-
-                    // Weekly waste per author
-                    const weeklyWastePerAuthor = annualWasteHoursPerAuthor / 52;
-                    const hoursPerWeek = weeklyWastePerAuthor.toFixed(1);
+                if (isHighPerformer) {
+                    // Green callout for high performers
+                    html += '<div class="efficiency-callout-success">';
+                    html += `<p style="font-size: 16px; margin-bottom: 0; line-height: 1.5;">You probably don't need this as your devs only lose <strong>${hoursPerWeek} hours/week due to pull request latency</strong>, but for everyone else, there is <a href="https://codegroove.dev/products/ready-to-review/" target="_blank">Ready-to-Review</a>. Free for OSS, $5/dev/month for private. Beta begins November 3rd: <a href="mailto:beta@codeGROOVE.dev">beta@codeGROOVE.dev</a></p>`;
+                    html += '</div>';
+                } else if (showStrongCallout) {
+                    // Yellow callout for B or lower
                     const costPerPersonFormatted = '$' + Math.round(annualWasteCostPerAuthor).toLocaleString('en-US');
 
                     html += '<div class="efficiency-callout">';
-                    html += `<p style="font-size: 16px; margin-bottom: 16px; line-height: 1.5;">Your devs lose <strong>${hoursPerWeek} hours/week</strong> waiting on code reviews. That's <strong>${costPerPersonFormatted}/year per person</strong>. Ready-to-Review fixes this.</p>`;
+                    html += `<p style="font-size: 16px; margin-bottom: 16px; line-height: 1.5;">Your devs lose <strong>${hoursPerWeek} hours/week due to pull request latency</strong>. That's <strong>${costPerPersonFormatted}/year per person</strong>. <a href="https://codegroove.dev/products/ready-to-review/" target="_blank">Ready-to-Review</a> fixes this.</p>`;
                     html += '<p style="font-size: 16px; margin-bottom: 0; line-height: 1.5;">Free for OSS, $5/dev/month for private. Beta begins November 3rd: <a href="mailto:beta@codeGROOVE.dev">beta@codeGROOVE.dev</a></p>';
                     html += '</div>';
                 }
@@ -1754,7 +1751,6 @@
             // EventSource doesn't support POST, so we need a different approach
             // We'll use fetch to initiate, but handle it as a proper SSE stream
             return new Promise((resolve, reject) => {
-                const progressMap = new Map();
                 let progressContainer;
 
                 // Make the POST request with fetch
@@ -1837,7 +1833,7 @@
                                         const salary = request.config?.annual_salary || 250000;
                                         const benefitsMultiplier = request.config?.benefits_multiplier || 1.2;
                                         const analysisType = mode === 'org' ? 'organization' : 'project';
-                                        html += formatEfficiencyHTML(extEfficiencyPct, extEfficiency.grade, extEfficiency.message, extPreventableCost, extPreventableHours, e.total_cost, e.total_hours, true, annualWasteCost, annualWasteHours, e.unique_users || 0, salary, benefitsMultiplier, analysisType, sourceName);
+                                        html += formatEfficiencyHTML(extEfficiencyPct, extEfficiency.grade, extEfficiency.message, extPreventableCost, extPreventableHours, e.total_cost, e.total_hours, true, annualWasteCost, annualWasteHours, e.unique_users || 0, salary, benefitsMultiplier, analysisType, sourceName, e.total_prs, parseInt(days));
 
                                         // Calculate average PR efficiency
                                         const totalPRs = e.total_prs;
@@ -1871,36 +1867,29 @@
                                         return;
                                     }
 
-                                    // Handle PR-specific progress
+                                    // Handle PR-specific progress - single line status update
                                     if (data.pr) {
                                         if (!progressContainer) {
                                             progressContainer = document.createElement('div');
                                             progressContainer.className = 'progress-container';
-                                            progressContainer.innerHTML = '<div class="progress-header">Processing PRs...</div>';
+                                            progressContainer.innerHTML = '<div class="progress-status"></div>';
                                             resultDiv.innerHTML = '';
                                             resultDiv.appendChild(progressContainer);
                                         }
 
-                                        let progressItem = progressMap.get(data.pr);
-                                        if (!progressItem) {
-                                            progressItem = document.createElement('div');
-                                            progressItem.className = 'progress-item';
-                                            progressContainer.appendChild(progressItem);
-                                            progressMap.set(data.pr, progressItem);
-                                        }
-
+                                        const statusLine = progressContainer.querySelector('.progress-status');
                                         const repo = data.owner && data.repo ? `${data.owner}/${data.repo}` : '';
-                                        const prLink = repo ? `${repo}#${data.pr}` : `#${data.pr}`;
+                                        const prLink = repo ? `${repo}#${data.pr}` : `PR #${data.pr}`;
+                                        const progress = data.progress || '';
 
-                                        progressItem.className = `progress-item ${data.type}`;
                                         if (data.type === 'fetching') {
-                                            progressItem.innerHTML = `<span class="status">Fetching</span> ${prLink} ${data.progress || ''}`;
+                                            statusLine.innerHTML = `Fetching ${prLink}... ${progress}`;
                                         } else if (data.type === 'processing') {
-                                            progressItem.innerHTML = `<span class="status">Processing</span> ${prLink} ${data.progress || ''}`;
+                                            statusLine.innerHTML = `Processing ${prLink}... ${progress}`;
                                         } else if (data.type === 'complete') {
-                                            progressItem.innerHTML = `<span class="status">✓ Complete</span> ${prLink} ${data.progress || ''}`;
+                                            statusLine.innerHTML = `✓ Completed ${prLink} ${progress}`;
                                         } else if (data.type === 'error') {
-                                            progressItem.innerHTML = `<span class="status">✗ Error</span> ${prLink}: ${data.error}`;
+                                            statusLine.innerHTML = `✗ Error with ${prLink}: ${data.error}`;
                                         }
                                     }
                                 } catch (parseError) {
