@@ -447,23 +447,23 @@ func efficiencyGrade(efficiencyPct float64) (string, string) {
 	case efficiencyPct >= 87:
 		return "B+", "Pretty good!"
 	case efficiencyPct >= 83:
-		return "B", "Good work!"
+		return "B", "Minor inefficiency detected."
 	case efficiencyPct >= 80:
-		return "B-", "Room for improvement."
+		return "B-", "Minor inefficiency detected."
 	case efficiencyPct >= 77:
-		return "C+", "Some inefficiency."
+		return "C+", "Some inefficiency detected."
 	case efficiencyPct >= 73:
-		return "C", "Needs work."
+		return "C", "Moderate inefficiency detected."
 	case efficiencyPct >= 70:
-		return "C-", "Optimize your workflow."
+		return "C-", "Moderate inefficiency detected."
 	case efficiencyPct >= 67:
-		return "D+", "Major inefficiency."
+		return "D+", "Noticeable inefficiency detected."
 	case efficiencyPct >= 63:
-		return "D", "Critical issues."
+		return "D", "Significant inefficiency detected."
 	case efficiencyPct >= 60:
-		return "D-", "Severe inefficiency."
+		return "D-", "Severe inefficiency detected."
 	default:
-		return "F", "Rethink your workflow."
+		return "F", "Critical inefficiency detected."
 	}
 }
 
@@ -494,14 +494,12 @@ func printEfficiency(breakdown *cost.Breakdown, formatCurrency func(float64) str
 	grade, message := efficiencyGrade(efficiencyPct)
 
 	fmt.Println("  ┌─────────────────────────────────────────────────────────────┐")
-	fmt.Printf("  │ WORKFLOW EFFICIENCY: %s (%.1f%%) - %s", grade, efficiencyPct, message)
-	// Calculate padding to reach 63 chars (box width)
-	headerLen := 25 + len(grade) + len(fmt.Sprintf("%.1f", efficiencyPct)) + len(message)
-	padding := 63 - headerLen
+	headerText := fmt.Sprintf("WORKFLOW EFFICIENCY: %s (%.1f%%) - %s", grade, efficiencyPct, message)
+	padding := 60 - len(headerText)
 	if padding < 0 {
 		padding = 0
 	}
-	fmt.Printf("%*s│\n", padding, "")
+	fmt.Printf("  │ %s%*s│\n", headerText, padding, "")
 	fmt.Println("  └─────────────────────────────────────────────────────────────┘")
 	fmt.Printf("  Preventable Waste:         $%12s    %s\n",
 		formatWithCommas(preventableCost), formatTimeUnit(preventableHours))

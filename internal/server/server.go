@@ -1251,7 +1251,7 @@ func (s *Server) processRepoSample(ctx context.Context, req *RepoSampleRequest, 
 	}
 
 	// Extrapolate costs from samples
-	extrapolated := cost.ExtrapolateFromSamples(breakdowns, len(prs))
+	extrapolated := cost.ExtrapolateFromSamples(breakdowns, len(prs), req.Days, cfg)
 
 	return &SampleResponse{
 		Extrapolated: extrapolated,
@@ -1337,7 +1337,7 @@ func (s *Server) processOrgSample(ctx context.Context, req *OrgSampleRequest, to
 	}
 
 	// Extrapolate costs from samples
-	extrapolated := cost.ExtrapolateFromSamples(breakdowns, len(prs))
+	extrapolated := cost.ExtrapolateFromSamples(breakdowns, len(prs), req.Days, cfg)
 
 	return &SampleResponse{
 		Extrapolated: extrapolated,
@@ -1693,7 +1693,7 @@ func (s *Server) processRepoSampleWithProgress(ctx context.Context, req *RepoSam
 	}
 
 	// Extrapolate costs from samples
-	extrapolated := cost.ExtrapolateFromSamples(breakdowns, len(prs))
+	extrapolated := cost.ExtrapolateFromSamples(breakdowns, len(prs), req.Days, cfg)
 
 	// Send final result
 	logSSEError(ctx, s.logger, sendSSE(writer, ProgressUpdate{
@@ -1803,7 +1803,7 @@ func (s *Server) processOrgSampleWithProgress(ctx context.Context, req *OrgSampl
 	}
 
 	// Extrapolate costs from samples
-	extrapolated := cost.ExtrapolateFromSamples(breakdowns, len(prs))
+	extrapolated := cost.ExtrapolateFromSamples(breakdowns, len(prs), req.Days, cfg)
 
 	// Send final result
 	logSSEError(ctx, s.logger, sendSSE(writer, ProgressUpdate{

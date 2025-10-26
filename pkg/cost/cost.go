@@ -319,6 +319,12 @@ func Calculate(data PRData, cfg Config) Breakdown {
 	if !data.AuthorBot {
 		deliveryDelayCost = hourlyRate * cappedHrs * cfg.DeliveryDelayFactor
 		deliveryDelayHours = cappedHrs * cfg.DeliveryDelayFactor // Productivity-equivalent hours
+		slog.Info("Delivery delay calculation",
+			"pr_duration_hours", delayHours,
+			"capped_hours", cappedHrs,
+			"delay_factor", cfg.DeliveryDelayFactor,
+			"delivery_delay_hours", deliveryDelayHours,
+			"delivery_delay_cost", deliveryDelayCost)
 	}
 
 	// 1b. Coordination Overhead: Mental cost of tracking unmerged work (default 5%)
@@ -509,6 +515,17 @@ func Calculate(data PRData, cfg Config) Breakdown {
 	for _, pc := range participantCosts {
 		totalCost += pc.TotalCost
 	}
+
+	// Log final breakdown summary
+	slog.Info("PR breakdown summary",
+		"pr_author", data.Author,
+		"pr_duration_hours", delayHours,
+		"delivery_delay_hours", deliveryDelayHours,
+		"coordination_hours", coordinationHours,
+		"code_churn_hours", codeChurnHours,
+		"total_cost", totalCost,
+		"author_cost", authorCost.TotalCost,
+		"delay_cost", delayCost)
 
 	return Breakdown{
 		Author:             authorCost,

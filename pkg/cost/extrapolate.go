@@ -4,10 +4,13 @@ package cost
 // of PRs to estimate total costs across a larger population.
 type ExtrapolatedBreakdown struct {
 	// Sample metadata
-	TotalPRs          int `json:"total_prs"`          // Total number of PRs in the population
-	SampledPRs        int `json:"sampled_prs"`        // Number of PRs successfully sampled
-	SuccessfulSamples int `json:"successful_samples"` // Number of samples that processed successfully
-	UniqueUsers       int `json:"unique_users"`       // Number of unique users (authors + participants) across all sampled PRs
+	TotalPRs                      int     `json:"total_prs"`                           // Total number of PRs in the population
+	SampledPRs                    int     `json:"sampled_prs"`                         // Number of PRs successfully sampled
+	SuccessfulSamples             int     `json:"successful_samples"`                  // Number of samples that processed successfully
+	UniqueAuthors                 int     `json:"unique_authors"`                      // Number of unique PR authors (excluding bots)
+	AvgWasteHoursPerAuthorPerWeek float64 `json:"avg_waste_hours_per_author_per_week"` // Average preventable hours per author per week
+	AvgWasteCostPerAuthorPerYear  float64 `json:"avg_waste_cost_per_author_per_year"`  // Average preventable cost per author per year
+	AvgPRDurationHours            float64 `json:"avg_pr_duration_hours"`               // Average PR open time in hours
 
 	// Author costs (extrapolated)
 	AuthorNewCodeCost       float64 `json:"author_new_code_cost"`
@@ -64,13 +67,15 @@ type ExtrapolatedBreakdown struct {
 // Parameters:
 //   - breakdowns: Slice of Breakdown structs from successfully processed samples
 //   - totalPRs: Total number of PRs in the population
+//   - daysInPeriod: Number of days the sample covers (for annualizing per-author metrics)
+//   - cfg: Configuration for hourly rate and hours per week calculation
 //
 // Returns:
 //   - ExtrapolatedBreakdown with averaged costs scaled to total population
 //
 // The function computes the average cost per PR from the samples, then multiplies
 // by the total PR count to estimate population-wide costs.
-func ExtrapolateFromSamples(breakdowns []Breakdown, totalPRs int) ExtrapolatedBreakdown {
+func ExtrapolateFromSamples(breakdowns []Breakdown, totalPRs int, daysInPeriod int, cfg Config) ExtrapolatedBreakdown {
 	if len(breakdowns) == 0 {
 		return ExtrapolatedBreakdown{
 			TotalPRs:          totalPRs,
@@ -82,8 +87,8 @@ func ExtrapolateFromSamples(breakdowns []Breakdown, totalPRs int) ExtrapolatedBr
 	successfulSamples := len(breakdowns)
 	multiplier := float64(totalPRs)
 
-	// Track unique users across all PRs
-	uniqueUsers := make(map[string]bool)
+	// Track unique PR authors (excluding bots)
+	uniqueAuthors := make(map[string]bool)
 
 	// Accumulate costs from all samples
 	var sumAuthorNewCodeCost, sumAuthorAdaptationCost, sumAuthorGitHubCost, sumAuthorGitHubContextCost float64
@@ -96,15 +101,18 @@ func ExtrapolateFromSamples(breakdowns []Breakdown, totalPRs int) ExtrapolatedBr
 	var sumFutureReviewHours, sumFutureMergeHours, sumFutureContextHours, sumDelayHours float64
 	var sumAuthorHours float64
 	var sumTotalCost float64
+	var sumPRDuration float64
 
 	for i := range breakdowns {
 		breakdown := &breakdowns[i]
 
-		// Track unique users (author + participants)
-		uniqueUsers[breakdown.PRAuthor] = true
-		for _, p := range breakdown.Participants {
-			uniqueUsers[p.Actor] = true
+		// Track unique PR authors only (excluding bots)
+		if !breakdown.AuthorBot {
+			uniqueAuthors[breakdown.PRAuthor] = true
 		}
+
+		// Accumulate PR duration
+		sumPRDuration += breakdown.PRDuration
 
 		// Accumulate author costs
 		sumAuthorNewCodeCost += breakdown.Author.NewCodeCost
@@ -189,11 +197,38 @@ func ExtrapolateFromSamples(breakdowns []Breakdown, totalPRs int) ExtrapolatedBr
 	extTotalCost := sumTotalCost / samples * multiplier
 	extTotalHours := extAuthorHours + extParticipantHours + extDelayHours
 
+	// Calculate per-author metrics based on actual extrapolated PR activity
+	// This divides the total preventable waste by authors and time period
+	var avgWasteHoursPerAuthorPerWeek, avgWasteCostPerAuthorPerYear float64
+	authorCount := len(uniqueAuthors)
+	if authorCount > 0 && daysInPeriod > 0 {
+		// Preventable hours = code churn + delivery delay + coordination
+		preventableHours := extCodeChurnHours + extDeliveryDelayHours + extCoordinationHours
+
+		// Calculate weeks in the period
+		weeksInPeriod := float64(daysInPeriod) / 7.0
+
+		// Wasted time per author per week based on actual extrapolated PR activity
+		avgWasteHoursPerAuthorPerWeek = preventableHours / float64(authorCount) / weeksInPeriod
+
+		// Calculate hourly rate for cost
+		hourlyRate := (cfg.AnnualSalary * cfg.BenefitsMultiplier) / cfg.HoursPerYear
+
+		// Annual cost = weekly hours × 52 weeks × hourly rate
+		avgWasteCostPerAuthorPerYear = avgWasteHoursPerAuthorPerWeek * 52.0 * hourlyRate
+	}
+
+	// Calculate average PR duration
+	avgPRDuration := sumPRDuration / samples
+
 	return ExtrapolatedBreakdown{
-		TotalPRs:          totalPRs,
-		SampledPRs:        successfulSamples,
-		SuccessfulSamples: successfulSamples,
-		UniqueUsers:       len(uniqueUsers),
+		TotalPRs:                      totalPRs,
+		SampledPRs:                    successfulSamples,
+		SuccessfulSamples:             successfulSamples,
+		UniqueAuthors:                 authorCount,
+		AvgWasteHoursPerAuthorPerWeek: avgWasteHoursPerAuthorPerWeek,
+		AvgWasteCostPerAuthorPerYear:  avgWasteCostPerAuthorPerYear,
+		AvgPRDurationHours:            avgPRDuration,
 
 		AuthorNewCodeCost:       extAuthorNewCodeCost,
 		AuthorAdaptationCost:    extAuthorAdaptationCost,

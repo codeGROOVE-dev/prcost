@@ -1233,27 +1233,27 @@
             } else if (efficiencyPct >= 87) {
                 return { grade: 'B+', message: 'Pretty good!' };
             } else if (efficiencyPct >= 83) {
-                return { grade: 'B', message: 'Good work!' };
+                return { grade: 'B', message: 'Minor inefficiency detected.' };
             } else if (efficiencyPct >= 80) {
-                return { grade: 'B-', message: 'Room for improvement.' };
+                return { grade: 'B-', message: 'Minor inefficiency detected.' };
             } else if (efficiencyPct >= 77) {
-                return { grade: 'C+', message: 'Some inefficiency.' };
+                return { grade: 'C+', message: 'Some inefficiency detected.' };
             } else if (efficiencyPct >= 73) {
-                return { grade: 'C', message: 'Needs work.' };
+                return { grade: 'C', message: 'Moderate inefficiency detected.' };
             } else if (efficiencyPct >= 70) {
-                return { grade: 'C-', message: 'Optimize your workflow.' };
+                return { grade: 'C-', message: 'Moderate inefficiency detected.' };
             } else if (efficiencyPct >= 67) {
-                return { grade: 'D+', message: 'Major inefficiency.' };
+                return { grade: 'D+', message: 'Noticeable inefficiency detected.' };
             } else if (efficiencyPct >= 63) {
-                return { grade: 'D', message: 'Critical issues.' };
+                return { grade: 'D', message: 'Significant inefficiency detected.' };
             } else if (efficiencyPct >= 60) {
-                return { grade: 'D-', message: 'Severe inefficiency.' };
+                return { grade: 'D-', message: 'Severe inefficiency detected.' };
             } else {
-                return { grade: 'F', message: 'Rethink your workflow.' };
+                return { grade: 'F', message: 'Critical inefficiency detected.' };
             }
         }
 
-        function formatEfficiencyHTML(efficiencyPct, grade, message, preventableCost, preventableHours, totalCost, totalHours, isAnnual = false, annualWasteCost = 0, annualWasteHours = 0, userCount = 0, salary = 250000, benefitsMultiplier = 1.2, analysisType = 'project', sourceName = '', totalPRs = 0, daysInPeriod = 90) {
+        function formatEfficiencyHTML(efficiencyPct, grade, message, preventableCost, preventableHours, totalCost, totalHours, isAnnual = false, annualWasteCost = 0, annualWasteHours = 0, perAuthorWeeklyHours = 0, perAuthorAnnualCost = 0, salary = 250000, benefitsMultiplier = 1.2, analysisType = 'project', sourceName = '') {
             let html = '<div class="efficiency-section">';
             html += '<h2>Workflow Efficiency</h2>';
 
@@ -1271,48 +1271,26 @@
             // Right side: Annual wasted effort (only if annual)
             if (isAnnual) {
                 html += '<div class="efficiency-annual">';
-                html += '<div class="efficiency-annual-label">Annual Wasted Effort</div>';
+                html += '<div class="efficiency-annual-label">If Sustained for 1 Year</div>';
                 const annualWasteRounded = Math.round(annualWasteCost);
                 const annualWasteFormatted = '$' + annualWasteRounded.toLocaleString('en-US');
                 html += `<div class="efficiency-annual-value">${annualWasteFormatted}</div>`;
-                html += `<div class="efficiency-annual-time">${formatEngTimeUnit(annualWasteHours)}</div>`;
+                // Calculate headcount from annual waste
+                const annualCostPerHead = salary * benefitsMultiplier;
+                const headcount = annualWasteCost / annualCostPerHead;
+                html += `<div class="efficiency-annual-time">${headcount.toFixed(1)} headcount</div>`;
                 html += '</div>';
             }
 
             html += '</div>'; // Close efficiency-content
 
-            if (isAnnual) {
-                // Calculate per-author metrics for callout
-                const avgWasteHoursPerPR = preventableHours / totalPRs;
-                const avgWasteCostPerPR = preventableCost / totalPRs;
-                const prsPerPersonInPeriod = totalPRs / userCount;
-                const prsPerPersonPerYear = prsPerPersonInPeriod * (365 / daysInPeriod);
-                const annualWasteHoursPerAuthor = avgWasteHoursPerPR * prsPerPersonPerYear;
-                const annualWasteCostPerAuthor = avgWasteCostPerPR * prsPerPersonPerYear;
-                const weeklyWastePerAuthor = annualWasteHoursPerAuthor / 52;
-                const hoursPerWeek = weeklyWastePerAuthor.toFixed(1);
-
-                // Check if B+ or higher (A+, A, A-, B+)
-                const isHighPerformer = grade === 'A+' || grade === 'A' || grade === 'A-' || grade === 'B+';
-
-                // Check if B or lower
-                const showStrongCallout = grade === 'B' || grade === 'B-' || grade === 'C+' || grade === 'C' ||
-                                         grade === 'C-' || grade === 'D+' || grade === 'D' || grade === 'D-' || grade === 'F';
-
-                if (isHighPerformer) {
-                    // Green callout for high performers
-                    html += '<div class="efficiency-callout-success">';
-                    html += `<p style="font-size: 16px; margin-bottom: 0; line-height: 1.5;">You probably don't need this as your devs only lose <strong>${hoursPerWeek} hours/week due to pull request latency</strong>, but for everyone else, there is <a href="https://codegroove.dev/products/ready-to-review/" target="_blank">Ready-to-Review</a>. Free for OSS, $5/dev/month for private. Beta begins November 3rd: <a href="mailto:beta@codeGROOVE.dev">beta@codeGROOVE.dev</a></p>`;
-                    html += '</div>';
-                } else if (showStrongCallout) {
-                    // Yellow callout for B or lower
-                    const costPerPersonFormatted = '$' + Math.round(annualWasteCostPerAuthor).toLocaleString('en-US');
-
-                    html += '<div class="efficiency-callout">';
-                    html += `<p style="font-size: 16px; margin-bottom: 16px; line-height: 1.5;">Your devs lose <strong>${hoursPerWeek} hours/week due to pull request latency</strong>. That's <strong>${costPerPersonFormatted}/year per person</strong>. <a href="https://codegroove.dev/products/ready-to-review/" target="_blank">Ready-to-Review</a> fixes this.</p>`;
-                    html += '<p style="font-size: 16px; margin-bottom: 0; line-height: 1.5;">Free for OSS, $5/dev/month for private. Beta begins November 3rd: <a href="mailto:beta@codeGROOVE.dev">beta@codeGROOVE.dev</a></p>';
-                    html += '</div>';
-                }
+            // Show per-author metrics if available
+            if (isAnnual && perAuthorWeeklyHours > 0 && perAuthorAnnualCost > 0) {
+                html += '<div class="efficiency-details" style="margin-top: 20px; padding: 16px; background: #f5f5f5; border-radius: 8px;">';
+                const weeklyCost = perAuthorAnnualCost / 52;
+                const weeklyCostFormatted = '$' + Math.round(weeklyCost).toLocaleString('en-US');
+                html += `<p style="margin: 0; font-size: 14px; color: #666;"><strong>Lost Time per Author per Week:</strong> ${weeklyCostFormatted} • ${perAuthorWeeklyHours.toFixed(1)} hrs/week</p>`;
+                html += '</div>';
             }
 
             html += '</div>';
@@ -1540,11 +1518,17 @@
                 output += `    Subtotal                  ${formatCurrency(avgFutureCost).padStart(12)}    ${formatTimeUnit(avgFutureHours)}  (${pct.toFixed(1)}%)\n\n`;
             }
 
+            // Per-author preventable loss (if we have authors)
+            if (e.unique_authors > 0 && e.avg_waste_hours_per_author_per_week > 0) {
+                const weeklyCostPerAuthor = e.avg_waste_cost_per_author_per_year / 52.0;
+                output += `  Lost Time per Author per Week:  ${formatCurrency(weeklyCostPerAuthor).padStart(12)}    ${formatTimeUnit(e.avg_waste_hours_per_author_per_week)}\n`;
+            }
+
             // Average Preventable Loss Total (before grand total)
             const avgPreventableCost = avgCodeChurnCost + avgDeliveryDelayCost + avgCoordinationCost;
             const avgPreventableHours = avgCodeChurnHours + avgDeliveryDelayHours + avgCoordinationHours;
             const avgPreventablePct = (avgPreventableCost / avgTotalCost) * 100;
-            output += `  Preventable Loss Total      ${formatCurrency(avgPreventableCost).padStart(12)}    ${formatTimeUnit(avgPreventableHours)}  (${avgPreventablePct.toFixed(1)}%)\n`;
+            output += `  Preventable Loss Total          ${formatCurrency(avgPreventableCost).padStart(12)}    ${formatTimeUnit(avgPreventableHours)}  (${avgPreventablePct.toFixed(1)}%)\n`;
 
             // Average Total
             output += '  ═══════════════════════════════════════════════════════════════\n';
@@ -1613,11 +1597,17 @@
                 output += `    Subtotal                  ${formatCurrency(futureCost).padStart(12)}    ${formatTimeUnit(futureHours)}  (${pct.toFixed(1)}%)\n\n`;
             }
 
+            // Per-author preventable loss (if we have authors)
+            if (e.unique_authors > 0 && e.avg_waste_hours_per_author_per_week > 0) {
+                const weeklyCostPerAuthor = e.avg_waste_cost_per_author_per_year / 52.0;
+                output += `  Lost Time per Author per Week:  ${formatCurrency(weeklyCostPerAuthor).padStart(12)}    ${formatTimeUnit(e.avg_waste_hours_per_author_per_week)}\n`;
+            }
+
             // Preventable Loss Total (before grand total)
             const preventableCost = e.code_churn_cost + e.delivery_delay_cost + e.coordination_cost;
             const preventableHours = e.code_churn_hours + e.delivery_delay_hours + e.coordination_hours;
             const preventablePct = (preventableCost / e.total_cost) * 100;
-            output += `  Preventable Loss Total      ${formatCurrency(preventableCost).padStart(12)}    ${formatTimeUnit(preventableHours)}  (${preventablePct.toFixed(1)}%)\n`;
+            output += `  Total Preventable Waste (${days} days): ${formatCurrency(preventableCost).padStart(12)}    ${formatTimeUnit(preventableHours)}  (${preventablePct.toFixed(1)}%)\n`;
 
             // Total
             output += '  ═══════════════════════════════════════════════════════════════\n';
@@ -1816,7 +1806,9 @@
                                         html += '<div class="meta">';
                                         html += `<strong>Period:</strong> Last ${days} days &nbsp;•&nbsp; `;
                                         html += `<strong>Total public PRs:</strong> ${e.total_prs} &nbsp;•&nbsp; `;
-                                        html += `<strong>Sampled:</strong> ${e.successful_samples}`;
+                                        html += `<strong>Sampled:</strong> ${e.successful_samples} &nbsp;•&nbsp; `;
+                                        const avgOpenTime = formatTimeUnit(e.avg_pr_duration_hours || 0);
+                                        html += `<strong>Avg Open Time:</strong> ${avgOpenTime}`;
                                         html += '</div>';
                                         html += '</div>';
 
@@ -1833,7 +1825,10 @@
                                         const salary = request.config?.annual_salary || 250000;
                                         const benefitsMultiplier = request.config?.benefits_multiplier || 1.2;
                                         const analysisType = mode === 'org' ? 'organization' : 'project';
-                                        html += formatEfficiencyHTML(extEfficiencyPct, extEfficiency.grade, extEfficiency.message, extPreventableCost, extPreventableHours, e.total_cost, e.total_hours, true, annualWasteCost, annualWasteHours, e.unique_users || 0, salary, benefitsMultiplier, analysisType, sourceName, e.total_prs, parseInt(days));
+                                        // Use Go-computed per-author metrics
+                                        const perAuthorWeeklyHours = e.avg_waste_hours_per_author_per_week || 0;
+                                        const perAuthorAnnualCost = e.avg_waste_cost_per_author_per_year || 0;
+                                        html += formatEfficiencyHTML(extEfficiencyPct, extEfficiency.grade, extEfficiency.message, extPreventableCost, extPreventableHours, e.total_cost, e.total_hours, true, annualWasteCost, annualWasteHours, perAuthorWeeklyHours, perAuthorAnnualCost, salary, benefitsMultiplier, analysisType, sourceName);
 
                                         // Calculate average PR efficiency
                                         const totalPRs = e.total_prs;

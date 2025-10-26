@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"strconv"
 	"time"
 
 	"github.com/codeGROOVE-dev/prcost/pkg/cost"
@@ -81,10 +80,10 @@ func analyzeRepository(ctx context.Context, owner, repo string, sampleSize, days
 	}
 
 	// Extrapolate costs from samples using library function
-	extrapolated := cost.ExtrapolateFromSamples(breakdowns, len(prs))
+	extrapolated := cost.ExtrapolateFromSamples(breakdowns, len(prs), days, cfg)
 
 	// Display results in itemized format
-	printExtrapolatedResults(fmt.Sprintf("%s/%s", owner, repo), days, &extrapolated)
+	printExtrapolatedResults(fmt.Sprintf("%s/%s", owner, repo), days, &extrapolated, cfg)
 
 	return nil
 }
@@ -158,10 +157,10 @@ func analyzeOrganization(ctx context.Context, org string, sampleSize, days int, 
 	}
 
 	// Extrapolate costs from samples using library function
-	extrapolated := cost.ExtrapolateFromSamples(breakdowns, len(prs))
+	extrapolated := cost.ExtrapolateFromSamples(breakdowns, len(prs), days, cfg)
 
 	// Display results in itemized format
-	printExtrapolatedResults(fmt.Sprintf("%s (organization)", org), days, &extrapolated)
+	printExtrapolatedResults(fmt.Sprintf("%s (organization)", org), days, &extrapolated, cfg)
 
 	return nil
 }
@@ -205,45 +204,14 @@ func formatTimeUnit(hours float64) string {
 	return fmt.Sprintf("%.1f years", years)
 }
 
-// formatEngTimeUnit formats time for annual metrics.
-// Uses standard time units (months, years) for large durations.
-func formatEngTimeUnit(hours float64) string {
-	// Show minutes for values less than 1 hour
-	if hours < 1.0 {
-		minutes := hours * 60.0
-		return fmt.Sprintf("%.1f min", minutes)
-	}
-
-	if hours < 48 {
-		return fmt.Sprintf("%.1f hrs", hours)
-	}
-
-	days := hours / 24.0
-	if days < 14 {
-		return fmt.Sprintf("%.1f days", days)
-	}
-
-	weeks := days / 7.0
-	if weeks < 8 {
-		return fmt.Sprintf("%.1f weeks", weeks)
-	}
-
-	months := days / 30.0
-	if months < 24 {
-		return fmt.Sprintf("%.1f months", months)
-	}
-
-	years := days / 365.0
-	return fmt.Sprintf("%.1f years", years)
-}
-
 // printExtrapolatedResults displays extrapolated cost breakdown in itemized format.
 //
 //nolint:maintidx,revive // acceptable complexity/length for comprehensive display function
-func printExtrapolatedResults(title string, days int, ext *cost.ExtrapolatedBreakdown) {
+func printExtrapolatedResults(title string, days int, ext *cost.ExtrapolatedBreakdown, cfg cost.Config) {
 	fmt.Println()
 	fmt.Printf("  %s\n", title)
-	fmt.Printf("  Period: Last %d days  •  Total PRs: %d  •  Sampled: %d\n", days, ext.TotalPRs, ext.SuccessfulSamples)
+	avgOpenTime := formatTimeUnit(ext.AvgPRDurationHours)
+	fmt.Printf("  Period: Last %d days  •  Total PRs: %d  •  Sampled: %d  •  Avg Open Time: %s\n", days, ext.TotalPRs, ext.SuccessfulSamples, avgOpenTime)
 	fmt.Println()
 
 	// Calculate average per PR
@@ -279,7 +247,9 @@ func printExtrapolatedResults(title string, days int, ext *cost.ExtrapolatedBrea
 
 	// Show average PR breakdown with improved visual hierarchy
 	fmt.Println("  ┌─────────────────────────────────────────────────────────────┐")
-	fmt.Printf("  │ Average PR (sampled over %d day period)%*s│\n", days, 51-len(strconv.Itoa(days)), "")
+	headerText := fmt.Sprintf("Average PR (sampled over %d day period)", days)
+	padding := 60 - len(headerText)
+	fmt.Printf("  │ %s%*s│\n", headerText, padding, "")
 	fmt.Println("  └─────────────────────────────────────────────────────────────┘")
 	fmt.Println()
 
@@ -378,6 +348,13 @@ func printExtrapolatedResults(title string, days int, ext *cost.ExtrapolatedBrea
 		fmt.Println()
 	}
 
+	// Per-author preventable loss for average PR (if we have authors)
+	if ext.UniqueAuthors > 0 && ext.AvgWasteHoursPerAuthorPerWeek > 0 {
+		avgWeeklyCostPerAuthor := ext.AvgWasteCostPerAuthorPerYear / 52.0
+		fmt.Printf("  Per Author per Week        $%12s    %s\n",
+			formatWithCommas(avgWeeklyCostPerAuthor), formatTimeUnit(ext.AvgWasteHoursPerAuthorPerWeek))
+	}
+
 	// Average Preventable Loss Total (before grand total)
 	avgPreventableCost := avgCodeChurnCost + avgDeliveryDelayCost + avgCoordinationCost
 	avgPreventableHours := avgCodeChurnHours + avgDeliveryDelayHours + avgCoordinationHours
@@ -394,8 +371,8 @@ func printExtrapolatedResults(title string, days int, ext *cost.ExtrapolatedBrea
 
 	// Extrapolated total section with improved visual hierarchy
 	fmt.Println("  ┌─────────────────────────────────────────────────────────────┐")
-	headerText := fmt.Sprintf("Estimated costs within a %d day period (extrapolated)", days)
-	padding := 61 - len(headerText)
+	headerText = fmt.Sprintf("Estimated costs within a %d day period (extrapolated)", days)
+	padding = 60 - len(headerText)
 	fmt.Printf("  │ %s%*s│\n", headerText, padding, "")
 	fmt.Println("  └─────────────────────────────────────────────────────────────┘")
 	fmt.Println()
@@ -488,6 +465,13 @@ func printExtrapolatedResults(title string, days int, ext *cost.ExtrapolatedBrea
 		fmt.Println()
 	}
 
+	// Per-author preventable loss (if we have authors)
+	if ext.UniqueAuthors > 0 && ext.AvgWasteHoursPerAuthorPerWeek > 0 {
+		weeklyCostPerAuthor := ext.AvgWasteCostPerAuthorPerYear / 52.0
+		fmt.Printf("  Per Author per Week        $%12s    %s\n",
+			formatWithCommas(weeklyCostPerAuthor), formatTimeUnit(ext.AvgWasteHoursPerAuthorPerWeek))
+	}
+
 	// Preventable Loss Total (before grand total)
 	preventableCost := ext.CodeChurnCost + ext.DeliveryDelayCost + ext.CoordinationCost
 	preventableHours := ext.CodeChurnHours + ext.DeliveryDelayHours + ext.CoordinationHours
@@ -502,11 +486,11 @@ func printExtrapolatedResults(title string, days int, ext *cost.ExtrapolatedBrea
 	fmt.Println()
 
 	// Print extrapolated efficiency score + annual waste
-	printExtrapolatedEfficiency(ext, days)
+	printExtrapolatedEfficiency(ext, days, cfg)
 }
 
 // printExtrapolatedEfficiency prints the workflow efficiency + annual waste section for extrapolated totals.
-func printExtrapolatedEfficiency(ext *cost.ExtrapolatedBreakdown, days int) {
+func printExtrapolatedEfficiency(ext *cost.ExtrapolatedBreakdown, days int, cfg cost.Config) {
 	// Calculate preventable waste: Code Churn + All Delay Costs
 	preventableHours := ext.CodeChurnHours + ext.DeliveryDelayHours + ext.CoordinationHours
 	preventableCost := ext.CodeChurnCost + ext.DeliveryDelayCost + ext.CoordinationCost
@@ -523,22 +507,28 @@ func printExtrapolatedEfficiency(ext *cost.ExtrapolatedBreakdown, days int) {
 
 	// Calculate annual waste
 	annualMultiplier := 365.0 / float64(days)
-	annualWasteHours := preventableHours * annualMultiplier
 	annualWasteCost := preventableCost * annualMultiplier
 
 	fmt.Println("  ┌─────────────────────────────────────────────────────────────┐")
-	fmt.Printf("  │ WORKFLOW EFFICIENCY: %s (%.1f%%) - %s", grade, efficiencyPct, message)
-	// Calculate padding to reach 63 chars (box width)
-	headerLen := 25 + len(grade) + len(fmt.Sprintf("%.1f", efficiencyPct)) + len(message)
-	padding := 63 - headerLen
+	headerText := fmt.Sprintf("WORKFLOW EFFICIENCY: %s (%.1f%%) - %s", grade, efficiencyPct, message)
+	padding := 60 - len(headerText)
 	if padding < 0 {
 		padding = 0
 	}
-	fmt.Printf("%*s│\n", padding, "")
+	fmt.Printf("  │ %s%*s│\n", headerText, padding, "")
 	fmt.Println("  └─────────────────────────────────────────────────────────────┘")
-	fmt.Printf("  Preventable Waste:         $%12s    %s\n",
-		formatWithCommas(preventableCost), formatTimeUnit(preventableHours))
-	fmt.Printf("  Annual Wasted Effort:      $%12s    %s\n",
-		formatWithCommas(annualWasteCost), formatEngTimeUnit(annualWasteHours))
+
+	// Per-author preventable waste (if we have authors)
+	if ext.UniqueAuthors > 0 && ext.AvgWasteHoursPerAuthorPerWeek > 0 {
+		weeklyCostPerAuthor := ext.AvgWasteCostPerAuthorPerYear / 52.0
+		fmt.Printf("  Lost Time per Author per Week:  $%12s    %s\n",
+			formatWithCommas(weeklyCostPerAuthor), formatTimeUnit(ext.AvgWasteHoursPerAuthorPerWeek))
+	}
+
+	// Calculate headcount from annual waste
+	annualCostPerHead := cfg.AnnualSalary * cfg.BenefitsMultiplier
+	headcount := annualWasteCost / annualCostPerHead
+	fmt.Printf("  If Sustained for 1 Year:        $%12s    %.1f headcount\n",
+		formatWithCommas(annualWasteCost), headcount)
 	fmt.Println()
 }
