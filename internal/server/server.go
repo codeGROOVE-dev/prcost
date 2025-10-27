@@ -1765,7 +1765,7 @@ func (s *Server) processRepoSampleWithProgress(ctx context.Context, req *RepoSam
 			PR:       0,
 			Owner:    req.Owner,
 			Repo:     req.Repo,
-			Progress: "Querying GitHub for PRs...",
+			Progress: fmt.Sprintf("Querying GitHub GraphQL API for %s/%s PRs (last %d days)...", req.Owner, req.Repo, req.Days),
 		}))
 
 		// Start keep-alive to prevent client timeout during GraphQL query
@@ -1890,7 +1890,7 @@ func (s *Server) processOrgSampleWithProgress(ctx context.Context, req *OrgSampl
 		logSSEError(ctx, s.logger, sendSSE(writer, ProgressUpdate{
 			Type:     "fetching",
 			PR:       0,
-			Progress: "Querying GitHub for PRs...",
+			Progress: fmt.Sprintf("Querying GitHub Search API for %s org PRs (last %d days)...", req.Org, req.Days),
 		}))
 
 		// Start keep-alive to prevent client timeout during GraphQL query
@@ -1965,29 +1965,14 @@ func (s *Server) processOrgSampleWithProgress(ctx context.Context, req *OrgSampl
 	// Count unique authors across all PRs (not just samples)
 	totalAuthors := github.CountUniqueAuthors(prs)
 
-	// Count open PRs across all unique repos in the organization
-	uniqueRepos := make(map[string]bool)
-	for _, pr := range prs {
-		repoKey := pr.Owner + "/" + pr.Repo
-		uniqueRepos[repoKey] = true
+	// Count open PRs across the entire organization with a single GraphQL query
+	//nolint:contextcheck // Using background context intentionally to prevent client timeout from canceling work
+	totalOpenPRs, err := github.CountOpenPRsInOrg(workCtx, req.Org, token)
+	if err != nil {
+		s.logger.WarnContext(ctx, "Failed to count open PRs for organization", "org", req.Org, errorKey, err)
+		totalOpenPRs = 0 // Continue with 0 if we can't get the count
 	}
-
-	totalOpenPRs := 0
-	for repoKey := range uniqueRepos {
-		parts := strings.SplitN(repoKey, "/", 2)
-		if len(parts) != 2 {
-			continue
-		}
-		owner, repo := parts[0], parts[1]
-		//nolint:contextcheck // Using background context intentionally to prevent client timeout from canceling work
-		openCount, err := github.CountOpenPRsInRepo(workCtx, owner, repo, token)
-		if err != nil {
-			s.logger.WarnContext(ctx, "Failed to count open PRs for repo", "repo", repoKey, errorKey, err)
-			continue
-		}
-		totalOpenPRs += openCount
-	}
-	s.logger.InfoContext(ctx, "Counted total open PRs across organization", "open_prs", totalOpenPRs, "repos", len(uniqueRepos))
+	s.logger.InfoContext(ctx, "Counted total open PRs across organization", "open_prs", totalOpenPRs, "org", req.Org)
 
 	// Extrapolate costs from samples
 	extrapolated := cost.ExtrapolateFromSamples(breakdowns, len(prs), totalAuthors, totalOpenPRs, actualDays, cfg)

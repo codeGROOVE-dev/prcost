@@ -825,3 +825,83 @@ func CountOpenPRsInRepo(ctx context.Context, owner, repo, token string) (int, er
 
 	return count, nil
 }
+
+// CountOpenPRsInOrg counts all open PRs across an entire GitHub organization with a single GraphQL query.
+// This is much more efficient than counting PRs repo-by-repo for organizations with many repositories.
+// Only counts PRs created more than 24 hours ago to exclude brand-new PRs.
+func CountOpenPRsInOrg(ctx context.Context, org, token string) (int, error) {
+	// Only count PRs created more than 24 hours ago
+	twentyFourHoursAgo := time.Now().Add(-24 * time.Hour).Format("2006-01-02T15:04:05Z")
+
+	query := `query($searchQuery: String!) {
+		search(query: $searchQuery, type: ISSUE, first: 0) {
+			issueCount
+		}
+	}`
+
+	// Search query: is:pr is:open org:orgname created:<date
+	searchQuery := fmt.Sprintf("is:pr is:open org:%s created:<%s", org, twentyFourHoursAgo)
+
+	variables := map[string]any{
+		"searchQuery": searchQuery,
+	}
+
+	queryJSON, err := json.Marshal(map[string]any{
+		"query":     query,
+		"variables": variables,
+	})
+	if err != nil {
+		return 0, fmt.Errorf("failed to marshal query: %w", err)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, "https://api.github.com/graphql", bytes.NewBuffer(queryJSON))
+	if err != nil {
+		return 0, fmt.Errorf("failed to create request: %w", err)
+	}
+
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Content-Type", "application/json")
+
+	slog.Info("HTTP request starting",
+		"method", "POST",
+		"url", "https://api.github.com/graphql",
+		"host", "api.github.com")
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return 0, fmt.Errorf("request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return 0, fmt.Errorf("unexpected status code: %d", resp.StatusCode)
+	}
+
+	var result struct {
+		Data struct {
+			Search struct {
+				IssueCount int `json:"issueCount"`
+			} `json:"search"`
+		} `json:"data"`
+		Errors []struct {
+			Message string
+		}
+	}
+
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return 0, fmt.Errorf("failed to decode response: %w", err)
+	}
+
+	if len(result.Errors) > 0 {
+		return 0, fmt.Errorf("GraphQL error: %s", result.Errors[0].Message)
+	}
+
+	count := result.Data.Search.IssueCount
+
+	slog.Info("Counted PRs open >24 hours in organization",
+		"org", org,
+		"open_prs", count,
+		"filter", "created >24h ago")
+
+	return count, nil
+}
