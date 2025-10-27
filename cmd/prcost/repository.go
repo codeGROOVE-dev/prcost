@@ -80,11 +80,8 @@ func analyzeRepository(ctx context.Context, owner, repo string, sampleSize, days
 		return nil
 	}
 
-	// Calculate actual time window (may be less than requested if we hit API limit)
-	actualDays, hitLimit := github.CalculateActualTimeWindow(prs, days)
-	if hitLimit {
-		fmt.Printf("\nNote: Hit GitHub API limit of 1000 PRs. Adjusting analysis period from %d to %d days.\n", days, actualDays)
-	}
+	// Validate time coverage (logs statistics, always uses requested period)
+	actualDays, _ := github.CalculateActualTimeWindow(prs, days)
 
 	// Count bot PRs before sampling
 	botPRCount := countBotPRs(prs)
@@ -199,11 +196,8 @@ func analyzeOrganization(ctx context.Context, org string, sampleSize, days int, 
 		return nil
 	}
 
-	// Calculate actual time window (may be less than requested if we hit API limit)
-	actualDays, hitLimit := github.CalculateActualTimeWindow(prs, days)
-	if hitLimit {
-		fmt.Printf("\nNote: Hit GitHub API limit of 1000 PRs. Adjusting analysis period from %d to %d days.\n", days, actualDays)
-	}
+	// Validate time coverage (logs statistics, always uses requested period)
+	actualDays, _ := github.CalculateActualTimeWindow(prs, days)
 
 	// Count bot PRs before sampling
 	botPRCount := countBotPRs(prs)
@@ -438,9 +432,9 @@ func printExtrapolatedResults(title string, days int, ext *cost.ExtrapolatedBrea
 		fmt.Printf("    Context Switching         %12s    %s\n",
 			formatWithCommas(avgParticipantContextCost), formatTimeUnit(avgParticipantContextHours))
 		fmt.Println("                              ────────────")
-		pct := (avgParticipantTotalCost / avgTotalCost) * 100
+		participantPct := (avgParticipantTotalCost / avgTotalCost) * 100
 		fmt.Printf("    Subtotal                 $%12s    %s  (%.1f%%)\n",
-			formatWithCommas(avgParticipantTotalCost), formatTimeUnit(avgParticipantTotalHours), pct)
+			formatWithCommas(avgParticipantTotalCost), formatTimeUnit(avgParticipantTotalHours), participantPct)
 		fmt.Println()
 	}
 

@@ -90,7 +90,7 @@ type ExtrapolatedBreakdown struct {
 //
 // The function computes the average cost per PR from the samples, then multiplies
 // by the total PR count to estimate population-wide costs.
-func ExtrapolateFromSamples(breakdowns []Breakdown, totalPRs, totalAuthors int, daysInPeriod int, cfg Config) ExtrapolatedBreakdown {
+func ExtrapolateFromSamples(breakdowns []Breakdown, totalPRs, totalAuthors int, daysInPeriod int, _ Config) ExtrapolatedBreakdown {
 	if len(breakdowns) == 0 {
 		return ExtrapolatedBreakdown{
 			TotalPRs:          totalPRs,

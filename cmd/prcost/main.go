@@ -314,7 +314,7 @@ func printHumanReadable(breakdown *cost.Breakdown, prURL string) {
 	fmt.Println()
 
 	// Print efficiency score
-	printEfficiency(breakdown, formatCurrency)
+	printEfficiency(breakdown)
 }
 
 // printDelayCosts prints delay and future costs section.
@@ -485,7 +485,7 @@ func mergeVelocityGrade(avgOpenDays float64) (grade, message string) {
 }
 
 // printEfficiency prints the workflow efficiency section for a single PR.
-func printEfficiency(breakdown *cost.Breakdown, formatCurrency func(float64) string) {
+func printEfficiency(breakdown *cost.Breakdown) {
 	// Calculate preventable waste: Code Churn + All Delay Costs
 	preventableHours := breakdown.DelayCostDetail.CodeChurnHours +
 		breakdown.DelayCostDetail.DeliveryDelayHours +
