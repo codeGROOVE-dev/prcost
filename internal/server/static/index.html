@@ -1769,14 +1769,14 @@
 
             // Weekly waste per PR author
             if ((e.waste_hours_per_author_per_week || 0) > 0 && (e.total_authors || 0) > 0) {
-                output += `  Weekly waste per PR author:       ${formatCurrency(e.waste_cost_per_author_per_week).padStart(10)}    ${formatTimeUnit(e.waste_hours_per_author_per_week)}  (${e.total_authors} authors)\n`;
+                output += `  Weekly waste per PR author:     ${formatCurrency(e.waste_cost_per_author_per_week).padStart(10)}    ${formatTimeUnit(e.waste_hours_per_author_per_week)}  (${e.total_authors} authors)\n`;
             }
 
             // Preventable Loss Total (before grand total)
             const preventableCost = (e.code_churn_cost || 0) + (e.delivery_delay_cost || 0) + (e.automated_updates_cost || 0) + (e.pr_tracking_cost || 0);
             const preventableHours = (e.code_churn_hours || 0) + (e.delivery_delay_hours || 0) + (e.automated_updates_hours || 0) + (e.pr_tracking_hours || 0);
             const preventablePct = (preventableCost / e.total_cost) * 100;
-            output += `  Total Preventable Waste (${days} days): ${formatCurrency(preventableCost).padStart(10)}    ${formatTimeUnit(preventableHours)}  (${preventablePct.toFixed(1)}%)\n`;
+            output += `  Total Preventable Waste (${days} days):  ${formatCurrency(preventableCost).padStart(10)}    ${formatTimeUnit(preventableHours)}  (${preventablePct.toFixed(1)}%)\n`;
 
             // Total
             output += '  ════════════════════════════════════════════════════\n';
