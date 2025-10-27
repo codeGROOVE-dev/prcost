@@ -60,7 +60,6 @@ func isBotAuthor(author string) bool {
 // Uses library functions from pkg/github and pkg/cost for fetching, sampling,
 // and extrapolation - all functionality is available to external clients.
 func analyzeRepository(ctx context.Context, owner, repo string, sampleSize, days int, cfg cost.Config, token string, dataSource string) error {
-	slog.Info("Fetching PR list from repository")
 
 	// Calculate since date
 	since := time.Now().AddDate(0, 0, -days)
@@ -87,7 +86,7 @@ func analyzeRepository(ctx context.Context, owner, repo string, sampleSize, days
 	botPRCount := countBotPRs(prs)
 	humanPRCount := len(prs) - botPRCount
 
-	// Sample PRs using time-bucket strategy (filters out bot PRs)
+	// Sample PRs using time-bucket strategy (includes all PRs)
 	samples := github.SamplePRs(prs, sampleSize)
 
 	slog.Info("Sampled PRs for analysis",
@@ -98,8 +97,8 @@ func analyzeRepository(ctx context.Context, owner, repo string, sampleSize, days
 		"requested_samples", sampleSize)
 
 	if botPRCount > 0 {
-		fmt.Printf("\nAnalyzing %d sampled PRs from %d human PRs (%d bot PRs excluded) modified in the last %d days...\n\n",
-			len(samples), humanPRCount, botPRCount, actualDays)
+		fmt.Printf("\nAnalyzing %d sampled PRs from %d total PRs (%d human, %d bot) modified in the last %d days...\n\n",
+			len(samples), len(prs), humanPRCount, botPRCount, actualDays)
 	} else {
 		fmt.Printf("\nAnalyzing %d sampled PRs from %d total PRs modified in the last %d days...\n\n",
 			len(samples), len(prs), actualDays)
@@ -161,10 +160,16 @@ func analyzeRepository(ctx context.Context, owner, repo string, sampleSize, days
 
 	// Count unique authors across all PRs (not just samples)
 	totalAuthors := github.CountUniqueAuthors(prs)
-	slog.Info("Counted unique authors across all PRs", "total_authors", totalAuthors)
+
+	// Query for actual count of open PRs (not extrapolated from samples)
+	openPRCount, err := github.CountOpenPRsInRepo(ctx, owner, repo, token)
+	if err != nil {
+		slog.Warn("Failed to count open PRs, using 0", "error", err)
+		openPRCount = 0
+	}
 
 	// Extrapolate costs from samples using library function
-	extrapolated := cost.ExtrapolateFromSamples(breakdowns, len(prs), totalAuthors, actualDays, cfg)
+	extrapolated := cost.ExtrapolateFromSamples(breakdowns, len(prs), totalAuthors, openPRCount, actualDays, cfg)
 
 	// Display results in itemized format
 	printExtrapolatedResults(fmt.Sprintf("%s/%s", owner, repo), actualDays, &extrapolated, cfg)
@@ -203,7 +208,7 @@ func analyzeOrganization(ctx context.Context, org string, sampleSize, days int, 
 	botPRCount := countBotPRs(prs)
 	humanPRCount := len(prs) - botPRCount
 
-	// Sample PRs using time-bucket strategy (filters out bot PRs)
+	// Sample PRs using time-bucket strategy (includes all PRs)
 	samples := github.SamplePRs(prs, sampleSize)
 
 	slog.Info("Sampled PRs for analysis",
@@ -214,8 +219,8 @@ func analyzeOrganization(ctx context.Context, org string, sampleSize, days int, 
 		"requested_samples", sampleSize)
 
 	if botPRCount > 0 {
-		fmt.Printf("\nAnalyzing %d sampled PRs from %d human PRs (%d bot PRs excluded) across %s (last %d days)...\n\n",
-			len(samples), humanPRCount, botPRCount, org, actualDays)
+		fmt.Printf("\nAnalyzing %d sampled PRs from %d total PRs (%d human, %d bot) across %s (last %d days)...\n\n",
+			len(samples), len(prs), humanPRCount, botPRCount, org, actualDays)
 	} else {
 		fmt.Printf("\nAnalyzing %d sampled PRs from %d total PRs across %s (last %d days)...\n\n",
 			len(samples), len(prs), org, actualDays)
@@ -277,10 +282,32 @@ func analyzeOrganization(ctx context.Context, org string, sampleSize, days int, 
 
 	// Count unique authors across all PRs (not just samples)
 	totalAuthors := github.CountUniqueAuthors(prs)
-	slog.Info("Counted unique authors across all PRs", "total_authors", totalAuthors)
+
+	// Count open PRs across all unique repos in the organization
+	uniqueRepos := make(map[string]bool)
+	for _, pr := range prs {
+		repoKey := pr.Owner + "/" + pr.Repo
+		uniqueRepos[repoKey] = true
+	}
+
+	totalOpenPRs := 0
+	for repoKey := range uniqueRepos {
+		parts := strings.SplitN(repoKey, "/", 2)
+		if len(parts) != 2 {
+			continue
+		}
+		owner, repo := parts[0], parts[1]
+		openCount, err := github.CountOpenPRsInRepo(ctx, owner, repo, token)
+		if err != nil {
+			slog.Warn("Failed to count open PRs for repo", "repo", repoKey, "error", err)
+			continue
+		}
+		totalOpenPRs += openCount
+	}
+	slog.Info("Counted total open PRs across organization", "open_prs", totalOpenPRs, "repos", len(uniqueRepos))
 
 	// Extrapolate costs from samples using library function
-	extrapolated := cost.ExtrapolateFromSamples(breakdowns, len(prs), totalAuthors, actualDays, cfg)
+	extrapolated := cost.ExtrapolateFromSamples(breakdowns, len(prs), totalAuthors, totalOpenPRs, actualDays, cfg)
 
 	// Display results in itemized format
 	printExtrapolatedResults(fmt.Sprintf("%s (organization)", org), actualDays, &extrapolated, cfg)
@@ -334,7 +361,18 @@ func printExtrapolatedResults(title string, days int, ext *cost.ExtrapolatedBrea
 	fmt.Println()
 	fmt.Printf("  %s\n", title)
 	avgOpenTime := formatTimeUnit(ext.AvgPRDurationHours)
-	fmt.Printf("  Period: Last %d days  •  Total PRs: %d  •  Authors: %d  •  Sampled: %d  •  Avg Open Time: %s\n", days, ext.TotalPRs, ext.TotalAuthors, ext.SuccessfulSamples, avgOpenTime)
+
+	// Show human/bot breakdown if there are bot PRs
+	if ext.BotPRs > 0 {
+		avgHumanOpenTime := formatTimeUnit(ext.AvgHumanPRDurationHours)
+		avgBotOpenTime := formatTimeUnit(ext.AvgBotPRDurationHours)
+		fmt.Printf("  Period: Last %d days  •  Total PRs: %d (%d human, %d bot)  •  Authors: %d  •  Sampled: %d\n",
+			days, ext.TotalPRs, ext.HumanPRs, ext.BotPRs, ext.TotalAuthors, ext.SuccessfulSamples)
+		fmt.Printf("  Avg Open Time: %s (human: %s, bot: %s)\n", avgOpenTime, avgHumanOpenTime, avgBotOpenTime)
+	} else {
+		fmt.Printf("  Period: Last %d days  •  Total PRs: %d  •  Authors: %d  •  Sampled: %d  •  Avg Open Time: %s\n",
+			days, ext.TotalPRs, ext.TotalAuthors, ext.SuccessfulSamples, avgOpenTime)
+	}
 	fmt.Println()
 
 	// Calculate average per PR
@@ -359,11 +397,13 @@ func printExtrapolatedResults(title string, days int, ext *cost.ExtrapolatedBrea
 	avgParticipantTotalHours := ext.ParticipantTotalHours / float64(ext.TotalPRs)
 
 	avgDeliveryDelayCost := ext.DeliveryDelayCost / float64(ext.TotalPRs)
-	avgCoordinationCost := ext.CoordinationCost / float64(ext.TotalPRs)
 	avgCodeChurnCost := ext.CodeChurnCost / float64(ext.TotalPRs)
+	avgAutomatedUpdatesCost := ext.AutomatedUpdatesCost / float64(ext.TotalPRs)
+	avgPRTrackingCost := ext.PRTrackingCost / float64(ext.TotalPRs)
 	avgDeliveryDelayHours := ext.DeliveryDelayHours / float64(ext.TotalPRs)
-	avgCoordinationHours := ext.CoordinationHours / float64(ext.TotalPRs)
 	avgCodeChurnHours := ext.CodeChurnHours / float64(ext.TotalPRs)
+	avgAutomatedUpdatesHours := ext.AutomatedUpdatesHours / float64(ext.TotalPRs)
+	avgPRTrackingHours := ext.PRTrackingHours / float64(ext.TotalPRs)
 
 	avgTotalCost := ext.TotalCost / float64(ext.TotalPRs)
 	avgTotalHours := ext.TotalHours / float64(ext.TotalPRs)
@@ -382,38 +422,36 @@ func printExtrapolatedResults(title string, days int, ext *cost.ExtrapolatedBrea
 	fmt.Println()
 
 	// Authors section
-	fmt.Println("  Development Costs")
-	fmt.Println("  ─────────────────")
-
-	// Calculate kLOC for display
+	// Calculate total LOC for header
 	avgNewLOC := float64(ext.TotalNewLines) / float64(ext.TotalPRs) / 1000.0
 	avgModifiedLOC := float64(ext.TotalModifiedLines) / float64(ext.TotalPRs) / 1000.0
+	avgTotalLOC := avgNewLOC + avgModifiedLOC
+	totalLOCStr := formatLOC(avgTotalLOC)
+	newLOCStr := formatLOC(avgNewLOC)
+	modifiedLOCStr := formatLOC(avgModifiedLOC)
 
-	// Format LOC with more precision for small values
-	newLOCStr := fmt.Sprintf("%.1fk", avgNewLOC)
-	if avgNewLOC < 1.0 && avgNewLOC >= 0.1 {
-		newLOCStr = fmt.Sprintf("%.1fk", avgNewLOC)
-	} else if avgNewLOC < 0.1 && avgNewLOC > 0 {
-		newLOCStr = fmt.Sprintf("%.2fk", avgNewLOC)
-	}
-	modifiedLOCStr := fmt.Sprintf("%.1fk", avgModifiedLOC)
-	if avgModifiedLOC < 1.0 && avgModifiedLOC >= 0.1 {
-		modifiedLOCStr = fmt.Sprintf("%.1fk", avgModifiedLOC)
-	} else if avgModifiedLOC < 0.1 && avgModifiedLOC > 0 {
-		modifiedLOCStr = fmt.Sprintf("%.2fk", avgModifiedLOC)
-	}
+	fmt.Printf("  Development Costs (%d PRs, %s total LOC)\n", ext.HumanPRs, totalLOCStr)
+	fmt.Println("  ────────────────────────────────────────")
 
-	fmt.Printf("    New Development           %12s    %s  (%s LOC)\n",
+	fmt.Printf("    New Development            $%10s    %s  (%s LOC)\n",
 		formatWithCommas(avgAuthorNewCodeCost), formatTimeUnit(avgAuthorNewCodeHours), newLOCStr)
-	fmt.Printf("    Adaptation                %12s    %s  (%s LOC)\n",
+	fmt.Printf("    Adaptation                 $%10s    %s  (%s LOC)\n",
 		formatWithCommas(avgAuthorAdaptationCost), formatTimeUnit(avgAuthorAdaptationHours), modifiedLOCStr)
-	fmt.Printf("    GitHub Activity           %12s    %s\n",
+	fmt.Printf("    GitHub Activity            $%10s    %s\n",
 		formatWithCommas(avgAuthorGitHubCost), formatTimeUnit(avgAuthorGitHubHours))
-	fmt.Printf("    GitHub Context Switching  %12s    %s\n",
+	fmt.Printf("    Context Switching          $%10s    %s\n",
 		formatWithCommas(avgAuthorGitHubContextCost), formatTimeUnit(avgAuthorGitHubContextHours))
-	fmt.Println("                              ────────────")
+
+	// Show bot PR LOC even though cost is $0
+	if ext.BotPRs > 0 {
+		avgBotTotalLOC := float64(ext.BotNewLines+ext.BotModifiedLines) / float64(ext.TotalPRs) / 1000.0
+		botLOCStr := formatLOC(avgBotTotalLOC)
+		fmt.Printf("    Automated Updates              —         %s  (%d PRs, %s LOC)\n",
+			formatTimeUnit(0.0), ext.BotPRs, botLOCStr)
+	}
+	fmt.Println("                                ──────────")
 	pct := (avgAuthorTotalCost / avgTotalCost) * 100
-	fmt.Printf("    Subtotal                 $%12s    %s  (%.1f%%)\n",
+	fmt.Printf("    Subtotal                   $%10s    %s  (%.1f%%)\n",
 		formatWithCommas(avgAuthorTotalCost), formatTimeUnit(avgAuthorTotalHours), pct)
 	fmt.Println()
 
@@ -422,35 +460,49 @@ func printExtrapolatedResults(title string, days int, ext *cost.ExtrapolatedBrea
 		fmt.Println("  Participant Costs")
 		fmt.Println("  ─────────────────")
 		if avgParticipantReviewCost > 0 {
-			fmt.Printf("    Review Activity           %12s    %s\n",
+			fmt.Printf("    Review Activity            $%10s    %s\n",
 				formatWithCommas(avgParticipantReviewCost), formatTimeUnit(avgParticipantReviewHours))
 		}
 		if avgParticipantGitHubCost > 0 {
-			fmt.Printf("    GitHub Activity           %12s    %s\n",
+			fmt.Printf("    GitHub Activity            $%10s    %s\n",
 				formatWithCommas(avgParticipantGitHubCost), formatTimeUnit(avgParticipantGitHubHours))
 		}
-		fmt.Printf("    Context Switching         %12s    %s\n",
+		fmt.Printf("    Context Switching          $%10s    %s\n",
 			formatWithCommas(avgParticipantContextCost), formatTimeUnit(avgParticipantContextHours))
-		fmt.Println("                              ────────────")
+		fmt.Println("                                ──────────")
 		participantPct := (avgParticipantTotalCost / avgTotalCost) * 100
-		fmt.Printf("    Subtotal                 $%12s    %s  (%.1f%%)\n",
+		fmt.Printf("    Subtotal                   $%10s    %s  (%.1f%%)\n",
 			formatWithCommas(avgParticipantTotalCost), formatTimeUnit(avgParticipantTotalHours), participantPct)
 		fmt.Println()
 	}
 
 	// Merge Delay section
-	fmt.Println("  Delay Costs")
-	fmt.Println("  ───────────")
-	avgOpenTime = formatTimeUnit(ext.AvgPRDurationHours)
-	fmt.Printf("    Workstream blockage       %12s    %s  (avg open: %s)\n",
-		formatWithCommas(avgDeliveryDelayCost), formatTimeUnit(avgDeliveryDelayHours), avgOpenTime)
-	fmt.Printf("    Coordination              %12s    %s  (avg open: %s)\n",
-		formatWithCommas(avgCoordinationCost), formatTimeUnit(avgCoordinationHours), avgOpenTime)
-	avgMergeDelayCost := avgDeliveryDelayCost + avgCoordinationCost
-	avgMergeDelayHours := avgDeliveryDelayHours + avgCoordinationHours
-	fmt.Println("                              ────────────")
+	avgHumanOpenTime := formatTimeUnit(ext.AvgHumanPRDurationHours)
+	avgBotOpenTime := formatTimeUnit(ext.AvgBotPRDurationHours)
+	delayCostsHeader := fmt.Sprintf("  Delay Costs (human PRs avg %s open", avgHumanOpenTime)
+	if ext.BotPRs > 0 {
+		delayCostsHeader += fmt.Sprintf(", bot PRs avg %s", avgBotOpenTime)
+	}
+	delayCostsHeader += ")"
+	fmt.Println(delayCostsHeader)
+	fmt.Println("  " + strings.Repeat("─", len(delayCostsHeader)-2))
+	if avgDeliveryDelayCost > 0 {
+		fmt.Printf("    Workstream blockage        $%10s    %s  (%d PRs)\n",
+			formatWithCommas(avgDeliveryDelayCost), formatTimeUnit(avgDeliveryDelayHours), ext.HumanPRs)
+	}
+	if avgAutomatedUpdatesCost > 0 {
+		fmt.Printf("    Automated Updates          $%10s    %s  (%d PRs)\n",
+			formatWithCommas(avgAutomatedUpdatesCost), formatTimeUnit(avgAutomatedUpdatesHours), ext.BotPRs)
+	}
+	if avgPRTrackingCost > 0 {
+		fmt.Printf("    PR Tracking           $%10s    %s  (%d open PRs)\n",
+			formatWithCommas(avgPRTrackingCost), formatTimeUnit(avgPRTrackingHours), ext.OpenPRs)
+	}
+	avgMergeDelayCost := avgDeliveryDelayCost + avgAutomatedUpdatesCost + avgPRTrackingCost
+	avgMergeDelayHours := avgDeliveryDelayHours + avgAutomatedUpdatesHours + avgPRTrackingHours
+	fmt.Println("                                ──────────")
 	pct = (avgMergeDelayCost / avgTotalCost) * 100
-	fmt.Printf("    Subtotal                 $%12s    %s  (%.1f%%)\n",
+	fmt.Printf("    Subtotal                   $%10s    %s  (%.1f%%)\n",
 		formatWithCommas(avgMergeDelayCost), formatTimeUnit(avgMergeDelayHours), pct)
 	fmt.Println()
 
@@ -469,43 +521,40 @@ func printExtrapolatedResults(title string, days int, ext *cost.ExtrapolatedBrea
 		fmt.Println("  Future Costs")
 		fmt.Println("  ────────────")
 		if ext.CodeChurnCost > 0.01 {
-			fmt.Printf("    Code Churn                %12s    %s  (%d PRs)\n",
+			fmt.Printf("    Code Churn                 $%10s    %s  (%d PRs)\n",
 				formatWithCommas(avgCodeChurnCost), formatTimeUnit(avgCodeChurnHours), ext.CodeChurnPRCount)
 		}
 		if ext.FutureReviewCost > 0.01 {
-			fmt.Printf("    %-26s%12s    %s  (%d PRs)\n",
-				"Review",
+			fmt.Printf("    Review                     $%10s    %s  (%d PRs)\n",
 				formatWithCommas(avgFutureReviewCost), formatTimeUnit(avgFutureReviewHours), ext.FutureReviewPRCount)
 		}
 		if ext.FutureMergeCost > 0.01 {
-			fmt.Printf("    %-26s%12s    %s  (%d PRs)\n",
-				"Merge",
+			fmt.Printf("    Merge                      $%10s    %s  (%d PRs)\n",
 				formatWithCommas(avgFutureMergeCost), formatTimeUnit(avgFutureMergeHours), ext.FutureMergePRCount)
 		}
 		if ext.FutureContextCost > 0.01 {
-			fmt.Printf("    %-26s%12s    %s\n",
-				"Context Switching",
+			fmt.Printf("    Context Switching          $%10s    %s\n",
 				formatWithCommas(avgFutureContextCost), formatTimeUnit(avgFutureContextHours))
 		}
 		avgFutureCost := avgCodeChurnCost + avgFutureReviewCost + avgFutureMergeCost + avgFutureContextCost
 		avgFutureHours := avgCodeChurnHours + avgFutureReviewHours + avgFutureMergeHours + avgFutureContextHours
-		fmt.Println("                              ────────────")
+		fmt.Println("                                ──────────")
 		pct = (avgFutureCost / avgTotalCost) * 100
-		fmt.Printf("    Subtotal                 $%12s    %s  (%.1f%%)\n",
+		fmt.Printf("    Subtotal                   $%10s    %s  (%.1f%%)\n",
 			formatWithCommas(avgFutureCost), formatTimeUnit(avgFutureHours), pct)
 		fmt.Println()
 	}
 
 	// Average Preventable Loss Total (before grand total)
-	avgPreventableCost := avgCodeChurnCost + avgDeliveryDelayCost + avgCoordinationCost
-	avgPreventableHours := avgCodeChurnHours + avgDeliveryDelayHours + avgCoordinationHours
+	avgPreventableCost := avgCodeChurnCost + avgDeliveryDelayCost + avgAutomatedUpdatesCost + avgPRTrackingCost
+	avgPreventableHours := avgCodeChurnHours + avgDeliveryDelayHours + avgAutomatedUpdatesHours + avgPRTrackingHours
 	avgPreventablePct := (avgPreventableCost / avgTotalCost) * 100
-	fmt.Printf("  Preventable Loss Total     $%12s    %s  (%.1f%%)\n",
+	fmt.Printf("  Preventable Loss Total       $%10s    %s  (%.1f%%)\n",
 		formatWithCommas(avgPreventableCost), formatTimeUnit(avgPreventableHours), avgPreventablePct)
 
 	// Average total
-	fmt.Println("  ═══════════════════════════════════════════════════════════════")
-	fmt.Printf("  Average Total              $%12s    %s\n",
+	fmt.Println("  ════════════════════════════════════════════════════")
+	fmt.Printf("  Average Total                $%10s    %s\n",
 		formatWithCommas(avgTotalCost), formatTimeUnit(avgTotalHours))
 	fmt.Println()
 	fmt.Println()
@@ -523,34 +572,38 @@ func printExtrapolatedResults(title string, days int, ext *cost.ExtrapolatedBrea
 	fmt.Println()
 
 	// Authors section (extrapolated)
-	fmt.Println("  Development Costs")
-	fmt.Println("  ─────────────────")
-
 	// Calculate kLOC for display
 	totalNewLOC := float64(ext.TotalNewLines) / 1000.0
 	totalModifiedLOC := float64(ext.TotalModifiedLines) / 1000.0
+	totalNewLOCStr := formatLOC(totalNewLOC)
+	totalModifiedLOCStr := formatLOC(totalModifiedLOC)
 
-	// Format LOC with appropriate precision based on magnitude
-	totalNewLOCStr := fmt.Sprintf("%.0fk", totalNewLOC)
-	if totalNewLOC < 10.0 {
-		totalNewLOCStr = fmt.Sprintf("%.1fk", totalNewLOC)
-	}
-	totalModifiedLOCStr := fmt.Sprintf("%.0fk", totalModifiedLOC)
-	if totalModifiedLOC < 10.0 {
-		totalModifiedLOCStr = fmt.Sprintf("%.1fk", totalModifiedLOC)
-	}
+	// Calculate total LOC for header
+	totalTotalLOC := totalNewLOC + totalModifiedLOC
+	totalTotalLOCStr := formatLOC(totalTotalLOC)
 
-	fmt.Printf("    New Development           %12s    %s  (%s LOC)\n",
+	fmt.Printf("  Development Costs (%d PRs, %s total LOC)\n", ext.HumanPRs, totalTotalLOCStr)
+	fmt.Println("  ────────────────────────────────────────")
+
+	fmt.Printf("    New Development            $%10s    %s  (%s LOC)\n",
 		formatWithCommas(ext.AuthorNewCodeCost), formatTimeUnit(ext.AuthorNewCodeHours), totalNewLOCStr)
-	fmt.Printf("    Adaptation                %12s    %s  (%s LOC)\n",
+	fmt.Printf("    Adaptation                 $%10s    %s  (%s LOC)\n",
 		formatWithCommas(ext.AuthorAdaptationCost), formatTimeUnit(ext.AuthorAdaptationHours), totalModifiedLOCStr)
-	fmt.Printf("    GitHub Activity           %12s    %s\n",
+	fmt.Printf("    GitHub Activity            $%10s    %s\n",
 		formatWithCommas(ext.AuthorGitHubCost), formatTimeUnit(ext.AuthorGitHubHours))
-	fmt.Printf("    GitHub Context Switching  %12s    %s\n",
+	fmt.Printf("    Context Switching          $%10s    %s\n",
 		formatWithCommas(ext.AuthorGitHubContextCost), formatTimeUnit(ext.AuthorGitHubContextHours))
-	fmt.Println("                              ────────────")
+
+	// Show bot PR LOC even though cost is $0
+	if ext.BotPRs > 0 {
+		totalBotLOC := float64(ext.BotNewLines+ext.BotModifiedLines) / 1000.0
+		botTotalLOCStr := formatLOC(totalBotLOC)
+		fmt.Printf("    Automated Updates              —         %s  (%d PRs, %s LOC)\n",
+			formatTimeUnit(0.0), ext.BotPRs, botTotalLOCStr)
+	}
+	fmt.Println("                                ──────────")
 	pct = (ext.AuthorTotalCost / ext.TotalCost) * 100
-	fmt.Printf("    Subtotal                 $%12s    %s  (%.1f%%)\n",
+	fmt.Printf("    Subtotal                   $%10s    %s  (%.1f%%)\n",
 		formatWithCommas(ext.AuthorTotalCost), formatTimeUnit(ext.AuthorTotalHours), pct)
 	fmt.Println()
 
@@ -559,35 +612,50 @@ func printExtrapolatedResults(title string, days int, ext *cost.ExtrapolatedBrea
 		fmt.Println("  Participant Costs")
 		fmt.Println("  ─────────────────")
 		if ext.ParticipantReviewCost > 0 {
-			fmt.Printf("    Review Activity           %12s    %s\n",
+			fmt.Printf("    Review Activity            $%10s    %s\n",
 				formatWithCommas(ext.ParticipantReviewCost), formatTimeUnit(ext.ParticipantReviewHours))
 		}
 		if ext.ParticipantGitHubCost > 0 {
-			fmt.Printf("    GitHub Activity           %12s    %s\n",
+			fmt.Printf("    GitHub Activity            $%10s    %s\n",
 				formatWithCommas(ext.ParticipantGitHubCost), formatTimeUnit(ext.ParticipantGitHubHours))
 		}
-		fmt.Printf("    Context Switching         %12s    %s\n",
+		fmt.Printf("    Context Switching          $%10s    %s\n",
 			formatWithCommas(ext.ParticipantContextCost), formatTimeUnit(ext.ParticipantContextHours))
-		fmt.Println("                              ────────────")
+		fmt.Println("                                ──────────")
 		pct = (ext.ParticipantTotalCost / ext.TotalCost) * 100
-		fmt.Printf("    Subtotal                 $%12s    %s  (%.1f%%)\n",
+		fmt.Printf("    Subtotal                   $%10s    %s  (%.1f%%)\n",
 			formatWithCommas(ext.ParticipantTotalCost), formatTimeUnit(ext.ParticipantTotalHours), pct)
 		fmt.Println()
 	}
 
 	// Merge Delay section (extrapolated)
-	fmt.Println("  Delay Costs")
-	fmt.Println("  ───────────")
-	extAvgOpenTime := formatTimeUnit(ext.AvgPRDurationHours)
-	fmt.Printf("    Workstream blockage       %12s    %s  (avg open: %s)\n",
-		formatWithCommas(ext.DeliveryDelayCost), formatTimeUnit(ext.DeliveryDelayHours), extAvgOpenTime)
-	fmt.Printf("    Coordination              %12s    %s  (avg open: %s)\n",
-		formatWithCommas(ext.CoordinationCost), formatTimeUnit(ext.CoordinationHours), extAvgOpenTime)
-	extMergeDelayCost := ext.DeliveryDelayCost + ext.CoordinationCost
-	extMergeDelayHours := ext.DeliveryDelayHours + ext.CoordinationHours
-	fmt.Println("                              ────────────")
+	extAvgHumanOpenTime := formatTimeUnit(ext.AvgHumanPRDurationHours)
+	extAvgBotOpenTime := formatTimeUnit(ext.AvgBotPRDurationHours)
+	extDelayCostsHeader := fmt.Sprintf("  Delay Costs (human PRs avg %s open", extAvgHumanOpenTime)
+	if ext.BotPRs > 0 {
+		extDelayCostsHeader += fmt.Sprintf(", bot PRs avg %s", extAvgBotOpenTime)
+	}
+	extDelayCostsHeader += ")"
+	fmt.Println(extDelayCostsHeader)
+	fmt.Println("  " + strings.Repeat("─", len(extDelayCostsHeader)-2))
+
+	if ext.DeliveryDelayCost > 0 {
+		fmt.Printf("    Workstream blockage        $%10s    %s  (%d PRs)\n",
+			formatWithCommas(ext.DeliveryDelayCost), formatTimeUnit(ext.DeliveryDelayHours), ext.HumanPRs)
+	}
+	if ext.AutomatedUpdatesCost > 0 {
+		fmt.Printf("    Automated Updates          $%10s    %s  (%d PRs)\n",
+			formatWithCommas(ext.AutomatedUpdatesCost), formatTimeUnit(ext.AutomatedUpdatesHours), ext.BotPRs)
+	}
+	if ext.PRTrackingCost > 0 {
+		fmt.Printf("    PR Tracking           $%10s    %s  (%d open PRs)\n",
+			formatWithCommas(ext.PRTrackingCost), formatTimeUnit(ext.PRTrackingHours), ext.OpenPRs)
+	}
+	extMergeDelayCost := ext.DeliveryDelayCost + ext.CodeChurnCost + ext.AutomatedUpdatesCost + ext.PRTrackingCost
+	extMergeDelayHours := ext.DeliveryDelayHours + ext.CodeChurnHours + ext.AutomatedUpdatesHours + ext.PRTrackingHours
+	fmt.Println("                                ──────────")
 	pct = (extMergeDelayCost / ext.TotalCost) * 100
-	fmt.Printf("    Subtotal                 $%12s    %s  (%.1f%%)\n",
+	fmt.Printf("    Subtotal                   $%10s    %s  (%.1f%%)\n",
 		formatWithCommas(extMergeDelayCost), formatTimeUnit(extMergeDelayHours), pct)
 	fmt.Println()
 
@@ -600,47 +668,41 @@ func printExtrapolatedResults(title string, days int, ext *cost.ExtrapolatedBrea
 		fmt.Println("  ────────────")
 		if ext.CodeChurnCost > 0.01 {
 			totalKLOC := float64(ext.TotalNewLines+ext.TotalModifiedLines) / 1000.0
-			churnLOCStr := fmt.Sprintf("%.0fk", totalKLOC)
-			if totalKLOC < 10.0 {
-				churnLOCStr = fmt.Sprintf("%.1fk", totalKLOC)
-			}
-			fmt.Printf("    Code Churn                %12s    %s  (%d PRs, ~%s LOC)\n",
+			churnLOCStr := formatLOC(totalKLOC)
+			fmt.Printf("    Code Churn                 $%10s    %s  (%d PRs, ~%s LOC)\n",
 				formatWithCommas(ext.CodeChurnCost), formatTimeUnit(ext.CodeChurnHours), ext.CodeChurnPRCount, churnLOCStr)
 		}
 		if ext.FutureReviewCost > 0.01 {
-			fmt.Printf("    %-26s%12s    %s  (%d PRs)\n",
-				"Review",
+			fmt.Printf("    Review                     $%10s    %s  (%d PRs)\n",
 				formatWithCommas(ext.FutureReviewCost), formatTimeUnit(ext.FutureReviewHours), ext.FutureReviewPRCount)
 		}
 		if ext.FutureMergeCost > 0.01 {
-			fmt.Printf("    %-26s%12s    %s  (%d PRs)\n",
-				"Merge",
+			fmt.Printf("    Merge                      $%10s    %s  (%d PRs)\n",
 				formatWithCommas(ext.FutureMergeCost), formatTimeUnit(ext.FutureMergeHours), ext.FutureMergePRCount)
 		}
 		if ext.FutureContextCost > 0.01 {
-			fmt.Printf("    %-26s%12s    %s\n",
-				"Context Switching",
+			fmt.Printf("    Context Switching          $%10s    %s\n",
 				formatWithCommas(ext.FutureContextCost), formatTimeUnit(ext.FutureContextHours))
 		}
 		extFutureCost := ext.CodeChurnCost + ext.FutureReviewCost + ext.FutureMergeCost + ext.FutureContextCost
 		extFutureHours := ext.CodeChurnHours + ext.FutureReviewHours + ext.FutureMergeHours + ext.FutureContextHours
-		fmt.Println("                              ────────────")
+		fmt.Println("                                ──────────")
 		pct = (extFutureCost / ext.TotalCost) * 100
-		fmt.Printf("    Subtotal                 $%12s    %s  (%.1f%%)\n",
+		fmt.Printf("    Subtotal                   $%10s    %s  (%.1f%%)\n",
 			formatWithCommas(extFutureCost), formatTimeUnit(extFutureHours), pct)
 		fmt.Println()
 	}
 
 	// Preventable Loss Total (before grand total)
-	preventableCost := ext.CodeChurnCost + ext.DeliveryDelayCost + ext.CoordinationCost
-	preventableHours := ext.CodeChurnHours + ext.DeliveryDelayHours + ext.CoordinationHours
+	preventableCost := ext.CodeChurnCost + ext.DeliveryDelayCost + ext.AutomatedUpdatesCost + ext.PRTrackingCost
+	preventableHours := ext.CodeChurnHours + ext.DeliveryDelayHours + ext.AutomatedUpdatesHours + ext.PRTrackingHours
 	preventablePct := (preventableCost / ext.TotalCost) * 100
-	fmt.Printf("  Preventable Loss Total     $%12s    %s  (%.1f%%)\n",
+	fmt.Printf("  Preventable Loss Total       $%10s    %s  (%.1f%%)\n",
 		formatWithCommas(preventableCost), formatTimeUnit(preventableHours), preventablePct)
 
 	// Extrapolated grand total
-	fmt.Println("  ═══════════════════════════════════════════════════════════════")
-	fmt.Printf("  Total                      $%12s    %s\n",
+	fmt.Println("  ════════════════════════════════════════════════════")
+	fmt.Printf("  Total                        $%10s    %s\n",
 		formatWithCommas(ext.TotalCost), formatTimeUnit(ext.TotalHours))
 	fmt.Println()
 
@@ -650,9 +712,9 @@ func printExtrapolatedResults(title string, days int, ext *cost.ExtrapolatedBrea
 
 // printExtrapolatedEfficiency prints the workflow efficiency + annual waste section for extrapolated totals.
 func printExtrapolatedEfficiency(ext *cost.ExtrapolatedBreakdown, days int, cfg cost.Config) {
-	// Calculate preventable waste: Code Churn + All Delay Costs
-	preventableHours := ext.CodeChurnHours + ext.DeliveryDelayHours + ext.CoordinationHours
-	preventableCost := ext.CodeChurnCost + ext.DeliveryDelayCost + ext.CoordinationCost
+	// Calculate preventable waste: Code Churn + All Delay Costs + Automated Updates + PR Tracking
+	preventableHours := ext.CodeChurnHours + ext.DeliveryDelayHours + ext.AutomatedUpdatesHours + ext.PRTrackingHours
+	preventableCost := ext.CodeChurnCost + ext.DeliveryDelayCost + ext.AutomatedUpdatesCost + ext.PRTrackingCost
 
 	// Calculate efficiency
 	var efficiencyPct float64

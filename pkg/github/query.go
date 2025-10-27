@@ -48,9 +48,6 @@ func FetchPRsFromRepo(ctx context.Context, owner, repo string, since time.Time, 
 		return nil, err
 	}
 
-	slog.Info("Fetched recent PRs",
-		"count", len(recent),
-		"hit_limit", hitLimit)
 
 	// If we didn't hit the limit, we got all PRs within the period - done!
 	if !hitLimit {
@@ -601,7 +598,7 @@ func isBot(author string) bool {
 //   - Slice of sampled PRs (may be smaller than sampleSize if insufficient PRs)
 //
 // Strategy:
-//   - Filters out bot-authored PRs
+//   - Includes both human and bot-authored PRs
 //   - Divides time range into buckets equal to sampleSize
 //   - Selects most recent PR from each bucket
 //   - If buckets are empty, fills with nearest unused PRs
@@ -610,24 +607,13 @@ func SamplePRs(prs []PRSummary, sampleSize int) []PRSummary {
 		return nil
 	}
 
-	// Filter out bot-authored PRs
-	var humanPRs []PRSummary
-	for _, pr := range prs {
-		if !isBot(pr.Author) {
-			humanPRs = append(humanPRs, pr)
-		}
-	}
-
-	if len(humanPRs) == 0 {
-		return nil
-	}
+	// Include all PRs (both human and bot-authored)
+	// Bot PRs are now tracked separately in cost calculations
 
 	// If we have fewer PRs than samples, return all
-	if len(humanPRs) <= sampleSize {
-		return humanPRs
+	if len(prs) <= sampleSize {
+		return prs
 	}
-
-	prs = humanPRs
 
 	// Sort PRs by updatedAt (newest first)
 	sorted := make([]PRSummary, len(prs))
@@ -748,4 +734,94 @@ func CalculateActualTimeWindow(prs []PRSummary, requestedDays int) (actualDays i
 
 	// Always return requested period - multi-query approach ensures best possible coverage
 	return requestedDays, false
+}
+
+// CountOpenPRsInRepo queries GitHub GraphQL API to get the total count of open PRs in a repository
+// that were created more than 24 hours ago (PRs open <24 hours don't count as tracking overhead yet).
+//
+// Parameters:
+//   - ctx: Context for the API call
+//   - owner: GitHub repository owner
+//   - repo: GitHub repository name
+//   - token: GitHub authentication token
+//
+// Returns:
+//   - count: Number of open PRs created >24 hours ago
+func CountOpenPRsInRepo(ctx context.Context, owner, repo, token string) (int, error) {
+	// Only count PRs created more than 24 hours ago
+	// Use search API which supports created date filtering
+	twentyFourHoursAgo := time.Now().Add(-24 * time.Hour).Format("2006-01-02T15:04:05Z")
+
+	query := `query($searchQuery: String!) {
+		search(query: $searchQuery, type: ISSUE, first: 0) {
+			issueCount
+		}
+	}`
+
+	// Search query: is:pr is:open repo:owner/repo created:<date
+	searchQuery := fmt.Sprintf("is:pr is:open repo:%s/%s created:<%s", owner, repo, twentyFourHoursAgo)
+
+	variables := map[string]any{
+		"searchQuery": searchQuery,
+	}
+
+	queryJSON, err := json.Marshal(map[string]any{
+		"query":     query,
+		"variables": variables,
+	})
+	if err != nil {
+		return 0, fmt.Errorf("failed to marshal query: %w", err)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, "https://api.github.com/graphql", bytes.NewBuffer(queryJSON))
+	if err != nil {
+		return 0, fmt.Errorf("failed to create request: %w", err)
+	}
+
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Content-Type", "application/json")
+
+	slog.Info("HTTP request starting",
+		"method", "POST",
+		"url", "https://api.github.com/graphql",
+		"host", "api.github.com")
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return 0, fmt.Errorf("request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return 0, fmt.Errorf("unexpected status code: %d", resp.StatusCode)
+	}
+
+	var result struct {
+		Data struct {
+			Search struct {
+				IssueCount int `json:"issueCount"`
+			} `json:"search"`
+		} `json:"data"`
+		Errors []struct {
+			Message string
+		}
+	}
+
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return 0, fmt.Errorf("failed to decode response: %w", err)
+	}
+
+	if len(result.Errors) > 0 {
+		return 0, fmt.Errorf("GraphQL error: %s", result.Errors[0].Message)
+	}
+
+	count := result.Data.Search.IssueCount
+
+	slog.Info("Counted PRs open >24 hours in repository",
+		"owner", owner,
+		"repo", repo,
+		"open_prs", count,
+		"filter", "created >24h ago")
+
+	return count, nil
 }

@@ -11,6 +11,7 @@ import (
 	"log/slog"
 	"os"
 	"os/exec"
+	"strconv"
 	"strings"
 	"time"
 
@@ -101,12 +102,10 @@ func main() {
 		"salary", cfg.AnnualSalary,
 		"benefits_multiplier", cfg.BenefitsMultiplier,
 		"event_minutes", *eventMinutes,
-		"delivery_delay_factor", cfg.DeliveryDelayFactor,
-		"coordination_factor", cfg.CoordinationFactor)
+		"delivery_delay_factor", cfg.DeliveryDelayFactor)
 
 	// Retrieve GitHub token from gh CLI
 	ctx := context.Background()
-	slog.Info("Retrieving GitHub authentication token")
 	token, err := authToken(ctx)
 	if err != nil {
 		slog.Error("Failed to get GitHub token", "error", err)
@@ -119,11 +118,6 @@ func main() {
 		// Org/Repo sampling mode
 		if *repo != "" {
 			// Single repository mode
-			slog.Info("Starting repository analysis",
-				"org", *org,
-				"repo", *repo,
-				"samples", *samples,
-				"days", *days)
 
 			err := analyzeRepository(ctx, *org, *repo, *samples, *days, cfg, token, *dataSource)
 			if err != nil {
@@ -334,19 +328,16 @@ func printDelayCosts(breakdown *cost.Breakdown, formatCurrency func(float64) str
 			cappedSuffix)
 	}
 
-	if breakdown.DelayCostDetail.CoordinationHours > 0 {
-		cappedSuffix := ""
-		if breakdown.DelayCapped {
-			cappedSuffix = " (capped)"
-		}
-		fmt.Printf("    Coordination              %12s    %s%s\n",
-			formatCurrency(breakdown.DelayCostDetail.CoordinationCost),
-			formatTimeUnit(breakdown.DelayCostDetail.CoordinationHours),
-			cappedSuffix)
-	}
+	// Calculate merge delay subtotal (all non-future delay costs)
+	mergeDelayCost := breakdown.DelayCostDetail.DeliveryDelayCost +
+		breakdown.DelayCostDetail.CodeChurnCost +
+		breakdown.DelayCostDetail.AutomatedUpdatesCost +
+		breakdown.DelayCostDetail.PRTrackingCost
+	mergeDelayHours := breakdown.DelayCostDetail.DeliveryDelayHours +
+		breakdown.DelayCostDetail.CodeChurnHours +
+		breakdown.DelayCostDetail.AutomatedUpdatesHours +
+		breakdown.DelayCostDetail.PRTrackingHours
 
-	mergeDelayCost := breakdown.DelayCostDetail.DeliveryDelayCost + breakdown.DelayCostDetail.CoordinationCost
-	mergeDelayHours := breakdown.DelayCostDetail.DeliveryDelayHours + breakdown.DelayCostDetail.CoordinationHours
 	fmt.Println("                              ────────────")
 	pct := (mergeDelayCost / breakdown.TotalCost) * 100
 	fmt.Printf("    Subtotal                  %12s    %s  (%.1f%%)\n",
@@ -435,6 +426,43 @@ func formatWithCommas(amount float64) string {
 	return string(result) + "." + decPart
 }
 
+// formatLOC formats lines of code in kilo format with appropriate precision and commas for large values.
+func formatLOC(kloc float64) string {
+	// For values >= 100k, add commas (e.g., "1,517k" instead of "1517k")
+	if kloc >= 100.0 {
+		intPart := int(kloc)
+		fracPart := kloc - float64(intPart)
+
+		// Format integer part with commas
+		intStr := strconv.Itoa(intPart)
+		var result []rune
+		for i, r := range intStr {
+			if i > 0 && (len(intStr)-i)%3 == 0 {
+				result = append(result, ',')
+			}
+			result = append(result, r)
+		}
+
+		// Add fractional part if significant
+		if kloc < 1000.0 && fracPart >= 0.05 {
+			return fmt.Sprintf("%s.%dk", string(result), int(fracPart*10))
+		}
+		return string(result) + "k"
+	}
+
+	// For values < 100k, use existing precision logic
+	if kloc < 0.1 && kloc > 0 {
+		return fmt.Sprintf("%.2fk", kloc)
+	}
+	if kloc < 1.0 {
+		return fmt.Sprintf("%.1fk", kloc)
+	}
+	if kloc < 10.0 {
+		return fmt.Sprintf("%.1fk", kloc)
+	}
+	return fmt.Sprintf("%.0fk", kloc)
+}
+
 // efficiencyGrade returns a letter grade and message based on efficiency percentage (MIT scale).
 func efficiencyGrade(efficiencyPct float64) (grade, message string) {
 	switch {
@@ -486,13 +514,15 @@ func mergeVelocityGrade(avgOpenDays float64) (grade, message string) {
 
 // printEfficiency prints the workflow efficiency section for a single PR.
 func printEfficiency(breakdown *cost.Breakdown) {
-	// Calculate preventable waste: Code Churn + All Delay Costs
+	// Calculate preventable waste: Code Churn + All Delay Costs + Automated Updates + PR Tracking
 	preventableHours := breakdown.DelayCostDetail.CodeChurnHours +
 		breakdown.DelayCostDetail.DeliveryDelayHours +
-		breakdown.DelayCostDetail.CoordinationHours
+		breakdown.DelayCostDetail.AutomatedUpdatesHours +
+		breakdown.DelayCostDetail.PRTrackingHours
 	preventableCost := breakdown.DelayCostDetail.CodeChurnCost +
 		breakdown.DelayCostDetail.DeliveryDelayCost +
-		breakdown.DelayCostDetail.CoordinationCost
+		breakdown.DelayCostDetail.AutomatedUpdatesCost +
+		breakdown.DelayCostDetail.PRTrackingCost
 
 	// Calculate total hours
 	totalHours := breakdown.Author.TotalHours + breakdown.DelayCostDetail.TotalDelayHours

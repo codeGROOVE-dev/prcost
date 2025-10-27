@@ -20,7 +20,7 @@ const (
 	defaultPort       = "8080"
 	shutdownTimeout   = 10 * time.Second
 	readHeaderTimeout = 5 * time.Second
-	writeTimeout      = 30 * time.Second
+	writeTimeout      = 5 * time.Minute // Long timeout for SSE streams
 	idleTimeout       = 120 * time.Second
 	maxHeaderBytes    = 1 << 20 // 1MB
 )
@@ -92,12 +92,16 @@ func main() {
 		dataSourceValue = envDataSource
 	}
 
+	// Check R2R_CALLOUT environment variable
+	r2rCallout := os.Getenv("R2R_CALLOUT") == "1"
+
 	// Create server
 	prcostServer := server.New()
 	prcostServer.SetCommit(GitCommit)
 	prcostServer.SetCORSConfig(*corsOrigins, *allowAllCors)
 	prcostServer.SetRateLimit(*rateLimit, *rateBurst)
 	prcostServer.SetDataSource(dataSourceValue)
+	prcostServer.SetR2RCallout(r2rCallout)
 	if *validateTokens {
 		if *githubAppID == "" || *githubAppKey == "" {
 			logger.ErrorContext(ctx, "github app ID and key file are required when token validation is enabled")

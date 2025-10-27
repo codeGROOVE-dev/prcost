@@ -81,6 +81,7 @@ type Server struct {
 	rateBurst        int
 	allowAllCors     bool
 	validateTokens   bool
+	r2rCallout       bool
 	// In-memory caching for PR queries and data.
 	prQueryCache   map[string]*cacheEntry
 	prDataCache    map[string]*cacheEntry
@@ -139,14 +140,15 @@ type SampleResponse struct {
 //
 //nolint:govet // fieldalignment: API struct field order optimized for readability
 type ProgressUpdate struct {
-	Type     string                      `json:"type"` // "fetching", "processing", "complete", "error", "done"
-	PR       int                         `json:"pr,omitempty"`
-	Owner    string                      `json:"owner,omitempty"`
-	Repo     string                      `json:"repo,omitempty"`
-	Progress string                      `json:"progress,omitempty"` // e.g., "5/15"
-	Error    string                      `json:"error,omitempty"`
-	Result   *cost.ExtrapolatedBreakdown `json:"result,omitempty"`
-	Commit   string                      `json:"commit,omitempty"`
+	Type       string                      `json:"type"` // "fetching", "processing", "complete", "error", "done"
+	PR         int                         `json:"pr,omitempty"`
+	Owner      string                      `json:"owner,omitempty"`
+	Repo       string                      `json:"repo,omitempty"`
+	Progress   string                      `json:"progress,omitempty"` // e.g., "5/15"
+	Error      string                      `json:"error,omitempty"`
+	Result     *cost.ExtrapolatedBreakdown `json:"result,omitempty"`
+	Commit     string                      `json:"commit,omitempty"`
+	R2RCallout bool                        `json:"r2r_callout,omitempty"`
 }
 
 // New creates a new Server instance.
@@ -256,6 +258,11 @@ func (s *Server) SetDataSource(source string) {
 	}
 	s.dataSource = source
 	s.logger.InfoContext(ctx, "Data source configured", "source", source)
+}
+
+// SetR2RCallout enables or disables the Ready-to-Review promotional callout.
+func (s *Server) SetR2RCallout(enabled bool) {
+	s.r2rCallout = enabled
 }
 
 // limiter returns a rate limiter for the given IP address.
@@ -1332,8 +1339,15 @@ func (s *Server) processRepoSample(ctx context.Context, req *RepoSampleRequest, 
 	// Count unique authors across all PRs (not just samples)
 	totalAuthors := github.CountUniqueAuthors(prs)
 
+	// Query for actual count of open PRs (not extrapolated from samples)
+	openPRCount, err := github.CountOpenPRsInRepo(ctx, req.Owner, req.Repo, token)
+	if err != nil {
+		s.logger.WarnContext(ctx, "Failed to count open PRs, using 0", errorKey, err)
+		openPRCount = 0
+	}
+
 	// Extrapolate costs from samples
-	extrapolated := cost.ExtrapolateFromSamples(breakdowns, len(prs), totalAuthors, actualDays, cfg)
+	extrapolated := cost.ExtrapolateFromSamples(breakdowns, len(prs), totalAuthors, openPRCount, actualDays, cfg)
 
 	return &SampleResponse{
 		Extrapolated: extrapolated,
@@ -1425,8 +1439,31 @@ func (s *Server) processOrgSample(ctx context.Context, req *OrgSampleRequest, to
 	// Count unique authors across all PRs (not just samples)
 	totalAuthors := github.CountUniqueAuthors(prs)
 
+	// Count open PRs across all unique repos in the organization
+	uniqueRepos := make(map[string]bool)
+	for _, pr := range prs {
+		repoKey := pr.Owner + "/" + pr.Repo
+		uniqueRepos[repoKey] = true
+	}
+
+	totalOpenPRs := 0
+	for repoKey := range uniqueRepos {
+		parts := strings.SplitN(repoKey, "/", 2)
+		if len(parts) != 2 {
+			continue
+		}
+		owner, repo := parts[0], parts[1]
+		openCount, err := github.CountOpenPRsInRepo(ctx, owner, repo, token)
+		if err != nil {
+			s.logger.WarnContext(ctx, "Failed to count open PRs for repo", "repo", repoKey, errorKey, err)
+			continue
+		}
+		totalOpenPRs += openCount
+	}
+	s.logger.InfoContext(ctx, "Counted total open PRs across organization", "open_prs", totalOpenPRs, "repos", len(uniqueRepos))
+
 	// Extrapolate costs from samples
-	extrapolated := cost.ExtrapolateFromSamples(breakdowns, len(prs), totalAuthors, actualDays, cfg)
+	extrapolated := cost.ExtrapolateFromSamples(breakdowns, len(prs), totalAuthors, totalOpenPRs, actualDays, cfg)
 
 	return &SampleResponse{
 		Extrapolated: extrapolated,
@@ -1460,9 +1497,6 @@ func (*Server) mergeConfig(base cost.Config, override *cost.Config) cost.Config 
 	}
 	if override.DeliveryDelayFactor > 0 {
 		base.DeliveryDelayFactor = override.DeliveryDelayFactor
-	}
-	if override.CoordinationFactor > 0 {
-		base.CoordinationFactor = override.CoordinationFactor
 	}
 	if override.MaxDelayAfterLastEvent > 0 {
 		base.MaxDelayAfterLastEvent = override.MaxDelayAfterLastEvent
@@ -1655,17 +1689,20 @@ func sendSSE(w http.ResponseWriter, update ProgressUpdate) error {
 
 // startKeepAlive starts a goroutine that sends SSE keep-alive comments every 2 seconds.
 // This prevents client-side timeouts during long operations.
-// Returns a channel that should be closed to stop the keep-alive.
-func startKeepAlive(w http.ResponseWriter) chan struct{} {
+// Returns a stop channel (to stop keep-alive) and an error channel (signals connection failure).
+func startKeepAlive(w http.ResponseWriter) (chan struct{}, <-chan error) {
 	stop := make(chan struct{})
+	connErr := make(chan error, 1)
 	go func() {
 		ticker := time.NewTicker(2 * time.Second)
 		defer ticker.Stop()
+		defer close(connErr)
 		for {
 			select {
 			case <-ticker.C:
 				// Send SSE comment (keeps connection alive, ignored by client)
 				if _, err := fmt.Fprint(w, ": keepalive\n\n"); err != nil {
+					connErr <- fmt.Errorf("keepalive write failed: %w", err)
 					return
 				}
 				if flusher, ok := w.(http.Flusher); ok {
@@ -1676,7 +1713,7 @@ func startKeepAlive(w http.ResponseWriter) chan struct{} {
 			}
 		}
 	}()
-	return stop
+	return stop, connErr
 }
 
 // logSSEError logs an error from sendSSE if it occurs.
@@ -1732,8 +1769,15 @@ func (s *Server) processRepoSampleWithProgress(ctx context.Context, req *RepoSam
 		}))
 
 		// Start keep-alive to prevent client timeout during GraphQL query
-		stopKeepAlive := startKeepAlive(writer)
+		stopKeepAlive, connErr := startKeepAlive(writer)
 		defer close(stopKeepAlive)
+
+		// Check for connection errors in background
+		go func() {
+			if err := <-connErr; err != nil {
+				s.logger.WarnContext(ctx, "Client connection lost", errorKey, err)
+			}
+		}()
 
 		// Fetch all PRs modified since the date
 		var err error
@@ -1788,14 +1832,23 @@ func (s *Server) processRepoSampleWithProgress(ctx context.Context, req *RepoSam
 	// Count unique authors across all PRs (not just samples)
 	totalAuthors := github.CountUniqueAuthors(prs)
 
+	// Query for actual count of open PRs (not extrapolated from samples)
+	//nolint:contextcheck // Using background context intentionally to prevent client timeout from canceling work
+	openPRCount, err := github.CountOpenPRsInRepo(workCtx, req.Owner, req.Repo, token)
+	if err != nil {
+		s.logger.WarnContext(ctx, "Failed to count open PRs, using 0", errorKey, err)
+		openPRCount = 0
+	}
+
 	// Extrapolate costs from samples
-	extrapolated := cost.ExtrapolateFromSamples(breakdowns, len(prs), totalAuthors, actualDays, cfg)
+	extrapolated := cost.ExtrapolateFromSamples(breakdowns, len(prs), totalAuthors, openPRCount, actualDays, cfg)
 
 	// Send final result
 	logSSEError(ctx, s.logger, sendSSE(writer, ProgressUpdate{
-		Type:   "done",
-		Result: &extrapolated,
-		Commit: s.serverCommit,
+		Type:       "done",
+		Result:     &extrapolated,
+		Commit:     s.serverCommit,
+		R2RCallout: s.r2rCallout,
 	}))
 }
 
@@ -1841,8 +1894,15 @@ func (s *Server) processOrgSampleWithProgress(ctx context.Context, req *OrgSampl
 		}))
 
 		// Start keep-alive to prevent client timeout during GraphQL query
-		stopKeepAlive := startKeepAlive(writer)
+		stopKeepAlive, connErr := startKeepAlive(writer)
 		defer close(stopKeepAlive)
+
+		// Check for connection errors in background
+		go func() {
+			if err := <-connErr; err != nil {
+				s.logger.WarnContext(ctx, "Client connection lost", errorKey, err)
+			}
+		}()
 
 		// Fetch all PRs across the org modified since the date
 		var err error
@@ -1905,14 +1965,39 @@ func (s *Server) processOrgSampleWithProgress(ctx context.Context, req *OrgSampl
 	// Count unique authors across all PRs (not just samples)
 	totalAuthors := github.CountUniqueAuthors(prs)
 
+	// Count open PRs across all unique repos in the organization
+	uniqueRepos := make(map[string]bool)
+	for _, pr := range prs {
+		repoKey := pr.Owner + "/" + pr.Repo
+		uniqueRepos[repoKey] = true
+	}
+
+	totalOpenPRs := 0
+	for repoKey := range uniqueRepos {
+		parts := strings.SplitN(repoKey, "/", 2)
+		if len(parts) != 2 {
+			continue
+		}
+		owner, repo := parts[0], parts[1]
+		//nolint:contextcheck // Using background context intentionally to prevent client timeout from canceling work
+		openCount, err := github.CountOpenPRsInRepo(workCtx, owner, repo, token)
+		if err != nil {
+			s.logger.WarnContext(ctx, "Failed to count open PRs for repo", "repo", repoKey, errorKey, err)
+			continue
+		}
+		totalOpenPRs += openCount
+	}
+	s.logger.InfoContext(ctx, "Counted total open PRs across organization", "open_prs", totalOpenPRs, "repos", len(uniqueRepos))
+
 	// Extrapolate costs from samples
-	extrapolated := cost.ExtrapolateFromSamples(breakdowns, len(prs), totalAuthors, actualDays, cfg)
+	extrapolated := cost.ExtrapolateFromSamples(breakdowns, len(prs), totalAuthors, totalOpenPRs, actualDays, cfg)
 
 	// Send final result
 	logSSEError(ctx, s.logger, sendSSE(writer, ProgressUpdate{
-		Type:   "done",
-		Result: &extrapolated,
-		Commit: s.serverCommit,
+		Type:       "done",
+		Result:     &extrapolated,
+		Commit:     s.serverCommit,
+		R2RCallout: s.r2rCallout,
 	}))
 }
 
