@@ -13,7 +13,9 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"os/exec"
 	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -79,6 +81,7 @@ type Server struct {
 	rateBurst        int
 	allowAllCors     bool
 	validateTokens   bool
+	r2rCallout       bool
 	// In-memory caching for PR queries and data.
 	prQueryCache   map[string]*cacheEntry
 	prDataCache    map[string]*cacheEntry
@@ -137,14 +140,15 @@ type SampleResponse struct {
 //
 //nolint:govet // fieldalignment: API struct field order optimized for readability
 type ProgressUpdate struct {
-	Type     string                      `json:"type"` // "fetching", "processing", "complete", "error", "done"
-	PR       int                         `json:"pr,omitempty"`
-	Owner    string                      `json:"owner,omitempty"`
-	Repo     string                      `json:"repo,omitempty"`
-	Progress string                      `json:"progress,omitempty"` // e.g., "5/15"
-	Error    string                      `json:"error,omitempty"`
-	Result   *cost.ExtrapolatedBreakdown `json:"result,omitempty"`
-	Commit   string                      `json:"commit,omitempty"`
+	Type       string                      `json:"type"` // "fetching", "processing", "complete", "error", "done"
+	PR         int                         `json:"pr,omitempty"`
+	Owner      string                      `json:"owner,omitempty"`
+	Repo       string                      `json:"repo,omitempty"`
+	Progress   string                      `json:"progress,omitempty"` // e.g., "5/15"
+	Error      string                      `json:"error,omitempty"`
+	Result     *cost.ExtrapolatedBreakdown `json:"result,omitempty"`
+	Commit     string                      `json:"commit,omitempty"`
+	R2RCallout bool                        `json:"r2r_callout,omitempty"`
 }
 
 // New creates a new Server instance.
@@ -248,12 +252,17 @@ func (s *Server) SetRateLimit(rps int, burst int) {
 func (s *Server) SetDataSource(source string) {
 	ctx := context.Background()
 	if source != "turnserver" && source != "prx" {
-		s.logger.WarnContext(ctx, "Invalid data source, using default", "requested", source, "default", "turnserver")
-		s.dataSource = "turnserver"
+		s.logger.WarnContext(ctx, "Invalid data source, using default", "requested", source, "default", "prx")
+		s.dataSource = "prx"
 		return
 	}
 	s.dataSource = source
 	s.logger.InfoContext(ctx, "Data source configured", "source", source)
+}
+
+// SetR2RCallout enables or disables the Ready-to-Review promotional callout.
+func (s *Server) SetR2RCallout(enabled bool) {
+	s.r2rCallout = enabled
 }
 
 // limiter returns a rate limiter for the given IP address.
@@ -439,7 +448,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Access-Control-Allow-Origin", origin)
 		w.Header().Set("Vary", "Origin")
 	}
-	w.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS")
+	w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
 	w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
 
 	// Handle preflight OPTIONS request.
@@ -451,19 +460,19 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// Route requests.
 	switch {
 	case r.URL.Path == "/v1/calculate":
-		if r.Method != http.MethodPost {
+		if r.Method != http.MethodPost && r.Method != http.MethodGet {
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 			return
 		}
 		s.handleCalculate(w, r)
 	case r.URL.Path == "/v1/calculate/repo":
-		if r.Method != http.MethodPost {
+		if r.Method != http.MethodPost && r.Method != http.MethodGet {
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 			return
 		}
 		s.handleRepoSample(w, r)
 	case r.URL.Path == "/v1/calculate/org":
-		if r.Method != http.MethodPost {
+		if r.Method != http.MethodPost && r.Method != http.MethodGet {
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 			return
 		}
@@ -575,14 +584,23 @@ func (s *Server) handleCalculate(writer http.ResponseWriter, request *http.Reque
 
 // parseRequest parses and validates the incoming request.
 func (s *Server) parseRequest(ctx context.Context, r *http.Request) (*CalculateRequest, error) {
-	// SECURITY: Limit request body size to prevent memory exhaustion DoS.
-	const maxRequestSize = 1 << 20 // 1MB
-	r.Body = http.MaxBytesReader(nil, r.Body, maxRequestSize)
-
 	var req CalculateRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		s.logger.ErrorContext(ctx, "[parseRequest] Failed to decode JSON", errorKey, sanitizeError(err))
-		return nil, fmt.Errorf("invalid JSON: %w", err)
+
+	// Handle GET requests with query parameters
+	if r.Method == http.MethodGet {
+		query := r.URL.Query()
+		req.URL = query.Get("url")
+		req.Config = parseConfigFromQuery(query)
+	} else {
+		// Handle POST requests with JSON body
+		// SECURITY: Limit request body size to prevent memory exhaustion DoS.
+		const maxRequestSize = 1 << 20 // 1MB
+		r.Body = http.MaxBytesReader(nil, r.Body, maxRequestSize)
+
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			s.logger.ErrorContext(ctx, "[parseRequest] Failed to decode JSON", errorKey, sanitizeError(err))
+			return nil, fmt.Errorf("invalid JSON: %w", err)
+		}
 	}
 
 	if req.URL == "" {
@@ -597,6 +615,28 @@ func (s *Server) parseRequest(ctx context.Context, r *http.Request) (*CalculateR
 	}
 
 	return &req, nil
+}
+
+// parseConfigFromQuery extracts salary and benefits from query parameters.
+func parseConfigFromQuery(query url.Values) *cost.Config {
+	salaryStr := query.Get("salary")
+	benefitsStr := query.Get("benefits")
+	if salaryStr == "" && benefitsStr == "" {
+		return nil
+	}
+
+	cfg := &cost.Config{}
+	if salaryStr != "" {
+		if salary, err := strconv.ParseFloat(salaryStr, 64); err == nil {
+			cfg.AnnualSalary = salary
+		}
+	}
+	if benefitsStr != "" {
+		if benefits, err := strconv.ParseFloat(benefitsStr, 64); err == nil {
+			cfg.BenefitsMultiplier = benefits
+		}
+	}
+	return cfg
 }
 
 // validateGitHubPRURL performs strict validation of GitHub PR URLs.
@@ -678,6 +718,23 @@ func (s *Server) token(ctx context.Context) string {
 		return token
 	}
 
+	// Try gh auth token if gh is in PATH
+	if ghPath, err := exec.LookPath("gh"); err == nil {
+		s.logger.InfoContext(ctx, "Found gh CLI in PATH", "path", ghPath)
+		cmd := exec.CommandContext(ctx, "gh", "auth", "token")
+		output, err := cmd.Output()
+		if err == nil {
+			token := strings.TrimSpace(string(output))
+			if token != "" {
+				s.logger.InfoContext(ctx, "Using GITHUB_TOKEN from gh auth token")
+				s.fallbackToken = token
+				return token
+			}
+		} else {
+			s.logger.WarnContext(ctx, "Failed to get token from gh auth token", errorKey, err)
+		}
+	}
+
 	// Try Google Secret Manager for GITHUB_TOKEN
 	token, err := gsm.Fetch(ctx, "GITHUB_TOKEN")
 	if err != nil {
@@ -691,7 +748,7 @@ func (s *Server) token(ctx context.Context) string {
 		return token
 	}
 
-	s.logger.WarnContext(ctx, "No fallback GitHub token found (tried GITHUB_TOKEN env and GITHUB_TOKEN GSM)")
+	s.logger.WarnContext(ctx, "No fallback GitHub token found (tried GITHUB_TOKEN env, gh auth token, and GITHUB_TOKEN GSM)")
 	return ""
 }
 
@@ -1080,13 +1137,35 @@ func (s *Server) handleOrgSample(writer http.ResponseWriter, request *http.Reque
 
 // parseRepoSampleRequest parses and validates repository sampling requests.
 func (s *Server) parseRepoSampleRequest(ctx context.Context, r *http.Request) (*RepoSampleRequest, error) {
-	const maxRequestSize = 1 << 20 // 1MB
-	r.Body = http.MaxBytesReader(nil, r.Body, maxRequestSize)
-
 	var req RepoSampleRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		s.logger.ErrorContext(ctx, "[parseRepoSampleRequest] Failed to decode JSON", errorKey, sanitizeError(err))
-		return nil, fmt.Errorf("invalid JSON: %w", err)
+
+	// Handle GET requests with query parameters
+	if r.Method == http.MethodGet {
+		query := r.URL.Query()
+		req.Owner = query.Get("owner")
+		req.Repo = query.Get("repo")
+
+		// Parse optional parameters
+		if sampleStr := query.Get("sample"); sampleStr != "" {
+			if sample, err := strconv.Atoi(sampleStr); err == nil {
+				req.SampleSize = sample
+			}
+		}
+		if daysStr := query.Get("days"); daysStr != "" {
+			if days, err := strconv.Atoi(daysStr); err == nil {
+				req.Days = days
+			}
+		}
+		req.Config = parseConfigFromQuery(query)
+	} else {
+		// Handle POST requests with JSON body
+		const maxRequestSize = 1 << 20 // 1MB
+		r.Body = http.MaxBytesReader(nil, r.Body, maxRequestSize)
+
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			s.logger.ErrorContext(ctx, "[parseRepoSampleRequest] Failed to decode JSON", errorKey, sanitizeError(err))
+			return nil, fmt.Errorf("invalid JSON: %w", err)
+		}
 	}
 
 	if req.Owner == "" {
@@ -1098,15 +1177,18 @@ func (s *Server) parseRepoSampleRequest(ctx context.Context, r *http.Request) (*
 
 	// Set defaults
 	if req.SampleSize == 0 {
-		req.SampleSize = 20
+		req.SampleSize = 25
 	}
 	if req.Days == 0 {
 		req.Days = 90
 	}
 
-	// Validate reasonable limits
-	if req.SampleSize < 1 || req.SampleSize > 1000 {
-		return nil, errors.New("sample_size must be between 1 and 1000")
+	// Validate reasonable limits (silently cap at 25)
+	if req.SampleSize < 1 {
+		return nil, errors.New("sample_size must be at least 1")
+	}
+	if req.SampleSize > 25 {
+		req.SampleSize = 25
 	}
 	if req.Days < 1 || req.Days > 365 {
 		return nil, errors.New("days must be between 1 and 365")
@@ -1117,13 +1199,34 @@ func (s *Server) parseRepoSampleRequest(ctx context.Context, r *http.Request) (*
 
 // parseOrgSampleRequest parses and validates organization sampling requests.
 func (s *Server) parseOrgSampleRequest(ctx context.Context, r *http.Request) (*OrgSampleRequest, error) {
-	const maxRequestSize = 1 << 20 // 1MB
-	r.Body = http.MaxBytesReader(nil, r.Body, maxRequestSize)
-
 	var req OrgSampleRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		s.logger.ErrorContext(ctx, "[parseOrgSampleRequest] Failed to decode JSON", errorKey, sanitizeError(err))
-		return nil, fmt.Errorf("invalid JSON: %w", err)
+
+	// Handle GET requests with query parameters
+	if r.Method == http.MethodGet {
+		query := r.URL.Query()
+		req.Org = query.Get("org")
+
+		// Parse optional parameters
+		if sampleStr := query.Get("sample"); sampleStr != "" {
+			if sample, err := strconv.Atoi(sampleStr); err == nil {
+				req.SampleSize = sample
+			}
+		}
+		if daysStr := query.Get("days"); daysStr != "" {
+			if days, err := strconv.Atoi(daysStr); err == nil {
+				req.Days = days
+			}
+		}
+		req.Config = parseConfigFromQuery(query)
+	} else {
+		// Handle POST requests with JSON body
+		const maxRequestSize = 1 << 20 // 1MB
+		r.Body = http.MaxBytesReader(nil, r.Body, maxRequestSize)
+
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			s.logger.ErrorContext(ctx, "[parseOrgSampleRequest] Failed to decode JSON", errorKey, sanitizeError(err))
+			return nil, fmt.Errorf("invalid JSON: %w", err)
+		}
 	}
 
 	if req.Org == "" {
@@ -1132,15 +1235,18 @@ func (s *Server) parseOrgSampleRequest(ctx context.Context, r *http.Request) (*O
 
 	// Set defaults
 	if req.SampleSize == 0 {
-		req.SampleSize = 20
+		req.SampleSize = 25
 	}
 	if req.Days == 0 {
 		req.Days = 90
 	}
 
-	// Validate reasonable limits
-	if req.SampleSize < 1 || req.SampleSize > 1000 {
-		return nil, errors.New("sample_size must be between 1 and 1000")
+	// Validate reasonable limits (silently cap at 25)
+	if req.SampleSize < 1 {
+		return nil, errors.New("sample_size must be at least 1")
+	}
+	if req.SampleSize > 25 {
+		req.SampleSize = 25
 	}
 	if req.Days < 1 || req.Days > 365 {
 		return nil, errors.New("days must be between 1 and 365")
@@ -1151,6 +1257,7 @@ func (s *Server) parseOrgSampleRequest(ctx context.Context, r *http.Request) (*O
 
 // processRepoSample processes a repository sampling request.
 func (s *Server) processRepoSample(ctx context.Context, req *RepoSampleRequest, token string) (*SampleResponse, error) {
+	var actualDays int
 	// Use default config if not provided
 	cfg := cost.DefaultConfig()
 	if req.Config != nil {
@@ -1184,6 +1291,9 @@ func (s *Server) processRepoSample(ctx context.Context, req *RepoSampleRequest, 
 	if len(prs) == 0 {
 		return nil, fmt.Errorf("no PRs found in the last %d days", req.Days)
 	}
+
+	// Calculate actual time window (may be less than requested if we hit API limit)
+	actualDays, _ = github.CalculateActualTimeWindow(prs, req.Days)
 
 	// Sample PRs
 	samples := github.SamplePRs(prs, req.SampleSize)
@@ -1226,8 +1336,18 @@ func (s *Server) processRepoSample(ctx context.Context, req *RepoSampleRequest, 
 		return nil, errors.New("no samples could be processed successfully")
 	}
 
+	// Count unique authors across all PRs (not just samples)
+	totalAuthors := github.CountUniqueAuthors(prs)
+
+	// Query for actual count of open PRs (not extrapolated from samples)
+	openPRCount, err := github.CountOpenPRsInRepo(ctx, req.Owner, req.Repo, token)
+	if err != nil {
+		s.logger.WarnContext(ctx, "Failed to count open PRs, using 0", errorKey, err)
+		openPRCount = 0
+	}
+
 	// Extrapolate costs from samples
-	extrapolated := cost.ExtrapolateFromSamples(breakdowns, len(prs))
+	extrapolated := cost.ExtrapolateFromSamples(breakdowns, len(prs), totalAuthors, openPRCount, actualDays, cfg)
 
 	return &SampleResponse{
 		Extrapolated: extrapolated,
@@ -1238,6 +1358,7 @@ func (s *Server) processRepoSample(ctx context.Context, req *RepoSampleRequest, 
 
 // processOrgSample processes an organization sampling request.
 func (s *Server) processOrgSample(ctx context.Context, req *OrgSampleRequest, token string) (*SampleResponse, error) {
+	var actualDays int
 	// Use default config if not provided
 	cfg := cost.DefaultConfig()
 	if req.Config != nil {
@@ -1270,6 +1391,9 @@ func (s *Server) processOrgSample(ctx context.Context, req *OrgSampleRequest, to
 	if len(prs) == 0 {
 		return nil, fmt.Errorf("no PRs found in the last %d days", req.Days)
 	}
+
+	// Calculate actual time window (may be less than requested if we hit API limit)
+	actualDays, _ = github.CalculateActualTimeWindow(prs, req.Days)
 
 	// Sample PRs
 	samples := github.SamplePRs(prs, req.SampleSize)
@@ -1312,8 +1436,34 @@ func (s *Server) processOrgSample(ctx context.Context, req *OrgSampleRequest, to
 		return nil, errors.New("no samples could be processed successfully")
 	}
 
+	// Count unique authors across all PRs (not just samples)
+	totalAuthors := github.CountUniqueAuthors(prs)
+
+	// Count open PRs across all unique repos in the organization
+	uniqueRepos := make(map[string]bool)
+	for _, pr := range prs {
+		repoKey := pr.Owner + "/" + pr.Repo
+		uniqueRepos[repoKey] = true
+	}
+
+	totalOpenPRs := 0
+	for repoKey := range uniqueRepos {
+		parts := strings.SplitN(repoKey, "/", 2)
+		if len(parts) != 2 {
+			continue
+		}
+		owner, repo := parts[0], parts[1]
+		openCount, err := github.CountOpenPRsInRepo(ctx, owner, repo, token)
+		if err != nil {
+			s.logger.WarnContext(ctx, "Failed to count open PRs for repo", "repo", repoKey, errorKey, err)
+			continue
+		}
+		totalOpenPRs += openCount
+	}
+	s.logger.InfoContext(ctx, "Counted total open PRs across organization", "open_prs", totalOpenPRs, "repos", len(uniqueRepos))
+
 	// Extrapolate costs from samples
-	extrapolated := cost.ExtrapolateFromSamples(breakdowns, len(prs))
+	extrapolated := cost.ExtrapolateFromSamples(breakdowns, len(prs), totalAuthors, totalOpenPRs, actualDays, cfg)
 
 	return &SampleResponse{
 		Extrapolated: extrapolated,
@@ -1347,9 +1497,6 @@ func (*Server) mergeConfig(base cost.Config, override *cost.Config) cost.Config 
 	}
 	if override.DeliveryDelayFactor > 0 {
 		base.DeliveryDelayFactor = override.DeliveryDelayFactor
-	}
-	if override.CoordinationFactor > 0 {
-		base.CoordinationFactor = override.CoordinationFactor
 	}
 	if override.MaxDelayAfterLastEvent > 0 {
 		base.MaxDelayAfterLastEvent = override.MaxDelayAfterLastEvent
@@ -1542,17 +1689,20 @@ func sendSSE(w http.ResponseWriter, update ProgressUpdate) error {
 
 // startKeepAlive starts a goroutine that sends SSE keep-alive comments every 2 seconds.
 // This prevents client-side timeouts during long operations.
-// Returns a channel that should be closed to stop the keep-alive.
-func startKeepAlive(w http.ResponseWriter) chan struct{} {
+// Returns a stop channel (to stop keep-alive) and an error channel (signals connection failure).
+func startKeepAlive(w http.ResponseWriter) (chan struct{}, <-chan error) {
 	stop := make(chan struct{})
+	connErr := make(chan error, 1)
 	go func() {
 		ticker := time.NewTicker(2 * time.Second)
 		defer ticker.Stop()
+		defer close(connErr)
 		for {
 			select {
 			case <-ticker.C:
 				// Send SSE comment (keeps connection alive, ignored by client)
 				if _, err := fmt.Fprint(w, ": keepalive\n\n"); err != nil {
+					connErr <- fmt.Errorf("keepalive write failed: %w", err)
 					return
 				}
 				if flusher, ok := w.(http.Flusher); ok {
@@ -1563,7 +1713,7 @@ func startKeepAlive(w http.ResponseWriter) chan struct{} {
 			}
 		}
 	}()
-	return stop
+	return stop, connErr
 }
 
 // logSSEError logs an error from sendSSE if it occurs.
@@ -1576,6 +1726,7 @@ func logSSEError(ctx context.Context, logger *slog.Logger, err error) {
 
 // processRepoSampleWithProgress processes a repository sample with progress updates via SSE.
 func (s *Server) processRepoSampleWithProgress(ctx context.Context, req *RepoSampleRequest, token string, writer http.ResponseWriter) {
+	var actualDays int
 	// Use background context for work to prevent client timeout from canceling operations
 	// The request context (ctx) is only used for SSE writes and logging
 	workCtx := context.Background()
@@ -1618,8 +1769,15 @@ func (s *Server) processRepoSampleWithProgress(ctx context.Context, req *RepoSam
 		}))
 
 		// Start keep-alive to prevent client timeout during GraphQL query
-		stopKeepAlive := startKeepAlive(writer)
+		stopKeepAlive, connErr := startKeepAlive(writer)
 		defer close(stopKeepAlive)
+
+		// Check for connection errors in background
+		go func() {
+			if err := <-connErr; err != nil {
+				s.logger.WarnContext(ctx, "Client connection lost", errorKey, err)
+			}
+		}()
 
 		// Fetch all PRs modified since the date
 		var err error
@@ -1645,6 +1803,9 @@ func (s *Server) processRepoSampleWithProgress(ctx context.Context, req *RepoSam
 		return
 	}
 
+	// Calculate actual time window (may be less than requested if we hit API limit)
+	actualDays, _ = github.CalculateActualTimeWindow(prs, req.Days)
+
 	// Sample PRs
 	samples := github.SamplePRs(prs, req.SampleSize)
 
@@ -1668,19 +1829,32 @@ func (s *Server) processRepoSampleWithProgress(ctx context.Context, req *RepoSam
 		return
 	}
 
+	// Count unique authors across all PRs (not just samples)
+	totalAuthors := github.CountUniqueAuthors(prs)
+
+	// Query for actual count of open PRs (not extrapolated from samples)
+	//nolint:contextcheck // Using background context intentionally to prevent client timeout from canceling work
+	openPRCount, err := github.CountOpenPRsInRepo(workCtx, req.Owner, req.Repo, token)
+	if err != nil {
+		s.logger.WarnContext(ctx, "Failed to count open PRs, using 0", errorKey, err)
+		openPRCount = 0
+	}
+
 	// Extrapolate costs from samples
-	extrapolated := cost.ExtrapolateFromSamples(breakdowns, len(prs))
+	extrapolated := cost.ExtrapolateFromSamples(breakdowns, len(prs), totalAuthors, openPRCount, actualDays, cfg)
 
 	// Send final result
 	logSSEError(ctx, s.logger, sendSSE(writer, ProgressUpdate{
-		Type:   "done",
-		Result: &extrapolated,
-		Commit: s.serverCommit,
+		Type:       "done",
+		Result:     &extrapolated,
+		Commit:     s.serverCommit,
+		R2RCallout: s.r2rCallout,
 	}))
 }
 
 // processOrgSampleWithProgress processes an organization sample with progress updates via SSE.
 func (s *Server) processOrgSampleWithProgress(ctx context.Context, req *OrgSampleRequest, token string, writer http.ResponseWriter) {
+	var actualDays int
 	// Use background context for work to prevent client timeout from canceling operations
 	// The request context (ctx) is only used for SSE writes and logging
 	workCtx := context.Background()
@@ -1720,8 +1894,15 @@ func (s *Server) processOrgSampleWithProgress(ctx context.Context, req *OrgSampl
 		}))
 
 		// Start keep-alive to prevent client timeout during GraphQL query
-		stopKeepAlive := startKeepAlive(writer)
+		stopKeepAlive, connErr := startKeepAlive(writer)
 		defer close(stopKeepAlive)
+
+		// Check for connection errors in background
+		go func() {
+			if err := <-connErr; err != nil {
+				s.logger.WarnContext(ctx, "Client connection lost", errorKey, err)
+			}
+		}()
 
 		// Fetch all PRs across the org modified since the date
 		var err error
@@ -1746,6 +1927,9 @@ func (s *Server) processOrgSampleWithProgress(ctx context.Context, req *OrgSampl
 		}))
 		return
 	}
+
+	// Calculate actual time window (may be less than requested if we hit API limit)
+	actualDays, _ = github.CalculateActualTimeWindow(prs, req.Days)
 
 	// Sample PRs
 	samples := github.SamplePRs(prs, req.SampleSize)
@@ -1778,14 +1962,42 @@ func (s *Server) processOrgSampleWithProgress(ctx context.Context, req *OrgSampl
 		return
 	}
 
+	// Count unique authors across all PRs (not just samples)
+	totalAuthors := github.CountUniqueAuthors(prs)
+
+	// Count open PRs across all unique repos in the organization
+	uniqueRepos := make(map[string]bool)
+	for _, pr := range prs {
+		repoKey := pr.Owner + "/" + pr.Repo
+		uniqueRepos[repoKey] = true
+	}
+
+	totalOpenPRs := 0
+	for repoKey := range uniqueRepos {
+		parts := strings.SplitN(repoKey, "/", 2)
+		if len(parts) != 2 {
+			continue
+		}
+		owner, repo := parts[0], parts[1]
+		//nolint:contextcheck // Using background context intentionally to prevent client timeout from canceling work
+		openCount, err := github.CountOpenPRsInRepo(workCtx, owner, repo, token)
+		if err != nil {
+			s.logger.WarnContext(ctx, "Failed to count open PRs for repo", "repo", repoKey, errorKey, err)
+			continue
+		}
+		totalOpenPRs += openCount
+	}
+	s.logger.InfoContext(ctx, "Counted total open PRs across organization", "open_prs", totalOpenPRs, "repos", len(uniqueRepos))
+
 	// Extrapolate costs from samples
-	extrapolated := cost.ExtrapolateFromSamples(breakdowns, len(prs))
+	extrapolated := cost.ExtrapolateFromSamples(breakdowns, len(prs), totalAuthors, totalOpenPRs, actualDays, cfg)
 
 	// Send final result
 	logSSEError(ctx, s.logger, sendSSE(writer, ProgressUpdate{
-		Type:   "done",
-		Result: &extrapolated,
-		Commit: s.serverCommit,
+		Type:       "done",
+		Result:     &extrapolated,
+		Commit:     s.serverCommit,
+		R2RCallout: s.r2rCallout,
 	}))
 }
 
@@ -1798,7 +2010,7 @@ func (s *Server) processPRsInParallel(workCtx, reqCtx context.Context, samples [
 	var sseMu sync.Mutex // Protects SSE writes to prevent corrupted chunked encoding
 
 	// Use a buffered channel for worker pool pattern
-	concurrency := 5 // Process up to 5 PRs concurrently
+	concurrency := 8 // Process up to 8 PRs concurrently
 	semaphore := make(chan struct{}, concurrency)
 
 	var wg sync.WaitGroup

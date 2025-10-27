@@ -11,6 +11,7 @@ import (
 	"log/slog"
 	"os"
 	"os/exec"
+	"strconv"
 	"strings"
 	"time"
 
@@ -30,8 +31,8 @@ func main() {
 	// Org/Repo sampling flags
 	org := flag.String("org", "", "GitHub organization to analyze (optionally with --repo for single repo)")
 	repo := flag.String("repo", "", "GitHub repository to analyze (requires --org)")
-	samples := flag.Int("samples", 20, "Number of PRs to sample for extrapolation")
-	days := flag.Int("days", 90, "Number of days to look back for PR modifications")
+	samples := flag.Int("samples", 25, "Number of PRs to sample for extrapolation (25=fast/±20%, 50=slower/±14%)")
+	days := flag.Int("days", 60, "Number of days to look back for PR modifications")
 
 	flag.Usage = func() {
 		fmt.Fprintf(os.Stderr, "Usage: %s [options] <PR_URL>\n", os.Args[0])
@@ -52,7 +53,7 @@ func main() {
 		fmt.Fprintf(os.Stderr, "    %s --org myorg --repo myrepo --samples 50 --days 30\n\n", os.Args[0])
 		fmt.Fprint(os.Stderr, "  Organization-wide analysis:\n")
 		fmt.Fprintf(os.Stderr, "    %s --org chainguard-dev\n", os.Args[0])
-		fmt.Fprintf(os.Stderr, "    %s --org myorg --samples 100 --days 60\n", os.Args[0])
+		fmt.Fprintf(os.Stderr, "    %s --org myorg --samples 50 --days 60\n", os.Args[0])
 	}
 
 	flag.Parse()
@@ -101,12 +102,10 @@ func main() {
 		"salary", cfg.AnnualSalary,
 		"benefits_multiplier", cfg.BenefitsMultiplier,
 		"event_minutes", *eventMinutes,
-		"delivery_delay_factor", cfg.DeliveryDelayFactor,
-		"coordination_factor", cfg.CoordinationFactor)
+		"delivery_delay_factor", cfg.DeliveryDelayFactor)
 
 	// Retrieve GitHub token from gh CLI
 	ctx := context.Background()
-	slog.Info("Retrieving GitHub authentication token")
 	token, err := authToken(ctx)
 	if err != nil {
 		slog.Error("Failed to get GitHub token", "error", err)
@@ -119,11 +118,6 @@ func main() {
 		// Org/Repo sampling mode
 		if *repo != "" {
 			// Single repository mode
-			slog.Info("Starting repository analysis",
-				"org", *org,
-				"repo", *repo,
-				"samples", *samples,
-				"days", *days)
 
 			err := analyzeRepository(ctx, *org, *repo, *samples, *days, cfg, token, *dataSource)
 			if err != nil {
@@ -282,7 +276,7 @@ func printHumanReadable(breakdown *cost.Breakdown, prURL string) {
 			}
 			// Only show other events if they had non-review events
 			if p.GitHubHours > 0 {
-				fmt.Printf("      GitHub Events           %12s    %d sessions • %s\n",
+				fmt.Printf("      GitHub Activity         %12s    %d sessions • %s\n",
 					formatCurrency(p.GitHubCost), p.Sessions, formatTimeUnit(p.GitHubHours))
 			}
 			// Always show context switching if there were sessions
@@ -312,6 +306,9 @@ func printHumanReadable(breakdown *cost.Breakdown, prURL string) {
 	fmt.Printf("  Total                       %12s    %s\n",
 		formatCurrency(breakdown.TotalCost), formatTimeUnit(totalHours))
 	fmt.Println()
+
+	// Print efficiency score
+	printEfficiency(breakdown)
 }
 
 // printDelayCosts prints delay and future costs section.
@@ -325,25 +322,22 @@ func printDelayCosts(breakdown *cost.Breakdown, formatCurrency func(float64) str
 		if breakdown.DelayCapped {
 			cappedSuffix = " (capped)"
 		}
-		fmt.Printf("    Project                   %12s    %s%s\n",
+		fmt.Printf("    Workstream blockage       %12s    %s%s\n",
 			formatCurrency(breakdown.DelayCostDetail.DeliveryDelayCost),
 			formatTimeUnit(breakdown.DelayCostDetail.DeliveryDelayHours),
 			cappedSuffix)
 	}
 
-	if breakdown.DelayCostDetail.CoordinationHours > 0 {
-		cappedSuffix := ""
-		if breakdown.DelayCapped {
-			cappedSuffix = " (capped)"
-		}
-		fmt.Printf("    Coordination              %12s    %s%s\n",
-			formatCurrency(breakdown.DelayCostDetail.CoordinationCost),
-			formatTimeUnit(breakdown.DelayCostDetail.CoordinationHours),
-			cappedSuffix)
-	}
+	// Calculate merge delay subtotal (all non-future delay costs)
+	mergeDelayCost := breakdown.DelayCostDetail.DeliveryDelayCost +
+		breakdown.DelayCostDetail.CodeChurnCost +
+		breakdown.DelayCostDetail.AutomatedUpdatesCost +
+		breakdown.DelayCostDetail.PRTrackingCost
+	mergeDelayHours := breakdown.DelayCostDetail.DeliveryDelayHours +
+		breakdown.DelayCostDetail.CodeChurnHours +
+		breakdown.DelayCostDetail.AutomatedUpdatesHours +
+		breakdown.DelayCostDetail.PRTrackingHours
 
-	mergeDelayCost := breakdown.DelayCostDetail.DeliveryDelayCost + breakdown.DelayCostDetail.CoordinationCost
-	mergeDelayHours := breakdown.DelayCostDetail.DeliveryDelayHours + breakdown.DelayCostDetail.CoordinationHours
 	fmt.Println("                              ────────────")
 	pct := (mergeDelayCost / breakdown.TotalCost) * 100
 	fmt.Printf("    Subtotal                  %12s    %s  (%.1f%%)\n",
@@ -430,4 +424,145 @@ func formatWithCommas(amount float64) string {
 	}
 
 	return string(result) + "." + decPart
+}
+
+// formatLOC formats lines of code in kilo format with appropriate precision and commas for large values.
+func formatLOC(kloc float64) string {
+	// For values >= 100k, add commas (e.g., "1,517k" instead of "1517k")
+	if kloc >= 100.0 {
+		intPart := int(kloc)
+		fracPart := kloc - float64(intPart)
+
+		// Format integer part with commas
+		intStr := strconv.Itoa(intPart)
+		var result []rune
+		for i, r := range intStr {
+			if i > 0 && (len(intStr)-i)%3 == 0 {
+				result = append(result, ',')
+			}
+			result = append(result, r)
+		}
+
+		// Add fractional part if significant
+		if kloc < 1000.0 && fracPart >= 0.05 {
+			return fmt.Sprintf("%s.%dk", string(result), int(fracPart*10))
+		}
+		return string(result) + "k"
+	}
+
+	// For values < 100k, use existing precision logic
+	if kloc < 0.1 && kloc > 0 {
+		return fmt.Sprintf("%.2fk", kloc)
+	}
+	if kloc < 1.0 {
+		return fmt.Sprintf("%.1fk", kloc)
+	}
+	if kloc < 10.0 {
+		return fmt.Sprintf("%.1fk", kloc)
+	}
+	return fmt.Sprintf("%.0fk", kloc)
+}
+
+// efficiencyGrade returns a letter grade and message based on efficiency percentage (MIT scale).
+func efficiencyGrade(efficiencyPct float64) (grade, message string) {
+	switch {
+	case efficiencyPct >= 97:
+		return "A+", "Impeccable"
+	case efficiencyPct >= 93:
+		return "A", "Excellent"
+	case efficiencyPct >= 90:
+		return "A-", "Nearly excellent"
+	case efficiencyPct >= 87:
+		return "B+", "Acceptable+"
+	case efficiencyPct >= 83:
+		return "B", "Acceptable"
+	case efficiencyPct >= 80:
+		return "B-", "Nearly acceptable"
+	case efficiencyPct >= 70:
+		return "C", "Average"
+	case efficiencyPct >= 60:
+		return "D", "Not good my friend."
+	default:
+		return "F", "Failing"
+	}
+}
+
+// mergeVelocityGrade returns a grade based on average PR open time in days.
+// A+: 4h, A: 8h, A-: 12h, B+: 18h, B: 24h, B-: 36h, C: 100h, D: 120h, F: 120h+.
+func mergeVelocityGrade(avgOpenDays float64) (grade, message string) {
+	switch {
+	case avgOpenDays <= 0.1667: // 4 hours
+		return "A+", "Impeccable"
+	case avgOpenDays <= 0.3333: // 8 hours
+		return "A", "Excellent"
+	case avgOpenDays <= 0.5: // 12 hours
+		return "A-", "Nearly excellent"
+	case avgOpenDays <= 0.75: // 18 hours
+		return "B+", "Acceptable+"
+	case avgOpenDays <= 1.0: // 24 hours
+		return "B", "Acceptable"
+	case avgOpenDays <= 1.5: // 36 hours
+		return "B-", "Nearly acceptable"
+	case avgOpenDays <= 4.1667: // 100 hours
+		return "C", "Average"
+	case avgOpenDays <= 5.0: // 120 hours
+		return "D", "Not good my friend."
+	default:
+		return "F", "Failing"
+	}
+}
+
+// printEfficiency prints the workflow efficiency section for a single PR.
+func printEfficiency(breakdown *cost.Breakdown) {
+	// Calculate preventable waste: Code Churn + All Delay Costs + Automated Updates + PR Tracking
+	preventableHours := breakdown.DelayCostDetail.CodeChurnHours +
+		breakdown.DelayCostDetail.DeliveryDelayHours +
+		breakdown.DelayCostDetail.AutomatedUpdatesHours +
+		breakdown.DelayCostDetail.PRTrackingHours
+	preventableCost := breakdown.DelayCostDetail.CodeChurnCost +
+		breakdown.DelayCostDetail.DeliveryDelayCost +
+		breakdown.DelayCostDetail.AutomatedUpdatesCost +
+		breakdown.DelayCostDetail.PRTrackingCost
+
+	// Calculate total hours
+	totalHours := breakdown.Author.TotalHours + breakdown.DelayCostDetail.TotalDelayHours
+	for _, p := range breakdown.Participants {
+		totalHours += p.TotalHours
+	}
+
+	// Calculate efficiency
+	var efficiencyPct float64
+	if totalHours > 0 {
+		efficiencyPct = 100.0 * (totalHours - preventableHours) / totalHours
+	} else {
+		efficiencyPct = 100.0
+	}
+
+	grade, message := efficiencyGrade(efficiencyPct)
+
+	// Calculate merge velocity grade based on PR duration
+	prDurationDays := breakdown.PRDuration / 24.0
+	velocityGrade, velocityMessage := mergeVelocityGrade(prDurationDays)
+
+	fmt.Println("  ┌─────────────────────────────────────────────────────────────┐")
+	headerText := fmt.Sprintf("DEVELOPMENT EFFICIENCY: %s (%.1f%%) - %s", grade, efficiencyPct, message)
+	padding := 60 - len(headerText)
+	if padding < 0 {
+		padding = 0
+	}
+	fmt.Printf("  │ %s%*s│\n", headerText, padding, "")
+	fmt.Println("  └─────────────────────────────────────────────────────────────┘")
+
+	fmt.Println("  ┌─────────────────────────────────────────────────────────────┐")
+	velocityHeader := fmt.Sprintf("MERGE VELOCITY: %s (%s) - %s", velocityGrade, formatTimeUnit(breakdown.PRDuration), velocityMessage)
+	velPadding := 60 - len(velocityHeader)
+	if velPadding < 0 {
+		velPadding = 0
+	}
+	fmt.Printf("  │ %s%*s│\n", velocityHeader, velPadding, "")
+	fmt.Println("  └─────────────────────────────────────────────────────────────┘")
+
+	fmt.Printf("  Preventable Waste:         $%12s    %s\n",
+		formatWithCommas(preventableCost), formatTimeUnit(preventableHours))
+	fmt.Println()
 }

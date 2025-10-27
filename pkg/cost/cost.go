@@ -48,9 +48,13 @@ type Config struct {
 	// Represents opportunity cost of blocked value delivery
 	DeliveryDelayFactor float64
 
-	// Coordination factor as percentage of hourly rate (default: 0.05 = 5%)
-	// Represents mental overhead of tracking unmerged work
-	CoordinationFactor float64
+	// Automated updates factor for bot-authored PRs (default: 0.01 = 1%)
+	// Represents overhead of tracking automated dependency updates and bot-driven changes
+	AutomatedUpdatesFactor float64
+
+	// PR tracking cost in minutes per day (default: 1.0 minute per day)
+	// Applied to PRs open >24 hours to represent ongoing triage/tracking overhead
+	PRTrackingMinutesPerDay float64
 
 	// Maximum time after last event to count for project delay (default: 14 days / 2 weeks)
 	// Only counts delay costs up to this many days after the last event on the PR
@@ -89,21 +93,22 @@ type Config struct {
 // DefaultConfig returns reasonable defaults for cost calculation.
 func DefaultConfig() Config {
 	return Config{
-		AnnualSalary:             249000.0,                        // Average Staff Software Engineer salary (2025, Glassdoor)
-		BenefitsMultiplier:       1.3,                             // 30% benefits overhead
-		HoursPerYear:             2080.0,                          // Standard full-time hours
-		EventDuration:            10 * time.Minute,                // 10 minutes per GitHub event
-		ContextSwitchInDuration:  3 * time.Minute,                 // 3 min to context switch in (Microsoft Research)
-		ContextSwitchOutDuration: 16*time.Minute + 33*time.Second, // 16m33s to context switch out (Microsoft Research)
-		SessionGapThreshold:      20 * time.Minute,                // Events within 20 min are same session
-		DeliveryDelayFactor:      0.15,                            // 15% opportunity cost
-		CoordinationFactor:       0.05,                            // 5% mental overhead
-		MaxDelayAfterLastEvent:   14 * 24 * time.Hour,             // 14 days (2 weeks) after last event
-		MaxProjectDelay:          90 * 24 * time.Hour,             // 90 days absolute max
-		MaxCodeDrift:             90 * 24 * time.Hour,             // 90 days
-		ReviewInspectionRate:     275.0,                           // 275 LOC/hour (average of optimal 150-400 range)
-		ModificationCostFactor:   0.4,                             // Modified code costs 40% of new code
-		COCOMO:                   cocomo.DefaultConfig(),
+		AnnualSalary:                249000.0,                        // Average Staff Software Engineer salary (2025, Glassdoor)
+		BenefitsMultiplier:          1.3,                             // 30% benefits overhead
+		HoursPerYear:                2080.0,                          // Standard full-time hours
+		EventDuration:               10 * time.Minute,                // 10 minutes per GitHub event
+		ContextSwitchInDuration:     3 * time.Minute,                 // 3 min to context switch in (Microsoft Research)
+		ContextSwitchOutDuration:    16*time.Minute + 33*time.Second, // 16m33s to context switch out (Microsoft Research)
+		SessionGapThreshold:         20 * time.Minute,                // Events within 20 min are same session
+		DeliveryDelayFactor:         0.15,                            // 15% opportunity cost
+		AutomatedUpdatesFactor:      0.01,                            // 1% overhead for bot PRs
+		PRTrackingMinutesPerDay:     1.0,                             // 1 minute per day for PRs open >24 hours
+		MaxDelayAfterLastEvent:      14 * 24 * time.Hour,             // 14 days (2 weeks) after last event
+		MaxProjectDelay:             90 * 24 * time.Hour,             // 90 days absolute max
+		MaxCodeDrift:                90 * 24 * time.Hour,             // 90 days
+		ReviewInspectionRate:        275.0,                           // 275 LOC/hour (average of optimal 150-400 range)
+		ModificationCostFactor:      0.4,                             // Modified code costs 40% of new code
+		COCOMO:                      cocomo.DefaultConfig(),
 	}
 }
 
@@ -165,9 +170,10 @@ type ParticipantCostDetail struct {
 
 // DelayCostDetail holds itemized delay costs.
 type DelayCostDetail struct {
-	DeliveryDelayCost float64 `json:"delivery_delay_cost"` // Opportunity cost - blocked value delivery (15% factor)
-	CoordinationCost  float64 `json:"coordination_cost"`   // Mental overhead - tracking unmerged work (5% factor)
-	CodeChurnCost     float64 `json:"code_churn_cost"`     // COCOMO cost for rework/merge conflicts
+	DeliveryDelayCost    float64 `json:"delivery_delay_cost"`    // Opportunity cost - blocked value delivery (15% factor)
+	CodeChurnCost        float64 `json:"code_churn_cost"`        // COCOMO cost for rework/merge conflicts
+	AutomatedUpdatesCost float64 `json:"automated_updates_cost"` // Overhead for bot-authored PRs (1% factor)
+	PRTrackingCost       float64 `json:"pr_tracking_cost"`       // Daily tracking cost for PRs open >24 hours (1 min/day)
 
 	// Future costs (estimated for open PRs) - split across 2 people
 	FutureReviewCost  float64 `json:"future_review_cost"`  // Cost for future review events (2 events × 20 min)
@@ -175,15 +181,16 @@ type DelayCostDetail struct {
 	FutureContextCost float64 `json:"future_context_cost"` // Cost for future context switching (3 events × 40 min)
 
 	// Supporting details
-	DeliveryDelayHours float64 `json:"delivery_delay_hours"` // Hours of delivery delay
-	CoordinationHours  float64 `json:"coordination_hours"`   // Hours of coordination overhead
-	CodeChurnHours     float64 `json:"code_churn_hours"`     // Hours for code churn
-	FutureReviewHours  float64 `json:"future_review_hours"`  // Hours for future review events
-	FutureMergeHours   float64 `json:"future_merge_hours"`   // Hours for future merge event
-	FutureContextHours float64 `json:"future_context_hours"` // Hours for future context switching
-	ReworkPercentage   float64 `json:"rework_percentage"`    // Percentage of code requiring rework (1%-41%)
-	TotalDelayCost     float64 `json:"total_delay_cost"`     // Total delay cost (sum of above)
-	TotalDelayHours    float64 `json:"total_delay_hours"`    // Total delay hours
+	DeliveryDelayHours    float64 `json:"delivery_delay_hours"`    // Hours of delivery delay
+	CodeChurnHours        float64 `json:"code_churn_hours"`        // Hours for code churn
+	AutomatedUpdatesHours float64 `json:"automated_updates_hours"` // Hours of automated update tracking
+	PRTrackingHours       float64 `json:"pr_tracking_hours"`       // Hours of PR tracking (for PRs open >24 hours)
+	FutureReviewHours     float64 `json:"future_review_hours"`     // Hours for future review events
+	FutureMergeHours      float64 `json:"future_merge_hours"`      // Hours for future merge event
+	FutureContextHours    float64 `json:"future_context_hours"`    // Hours for future context switching
+	ReworkPercentage      float64 `json:"rework_percentage"`       // Percentage of code requiring rework (1%-41%)
+	TotalDelayCost        float64 `json:"total_delay_cost"`        // Total delay cost (sum of above)
+	TotalDelayHours       float64 `json:"total_delay_hours"`       // Total delay hours
 }
 
 // Breakdown shows fully itemized costs for a pull request.
@@ -319,17 +326,23 @@ func Calculate(data PRData, cfg Config) Breakdown {
 	if !data.AuthorBot {
 		deliveryDelayCost = hourlyRate * cappedHrs * cfg.DeliveryDelayFactor
 		deliveryDelayHours = cappedHrs * cfg.DeliveryDelayFactor // Productivity-equivalent hours
+		slog.Info("Delivery delay calculation",
+			"pr_duration_hours", delayHours,
+			"capped_hours", cappedHrs,
+			"delay_factor", cfg.DeliveryDelayFactor,
+			"delivery_delay_hours", deliveryDelayHours,
+			"delivery_delay_cost", deliveryDelayCost)
 	}
 
-	// 1b. Coordination Overhead: Mental cost of tracking unmerged work (default 5%)
-	// The 5% represents the mental overhead of tracking this unmerged PR
-	// Bot-authored PRs get 1% coordination cost (reduced to handle future merge conflicts only)
-	coordinationFactor := cfg.CoordinationFactor
+	// 1b. Automated Updates Overhead: Tracking overhead for bot PRs (default 1%)
+	// The 1% represents the overhead of tracking automated dependency updates and bot-driven changes
+	var automatedUpdatesCost, automatedUpdatesHours float64
+
 	if data.AuthorBot {
-		coordinationFactor = 0.01 // 1% for bot PRs
+		// Bot PRs: Use Automated Updates factor (default 1%)
+		automatedUpdatesCost = hourlyRate * cappedHrs * cfg.AutomatedUpdatesFactor
+		automatedUpdatesHours = cappedHrs * cfg.AutomatedUpdatesFactor
 	}
-	coordinationCost := hourlyRate * cappedHrs * coordinationFactor
-	coordinationHours := cappedHrs * coordinationFactor // Productivity-equivalent hours
 
 	// 2. Code Churn (Rework): Probability-based drift formula
 	// Only calculated for open PRs - closed PRs won't need future updates
@@ -480,28 +493,39 @@ func Calculate(data PRData, cfg Config) Breakdown {
 		futureContextCost = futureContextHours * hourlyRate
 	}
 
+	// 4. PR Tracking: Daily tracking cost for PRs open >24 hours (default: 1 minute/day)
+	// Applied to PRs open >24 hours to represent ongoing triage/tracking overhead
+	var prTrackingCost, prTrackingHours float64
+	if !isClosed {
+		daysOpen := delayHours / 24.0
+		prTrackingHours = (cfg.PRTrackingMinutesPerDay / 60.0) * daysOpen
+		prTrackingCost = prTrackingHours * hourlyRate
+	}
+
 	// Total delay cost
 	futureTotalCost := futureReviewCost + futureMergeCost + futureContextCost
 	futureTotalHours := futureReviewHours + futureMergeHours + futureContextHours
-	delayCost := deliveryDelayCost + coordinationCost + codeChurnCost + futureTotalCost
-	totalDelayHours := deliveryDelayHours + coordinationHours + codeChurnHours + futureTotalHours
+	delayCost := deliveryDelayCost + codeChurnCost + automatedUpdatesCost + prTrackingCost + futureTotalCost
+	totalDelayHours := deliveryDelayHours + codeChurnHours + automatedUpdatesHours + prTrackingHours + futureTotalHours
 
 	delayCostDetail := DelayCostDetail{
-		DeliveryDelayCost:  deliveryDelayCost,
-		CoordinationCost:   coordinationCost,
-		CodeChurnCost:      codeChurnCost,
-		FutureReviewCost:   futureReviewCost,
-		FutureMergeCost:    futureMergeCost,
-		FutureContextCost:  futureContextCost,
-		DeliveryDelayHours: deliveryDelayHours,
-		CoordinationHours:  coordinationHours,
-		CodeChurnHours:     codeChurnHours,
-		FutureReviewHours:  futureReviewHours,
-		FutureMergeHours:   futureMergeHours,
-		FutureContextHours: futureContextHours,
-		ReworkPercentage:   reworkPercentage * 100.0, // Store as percentage (0-100 scale, e.g., 41.0 = 41%)
-		TotalDelayCost:     delayCost,
-		TotalDelayHours:    totalDelayHours,
+		DeliveryDelayCost:     deliveryDelayCost,
+		CodeChurnCost:         codeChurnCost,
+		AutomatedUpdatesCost:  automatedUpdatesCost,
+		PRTrackingCost:        prTrackingCost,
+		FutureReviewCost:      futureReviewCost,
+		FutureMergeCost:       futureMergeCost,
+		FutureContextCost:     futureContextCost,
+		DeliveryDelayHours:    deliveryDelayHours,
+		CodeChurnHours:        codeChurnHours,
+		AutomatedUpdatesHours: automatedUpdatesHours,
+		PRTrackingHours:       prTrackingHours,
+		FutureReviewHours:     futureReviewHours,
+		FutureMergeHours:      futureMergeHours,
+		FutureContextHours:    futureContextHours,
+		ReworkPercentage:      reworkPercentage * 100.0, // Store as percentage (0-100 scale, e.g., 41.0 = 41%)
+		TotalDelayCost:        delayCost,
+		TotalDelayHours:       totalDelayHours,
 	}
 
 	// Calculate total cost
@@ -509,6 +533,16 @@ func Calculate(data PRData, cfg Config) Breakdown {
 	for _, pc := range participantCosts {
 		totalCost += pc.TotalCost
 	}
+
+	// Log final breakdown summary
+	slog.Info("PR breakdown summary",
+		"pr_author", data.Author,
+		"pr_duration_hours", delayHours,
+		"delivery_delay_hours", deliveryDelayHours,
+		"code_churn_hours", codeChurnHours,
+		"total_cost", totalCost,
+		"author_cost", authorCost.TotalCost,
+		"delay_cost", delayCost)
 
 	return Breakdown{
 		Author:             authorCost,

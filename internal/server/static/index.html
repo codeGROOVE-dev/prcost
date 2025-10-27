@@ -70,6 +70,15 @@
             transition: all 0.3s ease;
         }
 
+        h1 a {
+            color: inherit;
+            text-decoration: none;
+        }
+
+        h1 a:hover {
+            opacity: 0.7;
+        }
+
         .header:hover h1 {
             letter-spacing: -0.01em;
         }
@@ -258,6 +267,35 @@
         input[type="text"]:hover:not(:focus),
         input[type="url"]:hover:not(:focus),
         input[type="number"]:hover:not(:focus) {
+            border-color: #86868b;
+        }
+
+        select {
+            width: 100%;
+            padding: 12px 16px;
+            border: 1.5px solid #d2d2d7;
+            font-size: 17px;
+            font-family: inherit;
+            font-weight: 400;
+            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+            border-radius: 10px;
+            background: #fff;
+            cursor: pointer;
+            appearance: none;
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%231d1d1f' d='M6 9L1 4h10z'/%3E%3C/svg%3E");
+            background-repeat: no-repeat;
+            background-position: right 16px center;
+            padding-right: 44px;
+        }
+
+        select:focus {
+            outline: 3px solid #007aff;
+            outline-offset: 2px;
+            border-color: #007aff;
+            box-shadow: 0 0 0 3px rgba(0, 122, 255, 0.15);
+        }
+
+        select:hover:not(:focus) {
             border-color: #86868b;
         }
 
@@ -511,6 +549,172 @@
             margin-top: 0;
         }
 
+        .efficiency-section {
+            background: linear-gradient(135deg, #f0f9ff 0%, #ffffff 100%);
+            padding: 20px;
+            border-radius: 12px;
+            border: 2px solid #e5e5ea;
+            margin-bottom: 32px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.06);
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            gap: 12px;
+        }
+
+        @media (max-width: 768px) {
+            .efficiency-section {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        .efficiency-section h2 {
+            font-size: 17px;
+            font-weight: 700;
+            margin: 0 0 20px 0;
+            color: #1d1d1f;
+            letter-spacing: -0.02em;
+        }
+
+        .efficiency-content {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 24px;
+        }
+
+        .efficiency-score {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+        }
+
+        .efficiency-percentage {
+            font-size: 48px;
+            font-weight: 700;
+            letter-spacing: -0.03em;
+            line-height: 1;
+            color: #1d1d1f;
+        }
+
+        .efficiency-grade {
+            font-size: 32px;
+            font-weight: 600;
+            letter-spacing: -0.02em;
+        }
+
+        .grade-A { color: #28a745; }
+        .grade-B { color: #5cb85c; }
+        .grade-C { color: #ffc107; }
+        .grade-D { color: #fd7e14; }
+        .grade-F { color: #dc3545; }
+
+        .efficiency-message {
+            font-size: 16px;
+            color: #6e6e73;
+            margin-left: 8px;
+        }
+
+        .efficiency-annual {
+            text-align: right;
+        }
+
+        .efficiency-annual-label {
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: #6e6e73;
+            margin-bottom: 6px;
+            font-weight: 600;
+        }
+
+        .efficiency-annual-value {
+            font-size: 24px;
+            font-weight: 700;
+            color: #1d1d1f;
+            margin-bottom: 4px;
+        }
+
+        .efficiency-annual-time {
+            font-size: 14px;
+            color: #6e6e73;
+        }
+
+        .efficiency-box {
+            background: #ffffff;
+            padding: 14px 16px;
+            border-radius: 10px;
+            border: 1.5px solid #e5e5ea;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+            margin: 0;
+        }
+
+        .efficiency-callout {
+            background: linear-gradient(135deg, #fff9e6 0%, #ffffff 100%);
+            border: 2px solid #ffcc00;
+            border-radius: 12px;
+            padding: 24px;
+            margin-top: 24px;
+        }
+
+        .efficiency-callout-success {
+            background: linear-gradient(135deg, #e8f5e9 0%, #ffffff 100%);
+            border: 2px solid #4caf50;
+            border-radius: 12px;
+            padding: 24px;
+            margin-top: 24px;
+        }
+
+        .efficiency-callout p,
+        .efficiency-callout-success p {
+            margin: 0 0 16px 0;
+            font-size: 16px;
+            line-height: 1.6;
+            color: #1d1d1f;
+        }
+
+        .efficiency-callout p:last-child,
+        .efficiency-callout-success p:last-child {
+            margin-bottom: 0;
+        }
+
+        .efficiency-callout strong,
+        .efficiency-callout-success strong {
+            color: #000;
+            font-weight: 600;
+        }
+
+        .efficiency-callout a,
+        .efficiency-callout-success a {
+            color: #007aff;
+            text-decoration: none;
+            font-weight: 600;
+        }
+
+        .efficiency-callout a:hover,
+        .efficiency-callout-success a:hover {
+            text-decoration: underline;
+        }
+
+        @media (max-width: 768px) {
+            .efficiency-content {
+                flex-direction: column;
+                align-items: flex-start;
+            }
+            .efficiency-annual {
+                text-align: left;
+                width: 100%;
+            }
+        }
+
+        @media (max-width: 480px) {
+            .efficiency-percentage {
+                font-size: 42px;
+            }
+            .efficiency-grade {
+                font-size: 28px;
+            }
+        }
+
         .error {
             background: #fff5f5;
             color: #c00;
@@ -563,30 +767,11 @@
             margin-bottom: 20px;
         }
 
-        .progress-header {
-            font-weight: 600;
-            margin-bottom: 12px;
-            color: #333;
-        }
-
-        .progress-item {
-            padding: 8px 0;
-            font-size: 14px;
+        .progress-status {
+            font-size: 15px;
             color: #555;
-            display: flex;
-            align-items: center;
-            gap: 8px;
-        }
-
-        .progress-item .status {
             font-weight: 500;
-            min-width: 80px;
         }
-
-        .progress-item.fetching .status { color: #007aff; }
-        .progress-item.processing .status { color: #ff9500; }
-        .progress-item.complete .status { color: #34c759; }
-        .progress-item.error .status { color: #ff3b30; }
 
         .progress-summary {
             margin-top: 12px;
@@ -755,6 +940,29 @@
         .footer a[style*="margin: 0"] {
             margin: 0;
         }
+        /* Rainbow pulsing animation for calculating state */
+        @keyframes rainbow {
+            0% { background-position: 0% 50%; }
+            50% { background-position: 100% 50%; }
+            100% { background-position: 0% 50%; }
+        }
+
+        button.calculating {
+            background: linear-gradient(90deg,
+                #ff0000, #ff7f00, #ffff00, #00ff00,
+                #0000ff, #4b0082, #9400d3, #ff0000);
+            background-size: 400% 400%;
+            animation: rainbow 8s ease infinite;
+            color: white;
+            border-color: transparent;
+            box-shadow: 0 0 20px rgba(255, 255, 255, 0.5);
+            text-shadow: 0 2px 4px rgba(0, 0, 0, 0.5);
+        }
+
+        button.calculating:hover {
+            transform: none;
+        }
+
     </style>
 </head>
 <body>
@@ -763,12 +971,12 @@
     <header role="banner">
         <div class="header">
             <img src="/static/logo.png" alt="PR Cost" class="logo" />
-            <h1>PR Cost Calculator</h1>
+            <h1><a href="/">PR Cost Calculator</a></h1>
         </div>
 
         <p class="intro-text">
             Calculate the estimated development cost of a pull request - for a single PR, or extrapolate across a sample set within a repository or organization.
-            Based on <a href="https://github.com/codeGROOVE-dev/prcost#how-it-works">recent software engineering research</a> (COCOMO II, Microsoft, IEEE, Fagan inspection studies).
+            Based on <a href="https://github.com/codeGROOVE-dev/prcost?tab=readme-ov-file#cost-model-scientific-foundations">recent software engineering research</a> (COCOMO II, Microsoft, IEEE, Fagan inspection studies).
         </p>
     </header>
 
@@ -851,22 +1059,20 @@
                         <input
                             type="number"
                             id="repoSampleSize"
-                            value="20"
+                            value="25"
                             min="1"
-                            max="1000"
+                            max="50"
                         >
-                        <div class="help-text">Default: 20 PRs</div>
+                        <div class="help-text">25 (fast, ±20% accuracy) or 50 (slower, ±14% accuracy)</div>
                     </div>
                     <div class="form-group">
                         <label for="repoDays">Days Back</label>
-                        <input
-                            type="number"
-                            id="repoDays"
-                            value="90"
-                            min="1"
-                            max="365"
-                        >
-                        <div class="help-text">Default: 90 days</div>
+                        <select id="repoDays">
+                            <option value="30">30 days</option>
+                            <option value="60" selected>60 days</option>
+                            <option value="90">90 days</option>
+                        </select>
+                        <div class="help-text">Number of days to look back</div>
                     </div>
                 </div>
             </div>
@@ -893,22 +1099,20 @@
                         <input
                             type="number"
                             id="orgSampleSize"
-                            value="20"
+                            value="25"
                             min="1"
-                            max="1000"
+                            max="50"
                         >
-                        <div class="help-text">Default: 20 PRs</div>
+                        <div class="help-text">25 (fast, ±20% accuracy) or 50 (slower, ±14% accuracy)</div>
                     </div>
                     <div class="form-group">
                         <label for="orgDays">Days Back</label>
-                        <input
-                            type="number"
-                            id="orgDays"
-                            value="90"
-                            min="1"
-                            max="365"
-                        >
-                        <div class="help-text">Default: 90 days</div>
+                        <select id="orgDays">
+                            <option value="30">30 days</option>
+                            <option value="60" selected>60 days</option>
+                            <option value="90">90 days</option>
+                        </select>
+                        <div class="help-text">Number of days to look back</div>
                     </div>
                 </div>
             </div>
@@ -975,11 +1179,6 @@
                         <input type="number" id="delayFactor" step="0.01" placeholder="0.15">
                         <div class="help-text">Default: 0.15 (15% opportunity cost of blocked value)</div>
                     </div>
-                    <div class="form-group">
-                        <label for="coordFactor">Coordination Factor</label>
-                        <input type="number" id="coordFactor" step="0.01" placeholder="0.05">
-                        <div class="help-text">Default: 0.05 (5% mental overhead of tracking unmerged PRs)</div>
-                    </div>
                 </div>
             </div>
 
@@ -1021,6 +1220,12 @@
                 document.getElementById('prFields').classList.toggle('hidden', mode !== 'pr');
                 document.getElementById('repoFields').classList.toggle('hidden', mode !== 'repo');
                 document.getElementById('orgFields').classList.toggle('hidden', mode !== 'org');
+
+                // Update URL with mode parameter
+                const params = new URLSearchParams(window.location.search);
+                params.set('mode', mode);
+                const newUrl = `${window.location.pathname}?${params.toString()}`;
+                window.history.replaceState({ mode }, '', newUrl);
             });
         });
 
@@ -1039,11 +1244,185 @@
             return '$' + amount.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
         }
 
+        function formatLOC(kloc) {
+            // For values >= 100k, add commas (e.g., "1,517k" instead of "1517k")
+            if (kloc >= 100.0) {
+                const intPart = Math.floor(kloc);
+                const fracPart = kloc - intPart;
+
+                // Format integer part with commas
+                const intStr = intPart.toLocaleString('en-US');
+
+                // Add fractional part if significant
+                if (kloc < 1000.0 && fracPart >= 0.05) {
+                    return `${intStr}.${Math.floor(fracPart * 10)}k`;
+                }
+                return intStr + 'k';
+            }
+
+            // For values < 100k, use existing precision logic
+            if (kloc < 0.1 && kloc > 0) {
+                return kloc.toFixed(2) + 'k';
+            }
+            if (kloc < 1.0) {
+                return kloc.toFixed(1) + 'k';
+            }
+            if (kloc < 10.0) {
+                return kloc.toFixed(1) + 'k';
+            }
+            return Math.floor(kloc) + 'k';
+        }
+
         function formatTimeUnit(hours) {
             if (hours < 1) {
                 return (hours * 60).toFixed(1) + ' min';
             }
-            return hours.toFixed(1) + ' hrs';
+            if (hours < 48) {
+                return hours.toFixed(1) + ' hrs';
+            }
+
+            const days = hours / 24;
+            if (days < 14) {
+                return days.toFixed(1) + ' days';
+            }
+
+            const weeks = days / 7;
+            if (weeks < 8) {
+                return weeks.toFixed(1) + ' weeks';
+            }
+
+            const months = days / 30;
+            if (months < 24) {
+                return months.toFixed(1) + ' months';
+            }
+
+            const years = days / 365;
+            return years.toFixed(1) + ' years';
+        }
+
+        function formatEngTimeUnit(hours) {
+            if (hours < 1) {
+                return (hours * 60).toFixed(1) + ' min';
+            }
+            if (hours < 48) {
+                return hours.toFixed(1) + ' hrs';
+            }
+
+            const days = hours / 24;
+            if (days < 14) {
+                return days.toFixed(1) + ' days';
+            }
+
+            const weeks = days / 7;
+            if (weeks < 8) {
+                return weeks.toFixed(1) + ' weeks';
+            }
+
+            const months = days / 30;
+            if (months < 24) {
+                return months.toFixed(1) + ' months';
+            }
+
+            const years = days / 365;
+            return years.toFixed(1) + ' years';
+        }
+
+        function efficiencyGrade(efficiencyPct) {
+            if (efficiencyPct >= 97) {
+                return { grade: 'A+', message: 'Impeccable' };
+            } else if (efficiencyPct >= 93) {
+                return { grade: 'A', message: 'Excellent' };
+            } else if (efficiencyPct >= 90) {
+                return { grade: 'A-', message: 'Nearly excellent' };
+            } else if (efficiencyPct >= 87) {
+                return { grade: 'B+', message: 'Acceptable+' };
+            } else if (efficiencyPct >= 83) {
+                return { grade: 'B', message: 'Acceptable' };
+            } else if (efficiencyPct >= 80) {
+                return { grade: 'B-', message: 'Nearly acceptable' };
+            } else if (efficiencyPct >= 70) {
+                return { grade: 'C', message: 'Average' };
+            } else if (efficiencyPct >= 60) {
+                return { grade: 'D', message: 'Not good my friend.' };
+            } else {
+                return { grade: 'F', message: 'Failing' };
+            }
+        }
+
+        function mergeVelocityGrade(avgOpenHours) {
+            if (avgOpenHours <= 4) {
+                return { grade: 'A+', message: 'Impeccable' };
+            } else if (avgOpenHours <= 8) {
+                return { grade: 'A', message: 'Excellent' };
+            } else if (avgOpenHours <= 12) {
+                return { grade: 'A-', message: 'Nearly excellent' };
+            } else if (avgOpenHours <= 18) {
+                return { grade: 'B+', message: 'Acceptable+' };
+            } else if (avgOpenHours <= 24) {
+                return { grade: 'B', message: 'Acceptable' };
+            } else if (avgOpenHours <= 36) {
+                return { grade: 'B-', message: 'Nearly acceptable' };
+            } else if (avgOpenHours <= 100) {
+                return { grade: 'C', message: 'Average' };
+            } else if (avgOpenHours <= 120) {
+                return { grade: 'D', message: 'Not good my friend.' };
+            } else {
+                return { grade: 'F', message: 'Failing' };
+            }
+        }
+
+        function formatEfficiencyHTML(efficiencyPct, grade, message, preventableCost, preventableHours, totalCost, totalHours, avgOpenHours, isAnnual = false, annualWasteCost = 0, annualWasteHours = 0, wasteHoursPerWeek = 0, wasteCostPerWeek = 0, wasteHoursPerAuthorPerWeek = 0, wasteCostPerAuthorPerWeek = 0, totalAuthors = 0, salary = 250000, benefitsMultiplier = 1.2, analysisType = 'project', sourceName = '') {
+            let html = '<div class="efficiency-section">';
+
+            // Development Efficiency box
+            html += '<div class="efficiency-box">';
+            html += '<h3 style="margin: 0 0 8px 0; font-size: 14px; font-weight: 600; color: #1d1d1f;">Development Efficiency</h3>';
+            html += '<div style="display: flex; align-items: center; gap: 10px; margin-bottom: 4px;">';
+            html += `<span class="efficiency-grade grade-${grade[0]}" style="display: inline-block; min-width: 38px; padding: 3px 7px; border-radius: 6px; font-size: 16px; font-weight: 700; text-align: center; background: rgba(0,0,0,0.06);">${grade}</span>`;
+            html += `<span style="font-size: 28px; font-weight: 700; color: #1d1d1f;">${efficiencyPct.toFixed(1)}%</span>`;
+            html += '</div>';
+            html += `<div class="efficiency-message">${message}</div>`;
+            html += '</div>'; // Close efficiency-box
+
+            // Merge Velocity box
+            const velocityGradeObj = mergeVelocityGrade(avgOpenHours);
+            html += '<div class="efficiency-box">';
+            html += '<h3 style="margin: 0 0 8px 0; font-size: 14px; font-weight: 600; color: #1d1d1f;">Average Merge Velocity</h3>';
+            html += '<div style="display: flex; align-items: center; gap: 10px; margin-bottom: 4px;">';
+            html += `<span class="efficiency-grade grade-${velocityGradeObj.grade[0]}" style="display: inline-block; min-width: 38px; padding: 3px 7px; border-radius: 6px; font-size: 16px; font-weight: 700; text-align: center; background: rgba(0,0,0,0.06);">${velocityGradeObj.grade}</span>`;
+            html += `<span style="font-size: 28px; font-weight: 700; color: #1d1d1f;">${formatTimeUnit(avgOpenHours)}</span>`;
+            html += '</div>';
+            html += `<div class="efficiency-message">${velocityGradeObj.message}</div>`;
+            html += '</div>'; // Close efficiency-box
+
+            // Annual Impact box (only if annual)
+            if (isAnnual && annualWasteCost > 0) {
+                html += '<div class="efficiency-box" style="background: linear-gradient(135deg, #fff9e6 0%, #ffffff 100%); border-left: 3px solid #ffcc00;">';
+                html += '<h3 style="margin: 0 0 8px 0; font-size: 14px; font-weight: 600; color: #1d1d1f;">Projected Annual Waste</h3>';
+                const annualWasteRounded = Math.round(annualWasteCost);
+                const annualWasteFormatted = '$' + annualWasteRounded.toLocaleString('en-US');
+                html += `<div style="font-size: 28px; font-weight: 700; color: #1d1d1f; margin-bottom: 4px;">${annualWasteFormatted}</div>`;
+                const annualCostPerHead = salary * benefitsMultiplier;
+                const headcount = annualWasteCost / annualCostPerHead;
+                html += `<div class="efficiency-message">${headcount.toFixed(1)} headcount • ${formatTimeUnit(annualWasteHours)}</div>`;
+                html += '</div>'; // Close efficiency-box
+            }
+
+            html += '</div>'; // Close efficiency-section
+            return html;
+        }
+
+        function formatR2RCallout(avgOpenHours) {
+            // Only show if average merge velocity is > 1 hour
+            if (avgOpenHours <= 1) {
+                return '';
+            }
+
+            let html = '<div style="margin: 24px 0; padding: 12px 20px; background: linear-gradient(135deg, #e6f9f0 0%, #ffffff 100%); border-left: 3px solid #00c853; border-radius: 8px; font-size: 14px; color: #1d1d1f; line-height: 1.6;">';
+            html += '✓ <a href="https://codegroove.dev/" target="_blank" rel="noopener" style="color: #00c853; font-weight: 600; text-decoration: none;">Ready-to-Review</a>: <strong>$4/mo</strong> to cut merge latency to <strong>≤40 min</strong><br>';
+            html += 'Stop losing engineering hours to code review lag. Free for OSS projects. Let\'s chat: <a href="mailto:go-faster@codeGROOVE.dev" style="color: #00c853; text-decoration: none;">go-faster@codeGROOVE.dev</a>';
+            html += '</div>';
+            return html;
         }
 
         function formatBreakdown(data) {
@@ -1066,10 +1445,12 @@
             output += '  ─────────────────\n';
             // Show development and adaptation separately
             if (b.author.new_lines > 0) {
-                output += `    New Development           ${formatCurrency(b.author.new_code_cost).padStart(12)}    ${b.author.new_lines} LOC • ${formatTimeUnit(b.author.new_code_hours)}\n`;
+                const newLOC = formatLOC(b.author.new_lines / 1000.0);
+                output += `    New Development           ${formatCurrency(b.author.new_code_cost).padStart(12)}    ${newLOC} LOC • ${formatTimeUnit(b.author.new_code_hours)}\n`;
             }
             if (b.author.modified_lines > 0) {
-                output += `    Code Adaptation           ${formatCurrency(b.author.adaptation_cost).padStart(12)}    ${b.author.modified_lines} LOC • ${formatTimeUnit(b.author.adaptation_hours)}\n`;
+                const modifiedLOC = formatLOC(b.author.modified_lines / 1000.0);
+                output += `    Adaptation                ${formatCurrency(b.author.adaptation_cost).padStart(12)}    ${modifiedLOC} LOC • ${formatTimeUnit(b.author.adaptation_hours)}\n`;
             }
             if (b.author.github_hours > 0) {
                 output += `    GitHub Activity           ${formatCurrency(b.author.github_cost).padStart(12)}    ${b.author.sessions} sessions • ${formatTimeUnit(b.author.github_hours)}\n`;
@@ -1094,8 +1475,18 @@
                 output += '  ─────────────────\n';
                 b.participants.forEach(p => {
                     output += `    ${p.actor}\n`;
-                    output += `      Review Activity         ${formatCurrency(p.github_cost).padStart(12)}    ${p.sessions} sessions • ${formatTimeUnit(p.github_hours)}\n`;
-                    output += `      Context Switching       ${formatCurrency(p.github_context_cost).padStart(12)}    ${formatTimeUnit(p.github_context_hours)}\n`;
+                    // Only show review activity if they reviewed (LOC-based)
+                    if (p.review_hours > 0) {
+                        output += `      Review Activity         ${formatCurrency(p.review_cost).padStart(12)}    ${formatTimeUnit(p.review_hours)}\n`;
+                    }
+                    // Only show other events if they had non-review events
+                    if (p.github_hours > 0) {
+                        output += `      GitHub Activity         ${formatCurrency(p.github_cost).padStart(12)}    ${p.sessions} sessions • ${formatTimeUnit(p.github_hours)}\n`;
+                    }
+                    // Always show context switching if there were sessions
+                    if (p.sessions > 0) {
+                        output += `      Context Switching       ${formatCurrency(p.github_context_cost).padStart(12)}    ${formatTimeUnit(p.github_context_hours)}\n`;
+                    }
                 });
                 output += '                              ────────────\n';
                 pct = (totalParticipantCost / b.total_cost) * 100;
@@ -1108,10 +1499,9 @@
                 output += '  Delay Costs\n';
                 output += '  ───────────\n';
                 const cappedLabel = b.delay_capped ? ' (capped)' : '';
-                output += `    Project                   ${formatCurrency(b.delay_cost_detail.delivery_delay_cost).padStart(12)}    ${formatTimeUnit(b.delay_cost_detail.delivery_delay_hours)}${cappedLabel}\n`;
-                output += `    Coordination              ${formatCurrency(b.delay_cost_detail.coordination_cost).padStart(12)}    ${formatTimeUnit(b.delay_cost_detail.coordination_hours)}${cappedLabel}\n`;
-                const mergeDelayCost = b.delay_cost_detail.delivery_delay_cost + b.delay_cost_detail.coordination_cost;
-                const mergeDelayHours = b.delay_cost_detail.delivery_delay_hours + b.delay_cost_detail.coordination_hours;
+                output += `    Workstream blockage       ${formatCurrency(b.delay_cost_detail.delivery_delay_cost).padStart(12)}    ${formatTimeUnit(b.delay_cost_detail.delivery_delay_hours)}${cappedLabel}\n`;
+                const mergeDelayCost = b.delay_cost_detail.delivery_delay_cost + b.delay_cost_detail.code_churn_cost + b.delay_cost_detail.automated_updates_cost + b.delay_cost_detail.pr_tracking_cost;
+                const mergeDelayHours = b.delay_cost_detail.delivery_delay_hours + b.delay_cost_detail.code_churn_hours + b.delay_cost_detail.automated_updates_hours + b.delay_cost_detail.pr_tracking_hours;
                 output += '                              ────────────\n';
                 pct = (mergeDelayCost / b.total_cost) * 100;
                 output += `    Subtotal                ${formatCurrency(mergeDelayCost).padStart(12)}    ${formatTimeUnit(mergeDelayHours)}  (${pct.toFixed(1)}%)\n\n`;
@@ -1174,6 +1564,8 @@
             const avgAuthorGitHubContextHours = e.author_github_context_hours / totalPRs;
             const avgAuthorTotalHours = e.author_total_hours / totalPRs;
 
+            const avgParticipantReviewCost = e.participant_review_cost / totalPRs;
+            const avgParticipantReviewHours = e.participant_review_hours / totalPRs;
             const avgParticipantGitHubCost = e.participant_github_cost / totalPRs;
             const avgParticipantContextCost = e.participant_context_cost / totalPRs;
             const avgParticipantTotalCost = e.participant_total_cost / totalPRs;
@@ -1182,10 +1574,8 @@
             const avgParticipantTotalHours = e.participant_total_hours / totalPRs;
 
             const avgDeliveryDelayCost = e.delivery_delay_cost / totalPRs;
-            const avgCoordinationCost = e.coordination_cost / totalPRs;
             const avgCodeChurnCost = e.code_churn_cost / totalPRs;
             const avgDeliveryDelayHours = e.delivery_delay_hours / totalPRs;
-            const avgCoordinationHours = e.coordination_hours / totalPRs;
             const avgCodeChurnHours = e.code_churn_hours / totalPRs;
 
             const avgFutureReviewCost = e.future_review_cost / totalPRs;
@@ -1203,35 +1593,44 @@
             // Development Costs
             output += '  Development Costs\n';
             output += '  ─────────────────\n';
-            output += `    New Development           ${formatCurrency(avgAuthorNewCodeCost).padStart(12)}    ${formatTimeUnit(avgAuthorNewCodeHours)}\n`;
-            output += `    Code Adaptation           ${formatCurrency(avgAuthorAdaptationCost).padStart(12)}    ${formatTimeUnit(avgAuthorAdaptationHours)}\n`;
-            output += `    GitHub Activity           ${formatCurrency(avgAuthorGitHubCost).padStart(12)}    ${formatTimeUnit(avgAuthorGitHubHours)}\n`;
-            output += `    GitHub Context Switching  ${formatCurrency(avgAuthorGitHubContextCost).padStart(12)}    ${formatTimeUnit(avgAuthorGitHubContextHours)}\n`;
-            output += '                              ────────────\n';
+            output += `    New Development            ${formatCurrency(avgAuthorNewCodeCost).padStart(10)}    ${formatTimeUnit(avgAuthorNewCodeHours)}\n`;
+            output += `    Adaptation                 ${formatCurrency(avgAuthorAdaptationCost).padStart(10)}    ${formatTimeUnit(avgAuthorAdaptationHours)}\n`;
+            output += `    GitHub Activity            ${formatCurrency(avgAuthorGitHubCost).padStart(10)}    ${formatTimeUnit(avgAuthorGitHubHours)}\n`;
+            output += `    Context Switching          ${formatCurrency(avgAuthorGitHubContextCost).padStart(10)}    ${formatTimeUnit(avgAuthorGitHubContextHours)}\n`;
+            output += '                                ──────────\n';
             let pct = (avgAuthorTotalCost / avgTotalCost) * 100;
-            output += `    Subtotal                  ${formatCurrency(avgAuthorTotalCost).padStart(12)}    ${formatTimeUnit(avgAuthorTotalHours)}  (${pct.toFixed(1)}%)\n\n`;
+            output += `    Subtotal                   ${formatCurrency(avgAuthorTotalCost).padStart(10)}    ${formatTimeUnit(avgAuthorTotalHours)}  (${pct.toFixed(1)}%)\n\n`;
 
             // Participants
             if (e.participant_total_cost > 0) {
                 output += '  Participant Costs\n';
                 output += '  ─────────────────\n';
-                output += `    Review Activity           ${formatCurrency(avgParticipantGitHubCost).padStart(12)}    ${formatTimeUnit(avgParticipantGitHubHours)}\n`;
-                output += `    Context Switching         ${formatCurrency(avgParticipantContextCost).padStart(12)}    ${formatTimeUnit(avgParticipantContextHours)}\n`;
-                output += '                              ────────────\n';
+                output += `    Review Activity            ${formatCurrency(avgParticipantReviewCost).padStart(10)}    ${formatTimeUnit(avgParticipantReviewHours)}\n`;
+                output += `    GitHub Activity            ${formatCurrency(avgParticipantGitHubCost).padStart(10)}    ${formatTimeUnit(avgParticipantGitHubHours)}\n`;
+                output += '                                ──────────\n';
                 pct = (avgParticipantTotalCost / avgTotalCost) * 100;
-                output += `    Subtotal                  ${formatCurrency(avgParticipantTotalCost).padStart(12)}    ${formatTimeUnit(avgParticipantTotalHours)}  (${pct.toFixed(1)}%)\n\n`;
+                output += `    Subtotal                   ${formatCurrency(avgParticipantTotalCost).padStart(10)}    ${formatTimeUnit(avgParticipantTotalHours)}  (${pct.toFixed(1)}%)\n\n`;
             }
 
             // Delay Costs
             output += '  Delay Costs\n';
             output += '  ───────────\n';
-            output += `    Project                   ${formatCurrency(avgDeliveryDelayCost).padStart(12)}    ${formatTimeUnit(avgDeliveryDelayHours)}\n`;
-            output += `    Coordination              ${formatCurrency(avgCoordinationCost).padStart(12)}    ${formatTimeUnit(avgCoordinationHours)}\n`;
-            const avgMergeDelayCost = avgDeliveryDelayCost + avgCoordinationCost;
-            const avgMergeDelayHours = avgDeliveryDelayHours + avgCoordinationHours;
-            output += '                              ────────────\n';
+            output += `    Workstream blockage        ${formatCurrency(avgDeliveryDelayCost).padStart(10)}    ${formatTimeUnit(avgDeliveryDelayHours)}  (${e.human_prs} PRs)\n`;
+            const avgAutomatedUpdatesCost = e.automated_updates_cost / totalPRs;
+            const avgAutomatedUpdatesHours = e.automated_updates_hours / totalPRs;
+            const avgPRTrackingCost = e.pr_tracking_cost / totalPRs;
+            const avgPRTrackingHours = e.pr_tracking_hours / totalPRs;
+            if (avgAutomatedUpdatesCost > 0.01) {
+                output += `    Automated Updates          ${formatCurrency(avgAutomatedUpdatesCost).padStart(10)}    ${formatTimeUnit(avgAutomatedUpdatesHours)}  (${e.bot_prs} PRs)\n`;
+            }
+            if (avgPRTrackingCost > 0.01) {
+                output += `    PR Tracking           ${formatCurrency(avgPRTrackingCost).padStart(10)}    ${formatTimeUnit(avgPRTrackingHours)}  (${e.open_prs} open PRs)\n`;
+            }
+            const avgMergeDelayCost = avgDeliveryDelayCost + avgCodeChurnCost + avgAutomatedUpdatesCost + avgPRTrackingCost;
+            const avgMergeDelayHours = avgDeliveryDelayHours + avgCodeChurnHours + avgAutomatedUpdatesHours + avgPRTrackingHours;
+            output += '                                ──────────\n';
             pct = (avgMergeDelayCost / avgTotalCost) * 100;
-            output += `    Subtotal                  ${formatCurrency(avgMergeDelayCost).padStart(12)}    ${formatTimeUnit(avgMergeDelayHours)}  (${pct.toFixed(1)}%)\n\n`;
+            output += `    Subtotal                   ${formatCurrency(avgMergeDelayCost).padStart(10)}    ${formatTimeUnit(avgMergeDelayHours)}  (${pct.toFixed(1)}%)\n\n`;
 
             // Future Costs
             const hasFuture = e.code_churn_cost > 0.01 || e.future_review_cost > 0.01 || e.future_merge_cost > 0.01 || e.future_context_cost > 0.01;
@@ -1239,94 +1638,149 @@
                 output += '  Future Costs\n';
                 output += '  ────────────\n';
                 if (e.code_churn_cost > 0.01) {
-                    output += `    Code Churn                ${formatCurrency(avgCodeChurnCost).padStart(12)}    ${formatTimeUnit(avgCodeChurnHours)}\n`;
+                    output += `    Code Churn                 ${formatCurrency(avgCodeChurnCost).padStart(10)}    ${formatTimeUnit(avgCodeChurnHours)}\n`;
                 }
                 if (e.future_review_cost > 0.01) {
-                    output += `    Review                    ${formatCurrency(avgFutureReviewCost).padStart(12)}    ${formatTimeUnit(avgFutureReviewHours)}\n`;
+                    output += `    Review                     ${formatCurrency(avgFutureReviewCost).padStart(10)}    ${formatTimeUnit(avgFutureReviewHours)}\n`;
                 }
                 if (e.future_merge_cost > 0.01) {
-                    output += `    Merge                     ${formatCurrency(avgFutureMergeCost).padStart(12)}    ${formatTimeUnit(avgFutureMergeHours)}\n`;
+                    output += `    Merge                      ${formatCurrency(avgFutureMergeCost).padStart(10)}    ${formatTimeUnit(avgFutureMergeHours)}\n`;
                 }
                 if (e.future_context_cost > 0.01) {
-                    output += `    Context Switching         ${formatCurrency(avgFutureContextCost).padStart(12)}    ${formatTimeUnit(avgFutureContextHours)}\n`;
+                    output += `    Context Switching          ${formatCurrency(avgFutureContextCost).padStart(10)}    ${formatTimeUnit(avgFutureContextHours)}\n`;
                 }
                 const avgFutureCost = avgCodeChurnCost + avgFutureReviewCost + avgFutureMergeCost + avgFutureContextCost;
                 const avgFutureHours = avgCodeChurnHours + avgFutureReviewHours + avgFutureMergeHours + avgFutureContextHours;
-                output += '                              ────────────\n';
+                output += '                                ──────────\n';
                 pct = (avgFutureCost / avgTotalCost) * 100;
-                output += `    Subtotal                  ${formatCurrency(avgFutureCost).padStart(12)}    ${formatTimeUnit(avgFutureHours)}  (${pct.toFixed(1)}%)\n\n`;
+                output += `    Subtotal                   ${formatCurrency(avgFutureCost).padStart(10)}    ${formatTimeUnit(avgFutureHours)}  (${pct.toFixed(1)}%)\n\n`;
             }
 
+            // Weekly waste per PR author
+            if (e.waste_hours_per_author_per_week > 0 && e.total_authors > 0) {
+                output += `  Weekly waste per PR author:       ${formatCurrency(e.waste_cost_per_author_per_week).padStart(10)}    ${formatTimeUnit(e.waste_hours_per_author_per_week)}  (${e.total_authors} authors)\n`;
+            }
+
+            // Average Preventable Loss Total (before grand total)
+            const avgPreventableCost = avgCodeChurnCost + avgDeliveryDelayCost + avgCodeChurnCost + (e.automated_updates_cost / totalPRs) + (e.pr_tracking_cost / totalPRs);
+            const avgPreventableHours = avgCodeChurnHours + avgDeliveryDelayHours + avgCodeChurnHours + (e.automated_updates_hours / totalPRs) + (e.pr_tracking_hours / totalPRs);
+            const avgPreventablePct = (avgPreventableCost / avgTotalCost) * 100;
+            output += `  Preventable Loss Total       ${formatCurrency(avgPreventableCost).padStart(10)}    ${formatTimeUnit(avgPreventableHours)}  (${avgPreventablePct.toFixed(1)}%)\n`;
+
             // Average Total
-            output += '  ═══════════════════════════════════════════════════════════════\n';
-            output += `  Average Total               ${formatCurrency(avgTotalCost).padStart(12)}    ${formatTimeUnit(avgTotalHours)}\n\n`;
+            output += '  ════════════════════════════════════════════════════\n';
+            output += `  Average Total                ${formatCurrency(avgTotalCost).padStart(10)}    ${formatTimeUnit(avgTotalHours)}\n\n`;
 
             return output;
         }
 
-        function formatExtrapolatedTotal(e) {
+        function formatExtrapolatedTotal(e, days) {
             let output = '';
 
+            // Calculate LOC for header and lines
+            const totalLOC = ((e.new_lines || 0) + (e.modified_lines || 0) + (e.bot_new_lines || 0) + (e.bot_modified_lines || 0)) / 1000;
+            const newLOC = (e.new_lines || 0) / 1000;
+            const modifiedLOC = (e.modified_lines || 0) / 1000;
+            const botLOC = ((e.bot_new_lines || 0) + (e.bot_modified_lines || 0)) / 1000;
+
             // Development Costs
-            output += '  Development Costs\n';
-            output += '  ─────────────────\n';
-            output += `    New Development           ${formatCurrency(e.author_new_code_cost).padStart(12)}    ${formatTimeUnit(e.author_new_code_hours)}\n`;
-            output += `    Code Adaptation           ${formatCurrency(e.author_adaptation_cost).padStart(12)}    ${formatTimeUnit(e.author_adaptation_hours)}\n`;
-            output += `    GitHub Activity           ${formatCurrency(e.author_github_cost).padStart(12)}    ${formatTimeUnit(e.author_github_hours)}\n`;
-            output += `    GitHub Context Switching  ${formatCurrency(e.author_github_context_cost).padStart(12)}    ${formatTimeUnit(e.author_github_context_hours)}\n`;
-            output += '                              ────────────\n';
+            output += `  Development Costs (${e.human_prs || e.total_prs || 0} PRs, ${totalLOC.toFixed(1)}k total LOC)\n`;
+            output += '  ────────────────────────────────────────\n';
+            output += `    New Development            ${formatCurrency(e.author_new_code_cost).padStart(10)}    ${formatTimeUnit(e.author_new_code_hours)}  (${newLOC.toFixed(1)}k LOC)\n`;
+            output += `    Adaptation                 ${formatCurrency(e.author_adaptation_cost).padStart(10)}    ${formatTimeUnit(e.author_adaptation_hours)}  (${modifiedLOC.toFixed(1)}k LOC)\n`;
+            output += `    GitHub Activity            ${formatCurrency(e.author_github_cost).padStart(10)}    ${formatTimeUnit(e.author_github_hours)}\n`;
+            output += `    Context Switching          ${formatCurrency(e.author_github_context_cost).padStart(10)}    ${formatTimeUnit(e.author_github_context_hours)}\n`;
+
+            // Show bot PR LOC even though cost is $0
+            if ((e.bot_prs || 0) > 0) {
+                output += `    Automated Updates              —         ${formatTimeUnit(0)}  (${e.bot_prs} PRs, ${botLOC.toFixed(1)}k LOC)\n`;
+            }
+
+            output += '                                ──────────\n';
             let pct = (e.author_total_cost / e.total_cost) * 100;
-            output += `    Subtotal                  ${formatCurrency(e.author_total_cost).padStart(12)}    ${formatTimeUnit(e.author_total_hours)}  (${pct.toFixed(1)}%)\n\n`;
+            output += `    Subtotal                   ${formatCurrency(e.author_total_cost).padStart(10)}    ${formatTimeUnit(e.author_total_hours)}  (${pct.toFixed(1)}%)\n\n`;
 
             // Participants
             if (e.participant_total_cost > 0) {
                 output += '  Participant Costs\n';
                 output += '  ─────────────────\n';
-                output += `    Review Activity           ${formatCurrency(e.participant_github_cost).padStart(12)}    ${formatTimeUnit(e.participant_github_hours)}\n`;
-                output += `    Context Switching         ${formatCurrency(e.participant_context_cost).padStart(12)}    ${formatTimeUnit(e.participant_context_hours)}\n`;
-                output += '                              ────────────\n';
+                if ((e.participant_review_cost || 0) > 0) {
+                    output += `    Review Activity            ${formatCurrency(e.participant_review_cost).padStart(10)}    ${formatTimeUnit(e.participant_review_hours)}\n`;
+                }
+                if ((e.participant_github_cost || 0) > 0) {
+                    output += `    GitHub Activity            ${formatCurrency(e.participant_github_cost).padStart(10)}    ${formatTimeUnit(e.participant_github_hours)}\n`;
+                }
+                output += `    Context Switching          ${formatCurrency(e.participant_context_cost).padStart(10)}    ${formatTimeUnit(e.participant_context_hours)}\n`;
+                output += '                                ──────────\n';
                 pct = (e.participant_total_cost / e.total_cost) * 100;
-                output += `    Subtotal                  ${formatCurrency(e.participant_total_cost).padStart(12)}    ${formatTimeUnit(e.participant_total_hours)}  (${pct.toFixed(1)}%)\n\n`;
+                output += `    Subtotal                   ${formatCurrency(e.participant_total_cost).padStart(10)}    ${formatTimeUnit(e.participant_total_hours)}  (${pct.toFixed(1)}%)\n\n`;
             }
 
             // Delay Costs
-            output += '  Delay Costs\n';
-            output += '  ───────────\n';
-            output += `    Project                   ${formatCurrency(e.delivery_delay_cost).padStart(12)}    ${formatTimeUnit(e.delivery_delay_hours)}\n`;
-            output += `    Coordination              ${formatCurrency(e.coordination_cost).padStart(12)}    ${formatTimeUnit(e.coordination_hours)}\n`;
-            const mergeDelayCost = e.delivery_delay_cost + e.coordination_cost;
-            const mergeDelayHours = e.delivery_delay_hours + e.coordination_hours;
-            output += '                              ────────────\n';
+            let delayCostsHeader = '  Delay Costs (human PRs avg ' + formatTimeUnit(e.avg_human_pr_duration_hours || 0) + ' open';
+            if ((e.bot_prs || 0) > 0) {
+                delayCostsHeader += ', bot PRs avg ' + formatTimeUnit(e.avg_bot_pr_duration_hours || 0);
+            }
+            delayCostsHeader += ')';
+            output += delayCostsHeader + '\n';
+            output += '  ' + '─'.repeat(delayCostsHeader.length - 2) + '\n';
+
+            if ((e.delivery_delay_cost || 0) > 0) {
+                output += `    Workstream blockage        ${formatCurrency(e.delivery_delay_cost).padStart(10)}    ${formatTimeUnit(e.delivery_delay_hours)}  (${e.human_prs || 0} PRs)\n`;
+            }
+            if ((e.automated_updates_cost || 0) > 0) {
+                output += `    Automated Updates          ${formatCurrency(e.automated_updates_cost).padStart(10)}    ${formatTimeUnit(e.automated_updates_hours)}  (${e.bot_prs || 0} PRs)\n`;
+            }
+            if ((e.pr_tracking_cost || 0) > 0) {
+                output += `    PR Tracking           ${formatCurrency(e.pr_tracking_cost).padStart(10)}    ${formatTimeUnit(e.pr_tracking_hours)}  (${e.open_prs || 0} open PRs)\n`;
+            }
+
+            const mergeDelayCost = (e.delivery_delay_cost || 0) + (e.code_churn_cost || 0) + (e.automated_updates_cost || 0) + (e.pr_tracking_cost || 0);
+            const mergeDelayHours = (e.delivery_delay_hours || 0) + (e.code_churn_hours || 0) + (e.automated_updates_hours || 0) + (e.pr_tracking_hours || 0);
+            output += '                                ──────────\n';
             pct = (mergeDelayCost / e.total_cost) * 100;
-            output += `    Subtotal                  ${formatCurrency(mergeDelayCost).padStart(12)}    ${formatTimeUnit(mergeDelayHours)}  (${pct.toFixed(1)}%)\n\n`;
+            output += `    Subtotal                   ${formatCurrency(mergeDelayCost).padStart(10)}    ${formatTimeUnit(mergeDelayHours)}  (${pct.toFixed(1)}%)\n\n`;
 
             // Future Costs
-            const hasFuture = e.code_churn_cost > 0.01 || e.future_review_cost > 0.01 || e.future_merge_cost > 0.01 || e.future_context_cost > 0.01;
+            const hasFuture = (e.code_churn_cost || 0) > 0.01 || (e.future_review_cost || 0) > 0.01 || (e.future_merge_cost || 0) > 0.01 || (e.future_context_cost || 0) > 0.01;
             if (hasFuture) {
                 output += '  Future Costs\n';
                 output += '  ────────────\n';
-                if (e.code_churn_cost > 0.01) {
-                    output += `    Code Churn                ${formatCurrency(e.code_churn_cost).padStart(12)}    ${formatTimeUnit(e.code_churn_hours)}\n`;
+                if ((e.code_churn_cost || 0) > 0.01) {
+                    output += `    Code Churn                 ${formatCurrency(e.code_churn_cost).padStart(10)}    ${formatTimeUnit(e.code_churn_hours)}\n`;
                 }
-                if (e.future_review_cost > 0.01) {
-                    output += `    Review                    ${formatCurrency(e.future_review_cost).padStart(12)}    ${formatTimeUnit(e.future_review_hours)}\n`;
+                if ((e.future_review_cost || 0) > 0.01) {
+                    const openPRs = e.open_prs || 0;
+                    output += `    Review                     ${formatCurrency(e.future_review_cost).padStart(10)}    ${formatTimeUnit(e.future_review_hours)}  (${openPRs} PRs)\n`;
                 }
-                if (e.future_merge_cost > 0.01) {
-                    output += `    Merge                     ${formatCurrency(e.future_merge_cost).padStart(12)}    ${formatTimeUnit(e.future_merge_hours)}\n`;
+                if ((e.future_merge_cost || 0) > 0.01) {
+                    const openPRs = e.open_prs || 0;
+                    output += `    Merge                      ${formatCurrency(e.future_merge_cost).padStart(10)}    ${formatTimeUnit(e.future_merge_hours)}  (${openPRs} PRs)\n`;
                 }
-                if (e.future_context_cost > 0.01) {
-                    output += `    Context Switching         ${formatCurrency(e.future_context_cost).padStart(12)}    ${formatTimeUnit(e.future_context_hours)}\n`;
+                if ((e.future_context_cost || 0) > 0.01) {
+                    output += `    Context Switching          ${formatCurrency(e.future_context_cost).padStart(10)}    ${formatTimeUnit(e.future_context_hours)}\n`;
                 }
-                const futureCost = e.code_churn_cost + e.future_review_cost + e.future_merge_cost + e.future_context_cost;
-                const futureHours = e.code_churn_hours + e.future_review_hours + e.future_merge_hours + e.future_context_hours;
-                output += '                              ────────────\n';
+                const futureCost = (e.code_churn_cost || 0) + (e.future_review_cost || 0) + (e.future_merge_cost || 0) + (e.future_context_cost || 0);
+                const futureHours = (e.code_churn_hours || 0) + (e.future_review_hours || 0) + (e.future_merge_hours || 0) + (e.future_context_hours || 0);
+                output += '                                ──────────\n';
                 pct = (futureCost / e.total_cost) * 100;
-                output += `    Subtotal                  ${formatCurrency(futureCost).padStart(12)}    ${formatTimeUnit(futureHours)}  (${pct.toFixed(1)}%)\n\n`;
+                output += `    Subtotal                   ${formatCurrency(futureCost).padStart(10)}    ${formatTimeUnit(futureHours)}  (${pct.toFixed(1)}%)\n\n`;
             }
 
+            // Weekly waste per PR author
+            if ((e.waste_hours_per_author_per_week || 0) > 0 && (e.total_authors || 0) > 0) {
+                output += `  Weekly waste per PR author:     ${formatCurrency(e.waste_cost_per_author_per_week).padStart(10)}    ${formatTimeUnit(e.waste_hours_per_author_per_week)}  (${e.total_authors} authors)\n`;
+            }
+
+            // Preventable Loss Total (before grand total)
+            const preventableCost = (e.code_churn_cost || 0) + (e.delivery_delay_cost || 0) + (e.automated_updates_cost || 0) + (e.pr_tracking_cost || 0);
+            const preventableHours = (e.code_churn_hours || 0) + (e.delivery_delay_hours || 0) + (e.automated_updates_hours || 0) + (e.pr_tracking_hours || 0);
+            const preventablePct = (preventableCost / e.total_cost) * 100;
+            output += `  Total Preventable Waste (${days} days):  ${formatCurrency(preventableCost).padStart(10)}    ${formatTimeUnit(preventableHours)}  (${preventablePct.toFixed(1)}%)\n`;
+
             // Total
-            output += '  ═══════════════════════════════════════════════════════════════\n';
-            output += `  Total                       ${formatCurrency(e.total_cost).padStart(12)}    ${formatTimeUnit(e.total_hours)}\n\n`;
+            output += '  ════════════════════════════════════════════════════\n';
+            output += `  Total                        ${formatCurrency(e.total_cost).padStart(10)}    ${formatTimeUnit(e.total_hours)}\n\n`;
 
             return output;
         }
@@ -1340,7 +1794,9 @@
 
             // Show loading
             submitBtn.disabled = true;
-            resultDiv.innerHTML = '<p class="loading">Calculating costs</p>';
+            submitBtn.classList.add('calculating');
+            submitBtn.textContent = 'Calculating...';
+            resultDiv.innerHTML = '';
 
             // Build config
             const config = {};
@@ -1352,7 +1808,6 @@
             const sessionGap = document.getElementById('sessionGap').value;
             const inspectionRate = document.getElementById('inspectionRate').value;
             const delayFactor = document.getElementById('delayFactor').value;
-            const coordFactor = document.getElementById('coordFactor').value;
 
             if (salary) config.annual_salary = parseFloat(salary);
             if (benefits) config.benefits_multiplier = parseFloat(benefits);
@@ -1362,55 +1817,74 @@
             if (sessionGap) config.session_gap_threshold = parseFloat(sessionGap) * 60 * 1000000000;
             if (inspectionRate) config.review_inspection_rate = parseFloat(inspectionRate);
             if (delayFactor) config.delivery_delay_factor = parseFloat(delayFactor);
-            if (coordFactor) config.coordination_factor = parseFloat(coordFactor);
 
             // Build request based on mode
-            let endpoint, request, useStreaming = false;
+            let endpoint, request, useStreaming = false, queryParams = new URLSearchParams();
+
             if (mode === 'pr') {
                 endpoint = '/v1/calculate';
-                request = {
-                    url: document.getElementById('prUrl').value.trim()
-                };
+                const prUrl = document.getElementById('prUrl').value.trim();
+                request = { url: prUrl };
+                queryParams.set('url', prUrl);
             } else if (mode === 'repo') {
                 endpoint = '/v1/calculate/repo/stream';
                 useStreaming = true;
-                request = {
-                    owner: document.getElementById('repoOwner').value.trim(),
-                    repo: document.getElementById('repoName').value.trim()
-                };
+                const owner = document.getElementById('repoOwner').value.trim();
+                const repo = document.getElementById('repoName').value.trim();
+                request = { owner, repo };
+                queryParams.set('owner', owner);
+                queryParams.set('repo', repo);
+
                 const sampleSize = document.getElementById('repoSampleSize').value;
                 const days = document.getElementById('repoDays').value;
-                if (sampleSize) request.sample_size = parseInt(sampleSize);
-                if (days) request.days = parseInt(days);
+                if (sampleSize) {
+                    request.sample_size = parseInt(sampleSize);
+                    queryParams.set('sample', sampleSize);
+                }
+                if (days) {
+                    request.days = parseInt(days);
+                    queryParams.set('days', days);
+                }
             } else {
                 endpoint = '/v1/calculate/org/stream';
                 useStreaming = true;
-                request = {
-                    org: document.getElementById('orgName').value.trim()
-                };
+                const org = document.getElementById('orgName').value.trim();
+                request = { org };
+                queryParams.set('org', org);
+
                 const sampleSize = document.getElementById('orgSampleSize').value;
                 const days = document.getElementById('orgDays').value;
-                if (sampleSize) request.sample_size = parseInt(sampleSize);
-                if (days) request.days = parseInt(days);
+                if (sampleSize) {
+                    request.sample_size = parseInt(sampleSize);
+                    queryParams.set('sample', sampleSize);
+                }
+                if (days) {
+                    request.days = parseInt(days);
+                    queryParams.set('days', days);
+                }
             }
 
-            // Add config if present
+            // Add config to both request and query params
             if (Object.keys(config).length > 0) {
                 request.config = config;
+                if (config.annual_salary) queryParams.set('salary', config.annual_salary);
+                if (config.benefits_multiplier) queryParams.set('benefits', config.benefits_multiplier);
             }
+
+            // Update browser URL
+            queryParams.set('mode', mode);
+            const newUrl = `${window.location.pathname}?${queryParams.toString()}`;
+            window.history.pushState({ mode }, '', newUrl);
 
             try {
                 if (useStreaming) {
-                    // Use Server-Sent Events for streaming progress
+                    // Use Server-Sent Events for streaming progress (keep POST for streaming)
                     await handleStreamingRequest(endpoint, request, resultDiv);
                 } else {
-                    // Regular fetch for single PR
-                    const response = await fetch(endpoint, {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json'
-                        },
-                        body: JSON.stringify(request)
+                    // Use GET for single PR calculations
+                    const getUrl = `${endpoint}?${queryParams.toString()}`;
+                    const response = await fetch(getUrl, {
+                        method: 'GET'
                     });
 
                     if (!response.ok) {
@@ -1419,13 +1893,39 @@
                     }
 
                     const data = await response.json();
-                    resultDiv.innerHTML = '<pre><code>' + formatBreakdown(data) + '</code></pre>';
+                    const b = data.breakdown;
+
+                    // Calculate efficiency for single PR
+                    const preventableHours = b.delay_cost_detail.code_churn_hours +
+                                            b.delay_cost_detail.delivery_delay_hours +
+                                            b.delay_cost_detail.automated_updates_hours +
+                                            b.delay_cost_detail.pr_tracking_hours;
+                    const preventableCost = b.delay_cost_detail.code_churn_cost +
+                                           b.delay_cost_detail.delivery_delay_cost +
+                                           b.delay_cost_detail.automated_updates_cost + b.delay_cost_detail.pr_tracking_cost;
+                    let totalHours = b.author.total_hours + b.delay_cost_detail.total_delay_hours;
+                    if (b.participants) {
+                        b.participants.forEach(p => totalHours += p.total_hours);
+                    }
+                    const efficiencyPct = totalHours > 0 ? 100.0 * (totalHours - preventableHours) / totalHours : 100.0;
+                    const { grade, message } = efficiencyGrade(efficiencyPct);
+
+                    // Generate HTML with efficiency section at top
+                    let html = formatEfficiencyHTML(efficiencyPct, grade, message, preventableCost, preventableHours, b.total_cost, totalHours, b.pr_duration, false, 0, 0);
+                    html += '<div class="result-section">';
+                    html += '<h2>Cost Breakdown</h2>';
+                    html += '<pre><code>' + formatBreakdown(data) + '</code></pre>';
+                    html += '</div>';
+
+                    resultDiv.innerHTML = html;
                 }
 
             } catch (error) {
                 resultDiv.innerHTML = `<div class="error">Error: ${error.message}</div>`;
             } finally {
+                submitBtn.classList.remove('calculating');
                 submitBtn.disabled = false;
+                submitBtn.textContent = 'Calculate Cost';
             }
         });
 
@@ -1433,7 +1933,6 @@
             // EventSource doesn't support POST, so we need a different approach
             // We'll use fetch to initiate, but handle it as a proper SSE stream
             return new Promise((resolve, reject) => {
-                const progressMap = new Map();
                 let progressContainer;
 
                 // Make the POST request with fetch
@@ -1498,10 +1997,54 @@
                                         html += `<h2>${sourceName}</h2>`;
                                         html += '<div class="meta">';
                                         html += `<strong>Period:</strong> Last ${days} days &nbsp;•&nbsp; `;
-                                        html += `<strong>Total PRs:</strong> ${e.total_prs} &nbsp;•&nbsp; `;
-                                        html += `<strong>Sampled:</strong> ${e.successful_samples}`;
+                                        html += `<strong>Total public PRs:</strong> ${e.total_prs} (${e.human_prs} human, ${e.bot_prs} bot) &nbsp;•&nbsp; `;
+                                        html += `<strong>Sampled:</strong> ${e.successful_samples} &nbsp;•&nbsp; `;
+                                        const avgHumanOpenTime = formatTimeUnit(e.avg_human_pr_duration_hours || 0);
+                                        const avgBotOpenTime = formatTimeUnit(e.avg_bot_pr_duration_hours || 0);
+                                        const avgOpenTime = formatTimeUnit(e.avg_pr_duration_hours || 0);
+                                        html += `<strong>Avg Open Time:</strong> ${avgOpenTime} (human: ${avgHumanOpenTime}, bot: ${avgBotOpenTime})`;
                                         html += '</div>';
                                         html += '</div>';
+
+                                        // Calculate extrapolated efficiency
+                                        const extPreventableHours = e.code_churn_hours + e.delivery_delay_hours + e.automated_updates_hours + e.pr_tracking_hours;
+                                        const extPreventableCost = e.code_churn_cost + e.delivery_delay_cost + e.automated_updates_cost + e.pr_tracking_cost;
+                                        const extEfficiencyPct = e.total_hours > 0 ? 100.0 * (e.total_hours - extPreventableHours) / e.total_hours : 100.0;
+                                        const extEfficiency = efficiencyGrade(extEfficiencyPct);
+                                        const annualMultiplier = 365.0 / parseInt(days);
+                                        const annualWasteHours = extPreventableHours * annualMultiplier;
+                                        const annualWasteCost = extPreventableCost * annualMultiplier;
+
+                                        // Workflow Efficiency section (at top)
+                                        const salary = request.config?.annual_salary || 250000;
+                                        const benefitsMultiplier = request.config?.benefits_multiplier || 1.2;
+                                        const analysisType = mode === 'org' ? 'organization' : 'project';
+                                        // Use Go-computed waste per week metrics
+                                        const wasteHoursPerWeek = e.waste_hours_per_week || 0;
+                                        const wasteCostPerWeek = e.waste_cost_per_week || 0;
+                                        const wasteHoursPerAuthorPerWeek = e.waste_hours_per_author_per_week || 0;
+                                        const wasteCostPerAuthorPerWeek = e.waste_cost_per_author_per_week || 0;
+                                        const totalAuthors = e.total_authors || 0;
+                                        const avgPRDurationHours = e.avg_pr_duration_hours || 0;
+                                        html += formatEfficiencyHTML(extEfficiencyPct, extEfficiency.grade, extEfficiency.message, extPreventableCost, extPreventableHours, e.total_cost, e.total_hours, avgPRDurationHours, true, annualWasteCost, annualWasteHours, wasteHoursPerWeek, wasteCostPerWeek, wasteHoursPerAuthorPerWeek, wasteCostPerAuthorPerWeek, totalAuthors, salary, benefitsMultiplier, analysisType, sourceName);
+
+                                        // Add R2R callout if enabled and merge velocity > 1 hour
+                                        if (data.r2r_callout) {
+                                            html += formatR2RCallout(avgPRDurationHours);
+                                        }
+
+                                        // Calculate average PR efficiency
+                                        const totalPRs = e.total_prs;
+                                        const avgCodeChurnCost = e.code_churn_cost / totalPRs;
+                                        const avgDeliveryDelayCost = e.delivery_delay_cost / totalPRs;
+                                        const avgCodeChurnHours = e.code_churn_hours / totalPRs;
+                                        const avgDeliveryDelayHours = e.delivery_delay_hours / totalPRs;
+                                        const avgTotalCost = e.total_cost / totalPRs;
+                                        const avgTotalHours = e.total_hours / totalPRs;
+                                        const avgPreventableHours = avgCodeChurnHours + avgDeliveryDelayHours + avgCodeChurnHours + (e.automated_updates_hours / totalPRs) + (e.pr_tracking_hours / totalPRs);
+                                        const avgPreventableCost = avgCodeChurnCost + avgDeliveryDelayCost + avgCodeChurnCost + (e.automated_updates_cost / totalPRs) + (e.pr_tracking_cost / totalPRs);
+                                        const avgEfficiencyPct = avgTotalHours > 0 ? 100.0 * (avgTotalHours - avgPreventableHours) / avgTotalHours : 100.0;
+                                        const avgEfficiency = efficiencyGrade(avgEfficiencyPct);
 
                                         // Average PR section
                                         html += '<div class="result-section">';
@@ -1511,8 +2054,8 @@
 
                                         // Extrapolated total section
                                         html += '<div class="result-section">';
-                                        html += `<h2>Estimated Total Changes (extrapolated across ${days} day period)</h2>`;
-                                        html += '<pre><code>' + formatExtrapolatedTotal(e) + '</code></pre>';
+                                        html += `<h2>${days}-day Estimated Costs</h2>`;
+                                        html += '<pre><code>' + formatExtrapolatedTotal(e, days) + '</code></pre>';
                                         html += '</div>';
 
                                         resultDiv.innerHTML = html;
@@ -1520,37 +2063,24 @@
                                         return;
                                     }
 
-                                    // Handle PR-specific progress
+                                    // Handle PR-specific progress - update button text
                                     if (data.pr) {
-                                        if (!progressContainer) {
-                                            progressContainer = document.createElement('div');
-                                            progressContainer.className = 'progress-container';
-                                            progressContainer.innerHTML = '<div class="progress-header">Processing PRs...</div>';
-                                            resultDiv.innerHTML = '';
-                                            resultDiv.appendChild(progressContainer);
-                                        }
-
-                                        let progressItem = progressMap.get(data.pr);
-                                        if (!progressItem) {
-                                            progressItem = document.createElement('div');
-                                            progressItem.className = 'progress-item';
-                                            progressContainer.appendChild(progressItem);
-                                            progressMap.set(data.pr, progressItem);
-                                        }
-
-                                        const repo = data.owner && data.repo ? `${data.owner}/${data.repo}` : '';
+                                        const repo = data.repo || '';
                                         const prLink = repo ? `${repo}#${data.pr}` : `#${data.pr}`;
+                                        const progress = data.progress || '';
 
-                                        progressItem.className = `progress-item ${data.type}`;
                                         if (data.type === 'fetching') {
-                                            progressItem.innerHTML = `<span class="status">Fetching</span> ${prLink} ${data.progress || ''}`;
+                                            submitBtn.textContent = `Fetching ${prLink} (${progress})`;
                                         } else if (data.type === 'processing') {
-                                            progressItem.innerHTML = `<span class="status">Processing</span> ${prLink} ${data.progress || ''}`;
+                                            submitBtn.textContent = `Processing ${prLink} (${progress})`;
                                         } else if (data.type === 'complete') {
-                                            progressItem.innerHTML = `<span class="status">✓ Complete</span> ${prLink} ${data.progress || ''}`;
+                                            submitBtn.textContent = `Calculating (${progress})`;
                                         } else if (data.type === 'error') {
-                                            progressItem.innerHTML = `<span class="status">✗ Error</span> ${prLink}: ${data.error}`;
+                                            submitBtn.textContent = `Error with ${prLink}`;
                                         }
+                                    } else if (data.progress) {
+                                        // Handle non-PR progress messages (like "Querying GitHub for PRs...")
+                                        submitBtn.textContent = data.progress;
                                     }
                                 } catch (parseError) {
                                     console.warn('Failed to parse SSE event:', line, parseError);
@@ -1571,6 +2101,60 @@
                 });
             });
         }
+
+        // Initialize page - check for URL parameters and auto-load
+        window.addEventListener('DOMContentLoaded', () => {
+            const params = new URLSearchParams(window.location.search);
+
+            if (params.size === 0) return;
+
+            // Determine mode
+            let mode = params.get('mode');
+            if (!mode) {
+                // Infer mode from parameters
+                if (params.has('url')) mode = 'pr';
+                else if (params.has('owner') && params.has('repo')) mode = 'repo';
+                else if (params.has('org')) mode = 'org';
+            }
+
+            if (!mode) return;
+
+            // Set mode radio button
+            const modeRadio = document.querySelector(`input[name="mode"][value="${mode}"]`);
+            if (modeRadio) {
+                modeRadio.checked = true;
+                modeRadio.dispatchEvent(new Event('change'));
+            }
+
+            // Populate fields based on mode
+            if (mode === 'pr' && params.has('url')) {
+                document.getElementById('prUrl').value = params.get('url');
+            } else if (mode === 'repo') {
+                if (params.has('owner')) document.getElementById('repoOwner').value = params.get('owner');
+                if (params.has('repo')) document.getElementById('repoName').value = params.get('repo');
+                if (params.has('sample')) document.getElementById('repoSampleSize').value = params.get('sample');
+                if (params.has('days')) document.getElementById('repoDays').value = params.get('days');
+            } else if (mode === 'org') {
+                if (params.has('org')) document.getElementById('orgName').value = params.get('org');
+                if (params.has('sample')) document.getElementById('orgSampleSize').value = params.get('sample');
+                if (params.has('days')) document.getElementById('orgDays').value = params.get('days');
+            }
+
+            // Populate advanced config if present
+            if (params.has('salary')) document.getElementById('salary').value = params.get('salary');
+            if (params.has('benefits')) document.getElementById('benefits').value = params.get('benefits');
+
+            // Auto-submit the form only if there's data to submit (not just mode param)
+            const hasData = (mode === 'pr' && params.has('url')) ||
+                           (mode === 'repo' && params.has('owner') && params.has('repo')) ||
+                           (mode === 'org' && params.has('org'));
+            
+            if (hasData) {
+                setTimeout(() => {
+                    document.getElementById('submitBtn').click();
+                }, 100);
+            }
+        });
     </script>
 </body>
 </html>

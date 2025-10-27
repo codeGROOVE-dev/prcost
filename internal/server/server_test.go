@@ -385,7 +385,7 @@ func TestServeHTTPRouting(t *testing.T) {
 		},
 		{
 			name:       "calculate endpoint - wrong method",
-			method:     http.MethodGet,
+			method:     http.MethodDelete,
 			path:       "/v1/calculate",
 			wantStatus: http.StatusMethodNotAllowed,
 		},

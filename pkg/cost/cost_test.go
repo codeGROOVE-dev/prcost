@@ -376,10 +376,17 @@ func TestCalculateDelayComponents(t *testing.T) {
 		t.Error("Future costs should be positive")
 	}
 
+	// Should have open PR tracking cost (PR is open)
+	if breakdown.DelayCostDetail.PRTrackingCost <= 0 {
+		t.Error("Open PR tracking cost should be positive for open PR")
+	}
+
 	// Total delay should equal sum of components
 	expectedDelay := breakdown.DelayCostDetail.DeliveryDelayCost +
 		breakdown.DelayCostDetail.CoordinationCost +
 		breakdown.DelayCostDetail.CodeChurnCost +
+		breakdown.DelayCostDetail.AutomatedUpdatesCost +
+		breakdown.DelayCostDetail.PRTrackingCost +
 		futureTotalCost
 
 	if breakdown.DelayCost < expectedDelay-0.01 || breakdown.DelayCost > expectedDelay+0.01 {

@@ -20,7 +20,7 @@ const (
 	defaultPort       = "8080"
 	shutdownTimeout   = 10 * time.Second
 	readHeaderTimeout = 5 * time.Second
-	writeTimeout      = 30 * time.Second
+	writeTimeout      = 5 * time.Minute // Long timeout for SSE streams
 	idleTimeout       = 120 * time.Second
 	maxHeaderBytes    = 1 << 20 // 1MB
 )
@@ -64,7 +64,7 @@ func main() {
 		validateTokens = flag.Bool("validate-tokens", false, "Validate GitHub tokens server-side")
 		githubAppID    = flag.String("github-app-id", "", "GitHub App ID for token validation")
 		githubAppKey   = flag.String("github-app-key-file", "", "Path to GitHub App private key file")
-		dataSource     = flag.String("data-source", "turnserver", "Data source for PR data (turnserver or prx)")
+		dataSource     = flag.String("data-source", "prx", "Data source for PR data (prx or turnserver)")
 	)
 	flag.Parse()
 
@@ -86,12 +86,22 @@ func main() {
 		serverPort = defaultPort
 	}
 
+	// Determine data source (environment variable overrides flag default)
+	dataSourceValue := *dataSource
+	if envDataSource := os.Getenv("DATA_SOURCE"); envDataSource != "" {
+		dataSourceValue = envDataSource
+	}
+
+	// Check R2R_CALLOUT environment variable
+	r2rCallout := os.Getenv("R2R_CALLOUT") == "1"
+
 	// Create server
 	prcostServer := server.New()
 	prcostServer.SetCommit(GitCommit)
 	prcostServer.SetCORSConfig(*corsOrigins, *allowAllCors)
 	prcostServer.SetRateLimit(*rateLimit, *rateBurst)
-	prcostServer.SetDataSource(*dataSource)
+	prcostServer.SetDataSource(dataSourceValue)
+	prcostServer.SetR2RCallout(r2rCallout)
 	if *validateTokens {
 		if *githubAppID == "" || *githubAppKey == "" {
 			logger.ErrorContext(ctx, "github app ID and key file are required when token validation is enabled")

@@ -36,15 +36,74 @@ func PRDataFromPRX(prData *prx.PullRequestData) cost.PRData {
 		closedAt = *pr.ClosedAt
 	}
 
-	return cost.PRData{
+	// Fallback bot detection: if prx didn't mark it as a bot, check common bot names
+	authorBot := pr.AuthorBot
+	if !authorBot {
+		authorBot = isCommonBot(pr.Author)
+		if authorBot {
+			slog.Info("Bot detected by name pattern (prx missed it)",
+				"author", pr.Author,
+				"prx_author_bot", pr.AuthorBot)
+		}
+	}
+
+	data := cost.PRData{
 		LinesAdded:   pr.Additions,
 		LinesDeleted: pr.Deletions,
 		Author:       pr.Author,
-		AuthorBot:    pr.AuthorBot,
+		AuthorBot:    authorBot,
 		Events:       events,
 		CreatedAt:    pr.CreatedAt,
 		ClosedAt:     closedAt,
 	}
+
+	slog.Debug("Converted PRX data to cost.PRData",
+		"author", pr.Author,
+		"author_bot", authorBot,
+		"prx_author_bot", pr.AuthorBot,
+		"additions", pr.Additions,
+		"deletions", pr.Deletions)
+
+	return data
+}
+
+// isCommonBot checks if a username matches common bot patterns.
+// This is a fallback in case prx doesn't correctly mark the AuthorBot field.
+func isCommonBot(username string) bool {
+	lowerName := strings.ToLower(username)
+
+	// Common bot account names
+	botPatterns := []string{
+		"dependabot",
+		"renovate",
+		"github-actions",
+		"codecov",
+		"greenkeeper",
+		"snyk-bot",
+		"allcontributors",
+		"imgbot",
+		"stalebot",
+		"mergify",
+		"netlify",
+		"vercel",
+		"codefactor-io",
+		"deepsource-autofix",
+		"pre-commit-ci",
+		"ready-to-review",
+	}
+
+	for _, pattern := range botPatterns {
+		if strings.Contains(lowerName, pattern) {
+			return true
+		}
+	}
+
+	// Check for [bot] suffix
+	if strings.HasSuffix(lowerName, "[bot]") {
+		return true
+	}
+
+	return false
 }
 
 // FetchPRData retrieves pull request information from GitHub and converts it
@@ -159,8 +218,21 @@ func extractParticipantEvents(events []prx.Event) []cost.ParticipantEvent {
 
 	for i := range events {
 		event := &events[i]
-		// Skip bots, GitHub's own automation, and events with no actor
-		if event.Bot || event.Actor == "github" || event.Actor == "" {
+
+		// Skip events with no actor
+		if event.Actor == "" {
+			continue
+		}
+
+		// Skip bots: check both prx's Bot field and common bot patterns
+		isBot := event.Bot || event.Actor == "github" || isCommonBot(event.Actor)
+		if isBot {
+			if !event.Bot && isCommonBot(event.Actor) {
+				slog.Debug("Bot event detected by name pattern (prx missed it)",
+					"actor", event.Actor,
+					"kind", event.Kind,
+					"prx_bot", event.Bot)
+			}
 			continue
 		}
 
