@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"net/http"
 	"sort"
+	"strings"
 	"time"
 )
 
@@ -18,6 +19,7 @@ type PRSummary struct {
 	Owner     string    // Repository owner
 	Repo      string    // Repository name
 	Number    int       // PR number
+	Author    string    // PR author login
 	UpdatedAt time.Time // Last update time
 }
 
@@ -46,6 +48,9 @@ func FetchPRsFromRepo(ctx context.Context, owner, repo string, since time.Time, 
 				nodes {
 					number
 					updatedAt
+					author {
+						login
+					}
 				}
 			}
 		}
@@ -114,6 +119,9 @@ func FetchPRsFromRepo(ctx context.Context, owner, repo string, since time.Time, 
 						Nodes []struct {
 							Number    int
 							UpdatedAt time.Time
+							Author    struct {
+								Login string
+							}
 						}
 					}
 				}
@@ -156,6 +164,7 @@ func FetchPRsFromRepo(ctx context.Context, owner, repo string, since time.Time, 
 				Owner:     owner,
 				Repo:      repo,
 				Number:    node.Number,
+				Author:    node.Author.Login,
 				UpdatedAt: node.UpdatedAt,
 			})
 		}
@@ -183,9 +192,9 @@ func FetchPRsFromRepo(ctx context.Context, owner, repo string, since time.Time, 
 //   - Slice of PRSummary for all matching PRs
 func FetchPRsFromOrg(ctx context.Context, org string, since time.Time, token string) ([]PRSummary, error) {
 	// Use GitHub search API to search across organization
-	// Query: org:myorg is:pr updated:>2025-07-25
+	// Query: org:myorg is:pr updated:>2025-07-25 sort:updated-desc
 	sinceStr := since.Format("2006-01-02")
-	searchQuery := fmt.Sprintf("org:%s is:pr updated:>%s", org, sinceStr)
+	searchQuery := fmt.Sprintf("org:%s is:pr updated:>%s sort:updated-desc", org, sinceStr)
 
 	const query = `
 	query($searchQuery: String!, $cursor: String) {
@@ -199,6 +208,9 @@ func FetchPRsFromOrg(ctx context.Context, org string, since time.Time, token str
 				... on PullRequest {
 					number
 					updatedAt
+					author {
+						login
+					}
 					repository {
 						owner {
 							login
@@ -269,8 +281,11 @@ func FetchPRsFromOrg(ctx context.Context, org string, since time.Time, token str
 						EndCursor   string
 					}
 					Nodes []struct {
-						Number     int
-						UpdatedAt  time.Time
+						Number    int
+						UpdatedAt time.Time
+						Author    struct {
+							Login string
+						}
 						Repository struct {
 							Owner struct {
 								Login string
@@ -309,6 +324,7 @@ func FetchPRsFromOrg(ctx context.Context, org string, since time.Time, token str
 				Owner:     node.Repository.Owner.Login,
 				Repo:      node.Repository.Name,
 				Number:    node.Number,
+				Author:    node.Author.Login,
 				UpdatedAt: node.UpdatedAt,
 			})
 		}
@@ -323,8 +339,39 @@ func FetchPRsFromOrg(ctx context.Context, org string, since time.Time, token str
 	return allPRs, nil
 }
 
+// isBot returns true if the author name indicates a bot account.
+func isBot(author string) bool {
+	// Check for common bot name patterns
+	if strings.HasSuffix(author, "[bot]") || strings.Contains(author, "-bot-") {
+		return true
+	}
+
+	// Check for specific known bot usernames (case-insensitive)
+	lowerAuthor := strings.ToLower(author)
+	knownBots := []string{
+		"renovate",
+		"dependabot",
+		"github-actions",
+		"codecov",
+		"snyk",
+		"greenkeeper",
+		"imgbot",
+		"renovate-bot",
+		"dependabot-preview",
+	}
+
+	for _, botName := range knownBots {
+		if lowerAuthor == botName {
+			return true
+		}
+	}
+
+	return false
+}
+
 // SamplePRs uses a time-bucket strategy to evenly sample PRs across the time range.
 // This ensures samples are distributed throughout the period rather than clustered.
+// Bot-authored PRs are excluded from sampling.
 //
 // Parameters:
 //   - prs: List of PRs to sample from
@@ -334,6 +381,7 @@ func FetchPRsFromOrg(ctx context.Context, org string, since time.Time, token str
 //   - Slice of sampled PRs (may be smaller than sampleSize if insufficient PRs)
 //
 // Strategy:
+//   - Filters out bot-authored PRs
 //   - Divides time range into buckets equal to sampleSize
 //   - Selects most recent PR from each bucket
 //   - If buckets are empty, fills with nearest unused PRs
@@ -342,10 +390,24 @@ func SamplePRs(prs []PRSummary, sampleSize int) []PRSummary {
 		return nil
 	}
 
-	// If we have fewer PRs than samples, return all
-	if len(prs) <= sampleSize {
-		return prs
+	// Filter out bot-authored PRs
+	var humanPRs []PRSummary
+	for _, pr := range prs {
+		if !isBot(pr.Author) {
+			humanPRs = append(humanPRs, pr)
+		}
 	}
+
+	if len(humanPRs) == 0 {
+		return nil
+	}
+
+	// If we have fewer PRs than samples, return all
+	if len(humanPRs) <= sampleSize {
+		return humanPRs
+	}
+
+	prs = humanPRs
 
 	// Sort PRs by updatedAt (newest first)
 	sorted := make([]PRSummary, len(prs))
@@ -418,4 +480,89 @@ func SamplePRs(prs []PRSummary, sampleSize int) []PRSummary {
 	}
 
 	return samples
+}
+
+// CountUniqueAuthors counts the number of unique authors in a slice of PRSummary.
+// Bot authors are excluded from the count.
+func CountUniqueAuthors(prs []PRSummary) int {
+	uniqueAuthors := make(map[string]bool)
+	for _, pr := range prs {
+		if !isBot(pr.Author) {
+			uniqueAuthors[pr.Author] = true
+		}
+	}
+	return len(uniqueAuthors)
+}
+
+// CalculateActualTimeWindow determines the actual time period covered by the PRs.
+// When we hit the 1000 PR API limit, we may not have data for the full requested period.
+// This function calculates the actual time window based on the oldest PR's updatedAt time.
+//
+// Parameters:
+//   - prs: List of PRs fetched
+//   - requestedDays: Number of days originally requested
+//
+// Returns:
+//   - actualDays: The actual number of days covered by the PR data
+//   - hitLimit: Whether we likely hit the API limit (exactly 1000 PRs)
+func CalculateActualTimeWindow(prs []PRSummary, requestedDays int) (actualDays int, hitLimit bool) {
+	// If no PRs, return requested days
+	if len(prs) == 0 {
+		return requestedDays, false
+	}
+
+	// GitHub Search API has a hard limit of 1000 results
+	// If we hit exactly 1000, we likely hit the limit and are missing data
+	const apiLimit = 1000
+	hitLimit = len(prs) >= apiLimit
+
+	// If we didn't hit the limit, use the requested days
+	if !hitLimit {
+		return requestedDays, false
+	}
+
+	// PRs are sorted by updatedAt DESC (newest first), so the last PR is the oldest
+	newestTime := prs[0].UpdatedAt
+	oldestTime := prs[len(prs)-1].UpdatedAt
+
+	// Calculate actual days from oldest PR to now
+	actualDuration := time.Since(oldestTime)
+	actualDays = int(actualDuration.Hours() / 24.0)
+
+	// Round up to avoid showing 0 days
+	if actualDays == 0 {
+		actualDays = 1
+	}
+
+	// Create distribution by day to verify sort order and show clustering
+	dayDistribution := make(map[string]int)
+	for _, pr := range prs {
+		dayKey := pr.UpdatedAt.Format("2006-01-02")
+		dayDistribution[dayKey]++
+	}
+
+	// Log first 10 and last 10 PRs to verify sort order
+	slog.Info("PR sort order verification",
+		"first_3_prs", []string{
+			prs[0].UpdatedAt.Format(time.RFC3339),
+			prs[1].UpdatedAt.Format(time.RFC3339),
+			prs[2].UpdatedAt.Format(time.RFC3339),
+		},
+		"last_3_prs", []string{
+			prs[len(prs)-3].UpdatedAt.Format(time.RFC3339),
+			prs[len(prs)-2].UpdatedAt.Format(time.RFC3339),
+			prs[len(prs)-1].UpdatedAt.Format(time.RFC3339),
+		})
+
+	slog.Info("PR distribution by day", "distribution", dayDistribution)
+
+	slog.Info("Detected API limit - adjusted time window",
+		"requested_days", requestedDays,
+		"actual_days", actualDays,
+		"total_prs", len(prs),
+		"newest_pr_updated_at", newestTime.Format(time.RFC3339),
+		"oldest_pr_updated_at", oldestTime.Format(time.RFC3339),
+		"prs_per_day", float64(len(prs))/float64(actualDays))
+
+	return actualDays, true
 }

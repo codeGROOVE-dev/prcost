@@ -31,7 +31,7 @@ func main() {
 	org := flag.String("org", "", "GitHub organization to analyze (optionally with --repo for single repo)")
 	repo := flag.String("repo", "", "GitHub repository to analyze (requires --org)")
 	samples := flag.Int("samples", 25, "Number of PRs to sample for extrapolation (25=fast/±20%, 50=slower/±14%)")
-	days := flag.Int("days", 90, "Number of days to look back for PR modifications")
+	days := flag.Int("days", 60, "Number of days to look back for PR modifications")
 
 	flag.Usage = func() {
 		fmt.Fprintf(os.Stderr, "Usage: %s [options] <PR_URL>\n", os.Args[0])
@@ -439,31 +439,48 @@ func formatWithCommas(amount float64) string {
 func efficiencyGrade(efficiencyPct float64) (string, string) {
 	switch {
 	case efficiencyPct >= 97:
-		return "A+", "Outstanding!"
+		return "A+", "Impeccable"
 	case efficiencyPct >= 93:
-		return "A", "Excellent!"
+		return "A", "Excellent"
 	case efficiencyPct >= 90:
-		return "A-", "Great work!"
+		return "A-", "Nearly excellent"
 	case efficiencyPct >= 87:
-		return "B+", "Pretty good!"
+		return "B+", "Acceptable+"
 	case efficiencyPct >= 83:
-		return "B", "Minor inefficiency detected."
+		return "B", "Acceptable"
 	case efficiencyPct >= 80:
-		return "B-", "Minor inefficiency detected."
-	case efficiencyPct >= 77:
-		return "C+", "Some inefficiency detected."
-	case efficiencyPct >= 73:
-		return "C", "Moderate inefficiency detected."
+		return "B-", "Nearly acceptable"
 	case efficiencyPct >= 70:
-		return "C-", "Moderate inefficiency detected."
-	case efficiencyPct >= 67:
-		return "D+", "Noticeable inefficiency detected."
-	case efficiencyPct >= 63:
-		return "D", "Significant inefficiency detected."
+		return "C", "Average"
 	case efficiencyPct >= 60:
-		return "D-", "Severe inefficiency detected."
+		return "D", "Not good my friend."
 	default:
-		return "F", "Critical inefficiency detected."
+		return "F", "Failing"
+	}
+}
+
+// mergeVelocityGrade returns a grade based on average PR open time in days.
+// A: 1 day or less, B: 2.5 days or less, C: 2.5-4 days, D: 4-5 days, F: 5+ days.
+func mergeVelocityGrade(avgOpenDays float64) (string, string) {
+	switch {
+	case avgOpenDays <= 0.1875: // 4.5 hours
+		return "A+", "Impeccable"
+	case avgOpenDays <= 1.0:
+		return "A", "Excellent"
+	case avgOpenDays <= 1.5:
+		return "A-", "Nearly excellent"
+	case avgOpenDays <= 2.0:
+		return "B+", "Acceptable+"
+	case avgOpenDays <= 2.5:
+		return "B", "Acceptable"
+	case avgOpenDays <= 3.0:
+		return "B-", "Nearly acceptable"
+	case avgOpenDays <= 4.0:
+		return "C", "Average"
+	case avgOpenDays <= 5.0:
+		return "D", "Not good my friend."
+	default:
+		return "F", "Failing"
 	}
 }
 
@@ -493,14 +510,28 @@ func printEfficiency(breakdown *cost.Breakdown, formatCurrency func(float64) str
 
 	grade, message := efficiencyGrade(efficiencyPct)
 
+	// Calculate merge velocity grade based on PR duration
+	prDurationDays := breakdown.PRDuration / 24.0
+	velocityGrade, velocityMessage := mergeVelocityGrade(prDurationDays)
+
 	fmt.Println("  ┌─────────────────────────────────────────────────────────────┐")
-	headerText := fmt.Sprintf("WORKFLOW EFFICIENCY: %s (%.1f%%) - %s", grade, efficiencyPct, message)
+	headerText := fmt.Sprintf("DEVELOPMENT EFFICIENCY: %s (%.1f%%) - %s", grade, efficiencyPct, message)
 	padding := 60 - len(headerText)
 	if padding < 0 {
 		padding = 0
 	}
 	fmt.Printf("  │ %s%*s│\n", headerText, padding, "")
 	fmt.Println("  └─────────────────────────────────────────────────────────────┘")
+
+	fmt.Println("  ┌─────────────────────────────────────────────────────────────┐")
+	velocityHeader := fmt.Sprintf("MERGE VELOCITY: %s (%s) - %s", velocityGrade, formatTimeUnit(breakdown.PRDuration), velocityMessage)
+	velPadding := 60 - len(velocityHeader)
+	if velPadding < 0 {
+		velPadding = 0
+	}
+	fmt.Printf("  │ %s%*s│\n", velocityHeader, velPadding, "")
+	fmt.Println("  └─────────────────────────────────────────────────────────────┘")
+
 	fmt.Printf("  Preventable Waste:         $%12s    %s\n",
 		formatWithCommas(preventableCost), formatTimeUnit(preventableHours))
 	fmt.Println()

@@ -1253,7 +1253,7 @@
             }
         }
 
-        function formatEfficiencyHTML(efficiencyPct, grade, message, preventableCost, preventableHours, totalCost, totalHours, isAnnual = false, annualWasteCost = 0, annualWasteHours = 0, perAuthorWeeklyHours = 0, perAuthorAnnualCost = 0, salary = 250000, benefitsMultiplier = 1.2, analysisType = 'project', sourceName = '') {
+        function formatEfficiencyHTML(efficiencyPct, grade, message, preventableCost, preventableHours, totalCost, totalHours, isAnnual = false, annualWasteCost = 0, annualWasteHours = 0, wasteHoursPerWeek = 0, wasteCostPerWeek = 0, wasteHoursPerAuthorPerWeek = 0, wasteCostPerAuthorPerWeek = 0, totalAuthors = 0, salary = 250000, benefitsMultiplier = 1.2, analysisType = 'project', sourceName = '') {
             let html = '<div class="efficiency-section">';
             html += '<h2>Workflow Efficiency</h2>';
 
@@ -1284,12 +1284,12 @@
 
             html += '</div>'; // Close efficiency-content
 
-            // Show per-author metrics if available
-            if (isAnnual && perAuthorWeeklyHours > 0 && perAuthorAnnualCost > 0) {
+            // Show weekly waste per PR author if available
+            if (isAnnual && wasteHoursPerAuthorPerWeek > 0 && totalAuthors > 0) {
                 html += '<div class="efficiency-details" style="margin-top: 20px; padding: 16px; background: #f5f5f5; border-radius: 8px;">';
-                const weeklyCost = perAuthorAnnualCost / 52;
-                const weeklyCostFormatted = '$' + Math.round(weeklyCost).toLocaleString('en-US');
-                html += `<p style="margin: 0; font-size: 14px; color: #666;"><strong>Lost Time per Author per Week:</strong> ${weeklyCostFormatted} • ${perAuthorWeeklyHours.toFixed(1)} hrs/week</p>`;
+                const perAuthorCostFormatted = '$' + Math.round(wasteCostPerAuthorPerWeek).toLocaleString('en-US');
+                const perAuthorHoursFormatted = wasteHoursPerAuthorPerWeek.toFixed(1);
+                html += `<p style="margin: 0; font-size: 14px; color: #666;"><strong>Weekly waste per PR author:</strong> ${perAuthorCostFormatted} • ${perAuthorHoursFormatted} hrs (${totalAuthors} authors)</p>`;
                 html += '</div>';
             }
 
@@ -1518,10 +1518,9 @@
                 output += `    Subtotal                  ${formatCurrency(avgFutureCost).padStart(12)}    ${formatTimeUnit(avgFutureHours)}  (${pct.toFixed(1)}%)\n\n`;
             }
 
-            // Per-author preventable loss (if we have authors)
-            if (e.unique_authors > 0 && e.avg_waste_hours_per_author_per_week > 0) {
-                const weeklyCostPerAuthor = e.avg_waste_cost_per_author_per_year / 52.0;
-                output += `  Lost Time per Author per Week:  ${formatCurrency(weeklyCostPerAuthor).padStart(12)}    ${formatTimeUnit(e.avg_waste_hours_per_author_per_week)}\n`;
+            // Weekly waste per PR author
+            if (e.waste_hours_per_author_per_week > 0 && e.total_authors > 0) {
+                output += `  Weekly waste per PR author:     ${formatCurrency(e.waste_cost_per_author_per_week).padStart(12)}    ${formatTimeUnit(e.waste_hours_per_author_per_week)}  (${e.total_authors} authors)\n`;
             }
 
             // Average Preventable Loss Total (before grand total)
@@ -1597,10 +1596,9 @@
                 output += `    Subtotal                  ${formatCurrency(futureCost).padStart(12)}    ${formatTimeUnit(futureHours)}  (${pct.toFixed(1)}%)\n\n`;
             }
 
-            // Per-author preventable loss (if we have authors)
-            if (e.unique_authors > 0 && e.avg_waste_hours_per_author_per_week > 0) {
-                const weeklyCostPerAuthor = e.avg_waste_cost_per_author_per_year / 52.0;
-                output += `  Lost Time per Author per Week:  ${formatCurrency(weeklyCostPerAuthor).padStart(12)}    ${formatTimeUnit(e.avg_waste_hours_per_author_per_week)}\n`;
+            // Weekly waste per PR author
+            if (e.waste_hours_per_author_per_week > 0 && e.total_authors > 0) {
+                output += `  Weekly waste per PR author:     ${formatCurrency(e.waste_cost_per_author_per_week).padStart(12)}    ${formatTimeUnit(e.waste_hours_per_author_per_week)}  (${e.total_authors} authors)\n`;
             }
 
             // Preventable Loss Total (before grand total)
@@ -1825,10 +1823,13 @@
                                         const salary = request.config?.annual_salary || 250000;
                                         const benefitsMultiplier = request.config?.benefits_multiplier || 1.2;
                                         const analysisType = mode === 'org' ? 'organization' : 'project';
-                                        // Use Go-computed per-author metrics
-                                        const perAuthorWeeklyHours = e.avg_waste_hours_per_author_per_week || 0;
-                                        const perAuthorAnnualCost = e.avg_waste_cost_per_author_per_year || 0;
-                                        html += formatEfficiencyHTML(extEfficiencyPct, extEfficiency.grade, extEfficiency.message, extPreventableCost, extPreventableHours, e.total_cost, e.total_hours, true, annualWasteCost, annualWasteHours, perAuthorWeeklyHours, perAuthorAnnualCost, salary, benefitsMultiplier, analysisType, sourceName);
+                                        // Use Go-computed waste per week metrics
+                                        const wasteHoursPerWeek = e.waste_hours_per_week || 0;
+                                        const wasteCostPerWeek = e.waste_cost_per_week || 0;
+                                        const wasteHoursPerAuthorPerWeek = e.waste_hours_per_author_per_week || 0;
+                                        const wasteCostPerAuthorPerWeek = e.waste_cost_per_author_per_week || 0;
+                                        const totalAuthors = e.total_authors || 0;
+                                        html += formatEfficiencyHTML(extEfficiencyPct, extEfficiency.grade, extEfficiency.message, extPreventableCost, extPreventableHours, e.total_cost, e.total_hours, true, annualWasteCost, annualWasteHours, wasteHoursPerWeek, wasteCostPerWeek, wasteHoursPerAuthorPerWeek, wasteCostPerAuthorPerWeek, totalAuthors, salary, benefitsMultiplier, analysisType, sourceName);
 
                                         // Calculate average PR efficiency
                                         const totalPRs = e.total_prs;

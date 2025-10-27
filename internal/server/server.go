@@ -249,8 +249,8 @@ func (s *Server) SetRateLimit(rps int, burst int) {
 func (s *Server) SetDataSource(source string) {
 	ctx := context.Background()
 	if source != "turnserver" && source != "prx" {
-		s.logger.WarnContext(ctx, "Invalid data source, using default", "requested", source, "default", "turnserver")
-		s.dataSource = "turnserver"
+		s.logger.WarnContext(ctx, "Invalid data source, using default", "requested", source, "default", "prx")
+		s.dataSource = "prx"
 		return
 	}
 	s.dataSource = source
@@ -1175,6 +1175,7 @@ func (s *Server) parseOrgSampleRequest(ctx context.Context, r *http.Request) (*O
 
 // processRepoSample processes a repository sampling request.
 func (s *Server) processRepoSample(ctx context.Context, req *RepoSampleRequest, token string) (*SampleResponse, error) {
+	var actualDays int
 	// Use default config if not provided
 	cfg := cost.DefaultConfig()
 	if req.Config != nil {
@@ -1208,6 +1209,9 @@ func (s *Server) processRepoSample(ctx context.Context, req *RepoSampleRequest, 
 	if len(prs) == 0 {
 		return nil, fmt.Errorf("no PRs found in the last %d days", req.Days)
 	}
+
+	// Calculate actual time window (may be less than requested if we hit API limit)
+	actualDays, _ = github.CalculateActualTimeWindow(prs, req.Days)
 
 	// Sample PRs
 	samples := github.SamplePRs(prs, req.SampleSize)
@@ -1250,8 +1254,11 @@ func (s *Server) processRepoSample(ctx context.Context, req *RepoSampleRequest, 
 		return nil, errors.New("no samples could be processed successfully")
 	}
 
+	// Count unique authors across all PRs (not just samples)
+	totalAuthors := github.CountUniqueAuthors(prs)
+
 	// Extrapolate costs from samples
-	extrapolated := cost.ExtrapolateFromSamples(breakdowns, len(prs), req.Days, cfg)
+	extrapolated := cost.ExtrapolateFromSamples(breakdowns, len(prs), totalAuthors, actualDays, cfg)
 
 	return &SampleResponse{
 		Extrapolated: extrapolated,
@@ -1262,6 +1269,7 @@ func (s *Server) processRepoSample(ctx context.Context, req *RepoSampleRequest, 
 
 // processOrgSample processes an organization sampling request.
 func (s *Server) processOrgSample(ctx context.Context, req *OrgSampleRequest, token string) (*SampleResponse, error) {
+	var actualDays int
 	// Use default config if not provided
 	cfg := cost.DefaultConfig()
 	if req.Config != nil {
@@ -1294,6 +1302,9 @@ func (s *Server) processOrgSample(ctx context.Context, req *OrgSampleRequest, to
 	if len(prs) == 0 {
 		return nil, fmt.Errorf("no PRs found in the last %d days", req.Days)
 	}
+
+	// Calculate actual time window (may be less than requested if we hit API limit)
+	actualDays, _ = github.CalculateActualTimeWindow(prs, req.Days)
 
 	// Sample PRs
 	samples := github.SamplePRs(prs, req.SampleSize)
@@ -1336,8 +1347,11 @@ func (s *Server) processOrgSample(ctx context.Context, req *OrgSampleRequest, to
 		return nil, errors.New("no samples could be processed successfully")
 	}
 
+	// Count unique authors across all PRs (not just samples)
+	totalAuthors := github.CountUniqueAuthors(prs)
+
 	// Extrapolate costs from samples
-	extrapolated := cost.ExtrapolateFromSamples(breakdowns, len(prs), req.Days, cfg)
+	extrapolated := cost.ExtrapolateFromSamples(breakdowns, len(prs), totalAuthors, actualDays, cfg)
 
 	return &SampleResponse{
 		Extrapolated: extrapolated,
@@ -1600,6 +1614,7 @@ func logSSEError(ctx context.Context, logger *slog.Logger, err error) {
 
 // processRepoSampleWithProgress processes a repository sample with progress updates via SSE.
 func (s *Server) processRepoSampleWithProgress(ctx context.Context, req *RepoSampleRequest, token string, writer http.ResponseWriter) {
+	var actualDays int
 	// Use background context for work to prevent client timeout from canceling operations
 	// The request context (ctx) is only used for SSE writes and logging
 	workCtx := context.Background()
@@ -1669,6 +1684,9 @@ func (s *Server) processRepoSampleWithProgress(ctx context.Context, req *RepoSam
 		return
 	}
 
+	// Calculate actual time window (may be less than requested if we hit API limit)
+	actualDays, _ = github.CalculateActualTimeWindow(prs, req.Days)
+
 	// Sample PRs
 	samples := github.SamplePRs(prs, req.SampleSize)
 
@@ -1692,8 +1710,11 @@ func (s *Server) processRepoSampleWithProgress(ctx context.Context, req *RepoSam
 		return
 	}
 
+	// Count unique authors across all PRs (not just samples)
+	totalAuthors := github.CountUniqueAuthors(prs)
+
 	// Extrapolate costs from samples
-	extrapolated := cost.ExtrapolateFromSamples(breakdowns, len(prs), req.Days, cfg)
+	extrapolated := cost.ExtrapolateFromSamples(breakdowns, len(prs), totalAuthors, actualDays, cfg)
 
 	// Send final result
 	logSSEError(ctx, s.logger, sendSSE(writer, ProgressUpdate{
@@ -1705,6 +1726,7 @@ func (s *Server) processRepoSampleWithProgress(ctx context.Context, req *RepoSam
 
 // processOrgSampleWithProgress processes an organization sample with progress updates via SSE.
 func (s *Server) processOrgSampleWithProgress(ctx context.Context, req *OrgSampleRequest, token string, writer http.ResponseWriter) {
+	var actualDays int
 	// Use background context for work to prevent client timeout from canceling operations
 	// The request context (ctx) is only used for SSE writes and logging
 	workCtx := context.Background()
@@ -1771,6 +1793,9 @@ func (s *Server) processOrgSampleWithProgress(ctx context.Context, req *OrgSampl
 		return
 	}
 
+	// Calculate actual time window (may be less than requested if we hit API limit)
+	actualDays, _ = github.CalculateActualTimeWindow(prs, req.Days)
+
 	// Sample PRs
 	samples := github.SamplePRs(prs, req.SampleSize)
 
@@ -1802,8 +1827,11 @@ func (s *Server) processOrgSampleWithProgress(ctx context.Context, req *OrgSampl
 		return
 	}
 
+	// Count unique authors across all PRs (not just samples)
+	totalAuthors := github.CountUniqueAuthors(prs)
+
 	// Extrapolate costs from samples
-	extrapolated := cost.ExtrapolateFromSamples(breakdowns, len(prs), req.Days, cfg)
+	extrapolated := cost.ExtrapolateFromSamples(breakdowns, len(prs), totalAuthors, actualDays, cfg)
 
 	// Send final result
 	logSSEError(ctx, s.logger, sendSSE(writer, ProgressUpdate{
@@ -1822,7 +1850,7 @@ func (s *Server) processPRsInParallel(workCtx, reqCtx context.Context, samples [
 	var sseMu sync.Mutex // Protects SSE writes to prevent corrupted chunked encoding
 
 	// Use a buffered channel for worker pool pattern
-	concurrency := 5 // Process up to 5 PRs concurrently
+	concurrency := 8 // Process up to 8 PRs concurrently
 	semaphore := make(chan struct{}, concurrency)
 
 	var wg sync.WaitGroup
