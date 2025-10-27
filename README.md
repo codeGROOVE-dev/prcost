@@ -2,7 +2,11 @@
 
 Calculate the real-world cost of GitHub pull requests using empirically-validated software engineering research. Provides detailed breakdowns of development effort, review costs, coordination overhead, and delay impacts.
 
-## Example
+## Hosted Web Interface
+
+Try https://cost.github.codegroove.app/ - it only has access to public repositories, so if you need to take that account for accuracy, run prcost locally.
+
+## CLI Example
 
 ```
 $ prcost https://github.com/chainguard-dev/apko/pull/1860
@@ -69,6 +73,12 @@ prcost --org myorg --repo myrepo --samples 50 --days 30
 
 # Organization-wide analysis
 prcost --org chainguard-dev --samples 50 --days 60
+```
+
+### Web Interface
+
+```bash
+go run ./cmd/server
 ```
 
 ### Sampling Strategy
