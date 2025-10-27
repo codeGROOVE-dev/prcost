@@ -436,7 +436,7 @@ func formatWithCommas(amount float64) string {
 }
 
 // efficiencyGrade returns a letter grade and message based on efficiency percentage (MIT scale).
-func efficiencyGrade(efficiencyPct float64) (string, string) {
+func efficiencyGrade(efficiencyPct float64) (grade, message string) {
 	switch {
 	case efficiencyPct >= 97:
 		return "A+", "Impeccable"
@@ -460,8 +460,8 @@ func efficiencyGrade(efficiencyPct float64) (string, string) {
 }
 
 // mergeVelocityGrade returns a grade based on average PR open time in days.
-// A+: 4h, A: 8h, A-: 12h, B+: 18h, B: 24h, B-: 36h, C: 100h, D: 120h, F: 120h+
-func mergeVelocityGrade(avgOpenDays float64) (string, string) {
+// A+: 4h, A: 8h, A-: 12h, B+: 18h, B: 24h, B-: 36h, C: 100h, D: 120h, F: 120h+.
+func mergeVelocityGrade(avgOpenDays float64) (grade, message string) {
 	switch {
 	case avgOpenDays <= 0.1667: // 4 hours
 		return "A+", "Impeccable"

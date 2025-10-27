@@ -581,25 +581,9 @@ func (s *Server) parseRequest(ctx context.Context, r *http.Request) (*CalculateR
 
 	// Handle GET requests with query parameters
 	if r.Method == http.MethodGet {
-		req.URL = r.URL.Query().Get("url")
-
-		// Parse optional config parameters
-		if salaryStr := r.URL.Query().Get("salary"); salaryStr != "" {
-			if req.Config == nil {
-				req.Config = &cost.Config{}
-			}
-			if salary, err := strconv.ParseFloat(salaryStr, 64); err == nil {
-				req.Config.AnnualSalary = salary
-			}
-		}
-		if benefitsStr := r.URL.Query().Get("benefits"); benefitsStr != "" {
-			if req.Config == nil {
-				req.Config = &cost.Config{}
-			}
-			if benefits, err := strconv.ParseFloat(benefitsStr, 64); err == nil {
-				req.Config.BenefitsMultiplier = benefits
-			}
-		}
+		query := r.URL.Query()
+		req.URL = query.Get("url")
+		req.Config = parseConfigFromQuery(query)
 	} else {
 		// Handle POST requests with JSON body
 		// SECURITY: Limit request body size to prevent memory exhaustion DoS.
@@ -624,6 +608,28 @@ func (s *Server) parseRequest(ctx context.Context, r *http.Request) (*CalculateR
 	}
 
 	return &req, nil
+}
+
+// parseConfigFromQuery extracts salary and benefits from query parameters.
+func parseConfigFromQuery(query url.Values) *cost.Config {
+	salaryStr := query.Get("salary")
+	benefitsStr := query.Get("benefits")
+	if salaryStr == "" && benefitsStr == "" {
+		return nil
+	}
+
+	cfg := &cost.Config{}
+	if salaryStr != "" {
+		if salary, err := strconv.ParseFloat(salaryStr, 64); err == nil {
+			cfg.AnnualSalary = salary
+		}
+	}
+	if benefitsStr != "" {
+		if benefits, err := strconv.ParseFloat(benefitsStr, 64); err == nil {
+			cfg.BenefitsMultiplier = benefits
+		}
+	}
+	return cfg
 }
 
 // validateGitHubPRURL performs strict validation of GitHub PR URLs.
@@ -1128,36 +1134,22 @@ func (s *Server) parseRepoSampleRequest(ctx context.Context, r *http.Request) (*
 
 	// Handle GET requests with query parameters
 	if r.Method == http.MethodGet {
-		req.Owner = r.URL.Query().Get("owner")
-		req.Repo = r.URL.Query().Get("repo")
+		query := r.URL.Query()
+		req.Owner = query.Get("owner")
+		req.Repo = query.Get("repo")
 
 		// Parse optional parameters
-		if sampleStr := r.URL.Query().Get("sample"); sampleStr != "" {
+		if sampleStr := query.Get("sample"); sampleStr != "" {
 			if sample, err := strconv.Atoi(sampleStr); err == nil {
 				req.SampleSize = sample
 			}
 		}
-		if daysStr := r.URL.Query().Get("days"); daysStr != "" {
+		if daysStr := query.Get("days"); daysStr != "" {
 			if days, err := strconv.Atoi(daysStr); err == nil {
 				req.Days = days
 			}
 		}
-		if salaryStr := r.URL.Query().Get("salary"); salaryStr != "" {
-			if req.Config == nil {
-				req.Config = &cost.Config{}
-			}
-			if salary, err := strconv.ParseFloat(salaryStr, 64); err == nil {
-				req.Config.AnnualSalary = salary
-			}
-		}
-		if benefitsStr := r.URL.Query().Get("benefits"); benefitsStr != "" {
-			if req.Config == nil {
-				req.Config = &cost.Config{}
-			}
-			if benefits, err := strconv.ParseFloat(benefitsStr, 64); err == nil {
-				req.Config.BenefitsMultiplier = benefits
-			}
-		}
+		req.Config = parseConfigFromQuery(query)
 	} else {
 		// Handle POST requests with JSON body
 		const maxRequestSize = 1 << 20 // 1MB
@@ -1204,35 +1196,21 @@ func (s *Server) parseOrgSampleRequest(ctx context.Context, r *http.Request) (*O
 
 	// Handle GET requests with query parameters
 	if r.Method == http.MethodGet {
-		req.Org = r.URL.Query().Get("org")
+		query := r.URL.Query()
+		req.Org = query.Get("org")
 
 		// Parse optional parameters
-		if sampleStr := r.URL.Query().Get("sample"); sampleStr != "" {
+		if sampleStr := query.Get("sample"); sampleStr != "" {
 			if sample, err := strconv.Atoi(sampleStr); err == nil {
 				req.SampleSize = sample
 			}
 		}
-		if daysStr := r.URL.Query().Get("days"); daysStr != "" {
+		if daysStr := query.Get("days"); daysStr != "" {
 			if days, err := strconv.Atoi(daysStr); err == nil {
 				req.Days = days
 			}
 		}
-		if salaryStr := r.URL.Query().Get("salary"); salaryStr != "" {
-			if req.Config == nil {
-				req.Config = &cost.Config{}
-			}
-			if salary, err := strconv.ParseFloat(salaryStr, 64); err == nil {
-				req.Config.AnnualSalary = salary
-			}
-		}
-		if benefitsStr := r.URL.Query().Get("benefits"); benefitsStr != "" {
-			if req.Config == nil {
-				req.Config = &cost.Config{}
-			}
-			if benefits, err := strconv.ParseFloat(benefitsStr, 64); err == nil {
-				req.Config.BenefitsMultiplier = benefits
-			}
-		}
+		req.Config = parseConfigFromQuery(query)
 	} else {
 		// Handle POST requests with JSON body
 		const maxRequestSize = 1 << 20 // 1MB
