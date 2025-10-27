@@ -82,6 +82,10 @@ type ExtrapolatedBreakdown struct {
 	// Grand totals
 	TotalCost  float64 `json:"total_cost"`
 	TotalHours float64 `json:"total_hours"`
+
+	// R2R cost savings calculation
+	UniqueNonBotUsers int     `json:"unique_non_bot_users"` // Count of unique non-bot users (authors + participants)
+	R2RSavings        float64 `json:"r2r_savings"`          // Annual savings if R2R cuts PR time to 40 minutes
 }
 
 // ExtrapolateFromSamples calculates extrapolated cost estimates from a sample
@@ -113,6 +117,8 @@ func ExtrapolateFromSamples(breakdowns []Breakdown, totalPRs, totalAuthors, actu
 
 	// Track unique PR authors (excluding bots)
 	uniqueAuthors := make(map[string]bool)
+	// Track unique non-bot users (authors + participants)
+	uniqueNonBotUsers := make(map[string]bool)
 
 	// Track bot vs human PR metrics
 	var humanPRCount, botPRCount int
@@ -140,6 +146,7 @@ func ExtrapolateFromSamples(breakdowns []Breakdown, totalPRs, totalAuthors, actu
 		// Track unique PR authors only (excluding bots)
 		if !breakdown.AuthorBot {
 			uniqueAuthors[breakdown.PRAuthor] = true
+			uniqueNonBotUsers[breakdown.PRAuthor] = true
 			humanPRCount++
 			sumHumanPRDuration += breakdown.PRDuration
 		} else {
@@ -148,6 +155,12 @@ func ExtrapolateFromSamples(breakdowns []Breakdown, totalPRs, totalAuthors, actu
 			// Track bot PR LOC separately
 			sumBotNewLines += breakdown.Author.NewLines
 			sumBotModifiedLines += breakdown.Author.ModifiedLines
+		}
+
+		// Track unique participants (excluding bots)
+		for _, p := range breakdown.Participants {
+			// Participants from the Breakdown struct are already filtered to exclude bots
+			uniqueNonBotUsers[p.Actor] = true
 		}
 
 		// Accumulate PR duration (all PRs)
@@ -322,6 +335,62 @@ func ExtrapolateFromSamples(breakdowns []Breakdown, totalPRs, totalAuthors, actu
 	extHumanPRs := int(float64(humanPRCount) / samples * multiplier)
 	extBotPRs := int(float64(botPRCount) / samples * multiplier)
 
+	// Calculate R2R savings
+	// Formula: baseline annual waste - (re-modeled waste with 40min PRs) - (R2R subscription cost)
+	// Baseline annual waste: preventable cost extrapolated to 52 weeks
+	uniqueUserCount := len(uniqueNonBotUsers)
+	baselineAnnualWaste := (extCodeChurnCost + extDeliveryDelayCost + extAutomatedUpdatesCost + extPRTrackingCost) * (52.0 / (float64(daysInPeriod) / 7.0))
+
+	// Re-model with 40-minute PR merge times
+	// We need to recalculate delivery delay and future costs assuming all PRs take 40 minutes (2/3 hour)
+	const targetMergeTimeHours = 40.0 / 60.0 // 40 minutes in hours
+
+	// Recalculate delivery delay cost with 40-minute PRs
+	// Delivery delay formula: hourlyRate × deliveryDelayFactor × PR duration
+	var remodelDeliveryDelayCost float64
+	for range breakdowns {
+		remodelDeliveryDelayCost += hourlyRate * cfg.DeliveryDelayFactor * targetMergeTimeHours
+	}
+	extRemodelDeliveryDelayCost := remodelDeliveryDelayCost / samples * multiplier
+
+	// Recalculate code churn with 40-minute PRs
+	// Code churn is proportional to PR duration (rework percentage increases with time)
+	// For 40 minutes, rework percentage would be minimal (< 1 day, so ~0%)
+	extRemodelCodeChurnCost := 0.0 // 40 minutes is too short for meaningful code churn
+
+	// Recalculate automated updates cost
+	// Automated updates are calculated based on PR duration
+	// With 40-minute PRs, no bot updates would be needed (happens after 1 day)
+	extRemodelAutomatedUpdatesCost := 0.0 // 40 minutes is too short for automated updates
+
+	// Recalculate PR tracking cost
+	// With faster merge times, we'd have fewer open PRs at any given time
+	// Estimate: if current avg is X hours, and we reduce to 40 min, open PRs would be (40min / X hours) of current
+	var extRemodelPRTrackingCost float64
+	var currentAvgOpenTime float64
+	if successfulSamples > 0 {
+		currentAvgOpenTime = sumPRDuration / samples
+	}
+	if currentAvgOpenTime > 0 {
+		openPRReductionRatio := targetMergeTimeHours / currentAvgOpenTime
+		extRemodelPRTrackingCost = extPRTrackingCost * openPRReductionRatio
+	} else {
+		extRemodelPRTrackingCost = 0.0
+	}
+
+	// Calculate re-modeled annual waste
+	remodelPreventablePerPeriod := extRemodelDeliveryDelayCost + extRemodelCodeChurnCost + extRemodelAutomatedUpdatesCost + extRemodelPRTrackingCost
+	remodelAnnualWaste := remodelPreventablePerPeriod * (52.0 / (float64(daysInPeriod) / 7.0))
+
+	// Subtract R2R subscription cost: $4/mo * 12 months * unique user count
+	r2rAnnualCost := 4.0 * 12.0 * float64(uniqueUserCount)
+
+	// Calculate savings
+	r2rSavings := baselineAnnualWaste - remodelAnnualWaste - r2rAnnualCost
+	if r2rSavings < 0 {
+		r2rSavings = 0 // Don't show negative savings
+	}
+
 	return ExtrapolatedBreakdown{
 		TotalPRs:                   totalPRs,
 		HumanPRs:                   extHumanPRs,
@@ -390,5 +459,8 @@ func ExtrapolateFromSamples(breakdowns []Breakdown, totalPRs, totalAuthors, actu
 
 		TotalCost:  extTotalCost,
 		TotalHours: extTotalHours,
+
+		UniqueNonBotUsers: uniqueUserCount,
+		R2RSavings:        r2rSavings,
 	}
 }
