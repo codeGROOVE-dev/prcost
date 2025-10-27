@@ -555,8 +555,8 @@ func deduplicatePRsByOwnerRepoNumber(prs []PRSummary) []PRSummary {
 	return unique
 }
 
-// isBot returns true if the author name indicates a bot account.
-func isBot(author string) bool {
+// IsBot returns true if the author name indicates a bot account.
+func IsBot(author string) bool {
 	// Check for common bot name patterns
 	if strings.HasSuffix(author, "[bot]") || strings.Contains(author, "-bot-") {
 		return true
@@ -583,6 +583,17 @@ func isBot(author string) bool {
 	}
 
 	return false
+}
+
+// CountBotPRs counts how many PRs in the list are authored by bots.
+func CountBotPRs(prs []PRSummary) int {
+	count := 0
+	for _, pr := range prs {
+		if IsBot(pr.Author) {
+			count++
+		}
+	}
+	return count
 }
 
 // SamplePRs uses a time-bucket strategy to evenly sample PRs across the time range.
@@ -692,7 +703,7 @@ func SamplePRs(prs []PRSummary, sampleSize int) []PRSummary {
 func CountUniqueAuthors(prs []PRSummary) int {
 	uniqueAuthors := make(map[string]bool)
 	for _, pr := range prs {
-		if !isBot(pr.Author) {
+		if !IsBot(pr.Author) {
 			uniqueAuthors[pr.Author] = true
 		}
 	}
