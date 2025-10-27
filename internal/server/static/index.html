@@ -1624,7 +1624,7 @@
                 output += `    Automated Updates          ${formatCurrency(avgAutomatedUpdatesCost).padStart(10)}    ${formatTimeUnit(avgAutomatedUpdatesHours)}  (${e.bot_prs} PRs)\n`;
             }
             if (avgPRTrackingCost > 0.01) {
-                output += `    PR Tracking           ${formatCurrency(avgPRTrackingCost).padStart(10)}    ${formatTimeUnit(avgPRTrackingHours)}  (${e.open_prs} open PRs)\n`;
+                output += `    PR Tracking                ${formatCurrency(avgPRTrackingCost).padStart(10)}    ${formatTimeUnit(avgPRTrackingHours)}  (${e.open_prs} open PRs)\n`;
             }
             const avgMergeDelayCost = avgDeliveryDelayCost + avgCodeChurnCost + avgAutomatedUpdatesCost + avgPRTrackingCost;
             const avgMergeDelayHours = avgDeliveryDelayHours + avgCodeChurnHours + avgAutomatedUpdatesHours + avgPRTrackingHours;
@@ -1654,11 +1654,6 @@
                 output += '                                ──────────\n';
                 pct = (avgFutureCost / avgTotalCost) * 100;
                 output += `    Subtotal                   ${formatCurrency(avgFutureCost).padStart(10)}    ${formatTimeUnit(avgFutureHours)}  (${pct.toFixed(1)}%)\n\n`;
-            }
-
-            // Weekly waste per PR author
-            if (e.waste_hours_per_author_per_week > 0 && e.total_authors > 0) {
-                output += `  Weekly waste per PR author:       ${formatCurrency(e.waste_cost_per_author_per_week).padStart(10)}    ${formatTimeUnit(e.waste_hours_per_author_per_week)}  (${e.total_authors} authors)\n`;
             }
 
             // Average Preventable Loss Total (before grand total)
@@ -1693,7 +1688,7 @@
 
             // Show bot PR LOC even though cost is $0
             if ((e.bot_prs || 0) > 0) {
-                output += `    Automated Updates              —         ${formatTimeUnit(0)}  (${e.bot_prs} PRs, ${botLOC.toFixed(1)}k LOC)\n`;
+                output += `    Automated Updates          —             ${formatTimeUnit(0)}  (${e.bot_prs} PRs, ${botLOC.toFixed(1)}k LOC)\n`;
             }
 
             output += '                                ──────────\n';
@@ -1732,7 +1727,7 @@
                 output += `    Automated Updates          ${formatCurrency(e.automated_updates_cost).padStart(10)}    ${formatTimeUnit(e.automated_updates_hours)}  (${e.bot_prs || 0} PRs)\n`;
             }
             if ((e.pr_tracking_cost || 0) > 0) {
-                output += `    PR Tracking           ${formatCurrency(e.pr_tracking_cost).padStart(10)}    ${formatTimeUnit(e.pr_tracking_hours)}  (${e.open_prs || 0} open PRs)\n`;
+                output += `    PR Tracking                ${formatCurrency(e.pr_tracking_cost).padStart(10)}    ${formatTimeUnit(e.pr_tracking_hours)}  (${e.open_prs || 0} open PRs)\n`;
             }
 
             const mergeDelayCost = (e.delivery_delay_cost || 0) + (e.code_churn_cost || 0) + (e.automated_updates_cost || 0) + (e.pr_tracking_cost || 0);
@@ -1769,14 +1764,14 @@
 
             // Weekly waste per PR author
             if ((e.waste_hours_per_author_per_week || 0) > 0 && (e.total_authors || 0) > 0) {
-                output += `  Weekly waste per PR author:     ${formatCurrency(e.waste_cost_per_author_per_week).padStart(10)}    ${formatTimeUnit(e.waste_hours_per_author_per_week)}  (${e.total_authors} authors)\n`;
+                output += `  Weekly waste per PR author:     ${formatCurrency(e.waste_cost_per_author_per_week).padStart(12)}    ${formatTimeUnit(e.waste_hours_per_author_per_week)}  (${e.total_authors} authors)\n`;
             }
 
             // Preventable Loss Total (before grand total)
             const preventableCost = (e.code_churn_cost || 0) + (e.delivery_delay_cost || 0) + (e.automated_updates_cost || 0) + (e.pr_tracking_cost || 0);
             const preventableHours = (e.code_churn_hours || 0) + (e.delivery_delay_hours || 0) + (e.automated_updates_hours || 0) + (e.pr_tracking_hours || 0);
             const preventablePct = (preventableCost / e.total_cost) * 100;
-            output += `  Total Preventable Waste (${days} days):  ${formatCurrency(preventableCost).padStart(10)}    ${formatTimeUnit(preventableHours)}  (${preventablePct.toFixed(1)}%)\n`;
+            output += `  Preventable Loss Total       ${formatCurrency(preventableCost).padStart(10)}    ${formatTimeUnit(preventableHours)}  (${preventablePct.toFixed(1)}%)\n`;
 
             // Total
             output += '  ════════════════════════════════════════════════════\n';
