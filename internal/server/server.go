@@ -15,6 +15,7 @@ import (
 	"os"
 	"os/exec"
 	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -440,7 +441,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Access-Control-Allow-Origin", origin)
 		w.Header().Set("Vary", "Origin")
 	}
-	w.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS")
+	w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
 	w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
 
 	// Handle preflight OPTIONS request.
@@ -452,19 +453,19 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// Route requests.
 	switch {
 	case r.URL.Path == "/v1/calculate":
-		if r.Method != http.MethodPost {
+		if r.Method != http.MethodPost && r.Method != http.MethodGet {
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 			return
 		}
 		s.handleCalculate(w, r)
 	case r.URL.Path == "/v1/calculate/repo":
-		if r.Method != http.MethodPost {
+		if r.Method != http.MethodPost && r.Method != http.MethodGet {
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 			return
 		}
 		s.handleRepoSample(w, r)
 	case r.URL.Path == "/v1/calculate/org":
-		if r.Method != http.MethodPost {
+		if r.Method != http.MethodPost && r.Method != http.MethodGet {
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 			return
 		}
@@ -576,14 +577,39 @@ func (s *Server) handleCalculate(writer http.ResponseWriter, request *http.Reque
 
 // parseRequest parses and validates the incoming request.
 func (s *Server) parseRequest(ctx context.Context, r *http.Request) (*CalculateRequest, error) {
-	// SECURITY: Limit request body size to prevent memory exhaustion DoS.
-	const maxRequestSize = 1 << 20 // 1MB
-	r.Body = http.MaxBytesReader(nil, r.Body, maxRequestSize)
-
 	var req CalculateRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		s.logger.ErrorContext(ctx, "[parseRequest] Failed to decode JSON", errorKey, sanitizeError(err))
-		return nil, fmt.Errorf("invalid JSON: %w", err)
+
+	// Handle GET requests with query parameters
+	if r.Method == http.MethodGet {
+		req.URL = r.URL.Query().Get("url")
+
+		// Parse optional config parameters
+		if salaryStr := r.URL.Query().Get("salary"); salaryStr != "" {
+			if req.Config == nil {
+				req.Config = &cost.Config{}
+			}
+			if salary, err := strconv.ParseFloat(salaryStr, 64); err == nil {
+				req.Config.AnnualSalary = salary
+			}
+		}
+		if benefitsStr := r.URL.Query().Get("benefits"); benefitsStr != "" {
+			if req.Config == nil {
+				req.Config = &cost.Config{}
+			}
+			if benefits, err := strconv.ParseFloat(benefitsStr, 64); err == nil {
+				req.Config.BenefitsMultiplier = benefits
+			}
+		}
+	} else {
+		// Handle POST requests with JSON body
+		// SECURITY: Limit request body size to prevent memory exhaustion DoS.
+		const maxRequestSize = 1 << 20 // 1MB
+		r.Body = http.MaxBytesReader(nil, r.Body, maxRequestSize)
+
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			s.logger.ErrorContext(ctx, "[parseRequest] Failed to decode JSON", errorKey, sanitizeError(err))
+			return nil, fmt.Errorf("invalid JSON: %w", err)
+		}
 	}
 
 	if req.URL == "" {
@@ -1098,13 +1124,49 @@ func (s *Server) handleOrgSample(writer http.ResponseWriter, request *http.Reque
 
 // parseRepoSampleRequest parses and validates repository sampling requests.
 func (s *Server) parseRepoSampleRequest(ctx context.Context, r *http.Request) (*RepoSampleRequest, error) {
-	const maxRequestSize = 1 << 20 // 1MB
-	r.Body = http.MaxBytesReader(nil, r.Body, maxRequestSize)
-
 	var req RepoSampleRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		s.logger.ErrorContext(ctx, "[parseRepoSampleRequest] Failed to decode JSON", errorKey, sanitizeError(err))
-		return nil, fmt.Errorf("invalid JSON: %w", err)
+
+	// Handle GET requests with query parameters
+	if r.Method == http.MethodGet {
+		req.Owner = r.URL.Query().Get("owner")
+		req.Repo = r.URL.Query().Get("repo")
+
+		// Parse optional parameters
+		if sampleStr := r.URL.Query().Get("sample"); sampleStr != "" {
+			if sample, err := strconv.Atoi(sampleStr); err == nil {
+				req.SampleSize = sample
+			}
+		}
+		if daysStr := r.URL.Query().Get("days"); daysStr != "" {
+			if days, err := strconv.Atoi(daysStr); err == nil {
+				req.Days = days
+			}
+		}
+		if salaryStr := r.URL.Query().Get("salary"); salaryStr != "" {
+			if req.Config == nil {
+				req.Config = &cost.Config{}
+			}
+			if salary, err := strconv.ParseFloat(salaryStr, 64); err == nil {
+				req.Config.AnnualSalary = salary
+			}
+		}
+		if benefitsStr := r.URL.Query().Get("benefits"); benefitsStr != "" {
+			if req.Config == nil {
+				req.Config = &cost.Config{}
+			}
+			if benefits, err := strconv.ParseFloat(benefitsStr, 64); err == nil {
+				req.Config.BenefitsMultiplier = benefits
+			}
+		}
+	} else {
+		// Handle POST requests with JSON body
+		const maxRequestSize = 1 << 20 // 1MB
+		r.Body = http.MaxBytesReader(nil, r.Body, maxRequestSize)
+
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			s.logger.ErrorContext(ctx, "[parseRepoSampleRequest] Failed to decode JSON", errorKey, sanitizeError(err))
+			return nil, fmt.Errorf("invalid JSON: %w", err)
+		}
 	}
 
 	if req.Owner == "" {
@@ -1138,13 +1200,48 @@ func (s *Server) parseRepoSampleRequest(ctx context.Context, r *http.Request) (*
 
 // parseOrgSampleRequest parses and validates organization sampling requests.
 func (s *Server) parseOrgSampleRequest(ctx context.Context, r *http.Request) (*OrgSampleRequest, error) {
-	const maxRequestSize = 1 << 20 // 1MB
-	r.Body = http.MaxBytesReader(nil, r.Body, maxRequestSize)
-
 	var req OrgSampleRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		s.logger.ErrorContext(ctx, "[parseOrgSampleRequest] Failed to decode JSON", errorKey, sanitizeError(err))
-		return nil, fmt.Errorf("invalid JSON: %w", err)
+
+	// Handle GET requests with query parameters
+	if r.Method == http.MethodGet {
+		req.Org = r.URL.Query().Get("org")
+
+		// Parse optional parameters
+		if sampleStr := r.URL.Query().Get("sample"); sampleStr != "" {
+			if sample, err := strconv.Atoi(sampleStr); err == nil {
+				req.SampleSize = sample
+			}
+		}
+		if daysStr := r.URL.Query().Get("days"); daysStr != "" {
+			if days, err := strconv.Atoi(daysStr); err == nil {
+				req.Days = days
+			}
+		}
+		if salaryStr := r.URL.Query().Get("salary"); salaryStr != "" {
+			if req.Config == nil {
+				req.Config = &cost.Config{}
+			}
+			if salary, err := strconv.ParseFloat(salaryStr, 64); err == nil {
+				req.Config.AnnualSalary = salary
+			}
+		}
+		if benefitsStr := r.URL.Query().Get("benefits"); benefitsStr != "" {
+			if req.Config == nil {
+				req.Config = &cost.Config{}
+			}
+			if benefits, err := strconv.ParseFloat(benefitsStr, 64); err == nil {
+				req.Config.BenefitsMultiplier = benefits
+			}
+		}
+	} else {
+		// Handle POST requests with JSON body
+		const maxRequestSize = 1 << 20 // 1MB
+		r.Body = http.MaxBytesReader(nil, r.Body, maxRequestSize)
+
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			s.logger.ErrorContext(ctx, "[parseOrgSampleRequest] Failed to decode JSON", errorKey, sanitizeError(err))
+			return nil, fmt.Errorf("invalid JSON: %w", err)
+		}
 	}
 
 	if req.Org == "" {

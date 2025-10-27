@@ -261,6 +261,35 @@
             border-color: #86868b;
         }
 
+        select {
+            width: 100%;
+            padding: 12px 16px;
+            border: 1.5px solid #d2d2d7;
+            font-size: 17px;
+            font-family: inherit;
+            font-weight: 400;
+            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+            border-radius: 10px;
+            background: #fff;
+            cursor: pointer;
+            appearance: none;
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%231d1d1f' d='M6 9L1 4h10z'/%3E%3C/svg%3E");
+            background-repeat: no-repeat;
+            background-position: right 16px center;
+            padding-right: 44px;
+        }
+
+        select:focus {
+            outline: 3px solid #007aff;
+            outline-offset: 2px;
+            border-color: #007aff;
+            box-shadow: 0 0 0 3px rgba(0, 122, 255, 0.15);
+        }
+
+        select:hover:not(:focus) {
+            border-color: #86868b;
+        }
+
         button {
             padding: 14px 32px;
             border: 2px solid #1d1d1f;
@@ -590,6 +619,14 @@
         .efficiency-annual-time {
             font-size: 14px;
             color: #6e6e73;
+        }
+
+        .efficiency-box {
+            background: #ffffff;
+            padding: 20px;
+            border-radius: 10px;
+            border: 1.5px solid #e5e5ea;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
         }
 
         .efficiency-callout {
@@ -988,13 +1025,11 @@
                     </div>
                     <div class="form-group">
                         <label for="repoDays">Days Back</label>
-                        <input
-                            type="number"
-                            id="repoDays"
-                            value="90"
-                            min="1"
-                            max="365"
-                        >
+                        <select id="repoDays">
+                            <option value="30">30 days</option>
+                            <option value="60" selected>60 days</option>
+                            <option value="90">90 days</option>
+                        </select>
                         <div class="help-text">Number of days to look back</div>
                     </div>
                 </div>
@@ -1030,13 +1065,11 @@
                     </div>
                     <div class="form-group">
                         <label for="orgDays">Days Back</label>
-                        <input
-                            type="number"
-                            id="orgDays"
-                            value="90"
-                            min="1"
-                            max="365"
-                        >
+                        <select id="orgDays">
+                            <option value="30">30 days</option>
+                            <option value="60" selected>60 days</option>
+                            <option value="90">90 days</option>
+                        </select>
                         <div class="help-text">Number of days to look back</div>
                     </div>
                 </div>
@@ -1150,6 +1183,12 @@
                 document.getElementById('prFields').classList.toggle('hidden', mode !== 'pr');
                 document.getElementById('repoFields').classList.toggle('hidden', mode !== 'repo');
                 document.getElementById('orgFields').classList.toggle('hidden', mode !== 'org');
+
+                // Update URL with mode parameter
+                const params = new URLSearchParams(window.location.search);
+                params.set('mode', mode);
+                const newUrl = `${window.location.pathname}?${params.toString()}`;
+                window.history.replaceState({ mode }, '', newUrl);
             });
         });
 
@@ -1223,74 +1262,84 @@
         }
 
         function efficiencyGrade(efficiencyPct) {
-            // MIT grading scale
             if (efficiencyPct >= 97) {
-                return { grade: 'A+', message: 'Outstanding!' };
+                return { grade: 'A+', message: 'Impeccable' };
             } else if (efficiencyPct >= 93) {
-                return { grade: 'A', message: 'Excellent!' };
+                return { grade: 'A', message: 'Excellent' };
             } else if (efficiencyPct >= 90) {
-                return { grade: 'A-', message: 'Great work!' };
+                return { grade: 'A-', message: 'Nearly excellent' };
             } else if (efficiencyPct >= 87) {
-                return { grade: 'B+', message: 'Pretty good!' };
+                return { grade: 'B+', message: 'Acceptable+' };
             } else if (efficiencyPct >= 83) {
-                return { grade: 'B', message: 'Minor inefficiency detected.' };
+                return { grade: 'B', message: 'Acceptable' };
             } else if (efficiencyPct >= 80) {
-                return { grade: 'B-', message: 'Minor inefficiency detected.' };
-            } else if (efficiencyPct >= 77) {
-                return { grade: 'C+', message: 'Some inefficiency detected.' };
-            } else if (efficiencyPct >= 73) {
-                return { grade: 'C', message: 'Moderate inefficiency detected.' };
+                return { grade: 'B-', message: 'Nearly acceptable' };
             } else if (efficiencyPct >= 70) {
-                return { grade: 'C-', message: 'Moderate inefficiency detected.' };
-            } else if (efficiencyPct >= 67) {
-                return { grade: 'D+', message: 'Noticeable inefficiency detected.' };
-            } else if (efficiencyPct >= 63) {
-                return { grade: 'D', message: 'Significant inefficiency detected.' };
+                return { grade: 'C', message: 'Average' };
             } else if (efficiencyPct >= 60) {
-                return { grade: 'D-', message: 'Severe inefficiency detected.' };
+                return { grade: 'D', message: 'Not good my friend.' };
             } else {
-                return { grade: 'F', message: 'Critical inefficiency detected.' };
+                return { grade: 'F', message: 'Failing' };
             }
         }
 
-        function formatEfficiencyHTML(efficiencyPct, grade, message, preventableCost, preventableHours, totalCost, totalHours, isAnnual = false, annualWasteCost = 0, annualWasteHours = 0, wasteHoursPerWeek = 0, wasteCostPerWeek = 0, wasteHoursPerAuthorPerWeek = 0, wasteCostPerAuthorPerWeek = 0, totalAuthors = 0, salary = 250000, benefitsMultiplier = 1.2, analysisType = 'project', sourceName = '') {
+        function mergeVelocityGrade(avgOpenHours) {
+            if (avgOpenHours <= 4) {
+                return { grade: 'A+', message: 'Impeccable' };
+            } else if (avgOpenHours <= 8) {
+                return { grade: 'A', message: 'Excellent' };
+            } else if (avgOpenHours <= 12) {
+                return { grade: 'A-', message: 'Nearly excellent' };
+            } else if (avgOpenHours <= 18) {
+                return { grade: 'B+', message: 'Acceptable+' };
+            } else if (avgOpenHours <= 24) {
+                return { grade: 'B', message: 'Acceptable' };
+            } else if (avgOpenHours <= 36) {
+                return { grade: 'B-', message: 'Nearly acceptable' };
+            } else if (avgOpenHours <= 100) {
+                return { grade: 'C', message: 'Average' };
+            } else if (avgOpenHours <= 120) {
+                return { grade: 'D', message: 'Not good my friend.' };
+            } else {
+                return { grade: 'F', message: 'Failing' };
+            }
+        }
+
+        function formatEfficiencyHTML(efficiencyPct, grade, message, preventableCost, preventableHours, totalCost, totalHours, avgOpenHours, isAnnual = false, annualWasteCost = 0, annualWasteHours = 0, wasteHoursPerWeek = 0, wasteCostPerWeek = 0, wasteHoursPerAuthorPerWeek = 0, wasteCostPerAuthorPerWeek = 0, totalAuthors = 0, salary = 250000, benefitsMultiplier = 1.2, analysisType = 'project', sourceName = '') {
             let html = '<div class="efficiency-section">';
-            html += '<h2>Workflow Efficiency</h2>';
 
-            html += '<div class="efficiency-content">';
-
-            // Left side: Score, grade, and message
-            html += '<div>';
-            html += '<div class="efficiency-score">';
-            html += `<div class="efficiency-percentage">${efficiencyPct.toFixed(1)}%</div>`;
-            html += `<div class="efficiency-grade grade-${grade[0]}">${grade}</div>`;
+            // Development Efficiency box
+            html += '<div class="efficiency-box" style="margin-bottom: 16px;">';
+            html += '<h3 style="margin: 0 0 12px 0; font-size: 15px; font-weight: 600; color: #1d1d1f;">Development Efficiency</h3>';
+            html += '<div style="display: flex; align-items: center; gap: 12px; margin-bottom: 6px;">';
+            html += `<span class="efficiency-grade grade-${grade[0]}" style="display: inline-block; min-width: 42px; padding: 4px 8px; border-radius: 6px; font-size: 18px; font-weight: 700; text-align: center; background: rgba(0,0,0,0.06);">${grade}</span>`;
+            html += `<span style="font-size: 32px; font-weight: 700; color: #1d1d1f;">${efficiencyPct.toFixed(1)}%</span>`;
+            html += '</div>';
             html += `<div class="efficiency-message">${message}</div>`;
-            html += '</div>';
-            html += '</div>';
+            html += '</div>'; // Close efficiency-box
 
-            // Right side: Annual wasted effort (only if annual)
-            if (isAnnual) {
-                html += '<div class="efficiency-annual">';
-                html += '<div class="efficiency-annual-label">If Sustained for 1 Year</div>';
+            // Merge Velocity box
+            const velocityGradeObj = mergeVelocityGrade(avgOpenHours);
+            html += '<div class="efficiency-box" style="margin-bottom: 16px;">';
+            html += '<h3 style="margin: 0 0 12px 0; font-size: 15px; font-weight: 600; color: #1d1d1f;">Average Merge Velocity</h3>';
+            html += '<div style="display: flex; align-items: center; gap: 12px; margin-bottom: 6px;">';
+            html += `<span class="efficiency-grade grade-${velocityGradeObj.grade[0]}" style="display: inline-block; min-width: 42px; padding: 4px 8px; border-radius: 6px; font-size: 18px; font-weight: 700; text-align: center; background: rgba(0,0,0,0.06);">${velocityGradeObj.grade}</span>`;
+            html += `<span style="font-size: 32px; font-weight: 700; color: #1d1d1f;">${formatTimeUnit(avgOpenHours)}</span>`;
+            html += '</div>';
+            html += `<div class="efficiency-message">${velocityGradeObj.message}</div>`;
+            html += '</div>'; // Close efficiency-box
+
+            // Annual Impact box (only if annual)
+            if (isAnnual && annualWasteCost > 0) {
+                html += '<div class="efficiency-box" style="background: linear-gradient(135deg, #fff9e6 0%, #ffffff 100%); border-left: 3px solid #ffcc00;">';
+                html += '<h3 style="margin: 0 0 12px 0; font-size: 15px; font-weight: 600; color: #1d1d1f;">Projected Annual Waste</h3>';
                 const annualWasteRounded = Math.round(annualWasteCost);
                 const annualWasteFormatted = '$' + annualWasteRounded.toLocaleString('en-US');
-                html += `<div class="efficiency-annual-value">${annualWasteFormatted}</div>`;
-                // Calculate headcount from annual waste
+                html += `<div style="font-size: 32px; font-weight: 700; color: #1d1d1f; margin-bottom: 4px;">${annualWasteFormatted}</div>`;
                 const annualCostPerHead = salary * benefitsMultiplier;
                 const headcount = annualWasteCost / annualCostPerHead;
-                html += `<div class="efficiency-annual-time">${headcount.toFixed(1)} headcount</div>`;
-                html += '</div>';
-            }
-
-            html += '</div>'; // Close efficiency-content
-
-            // Show weekly waste per PR author if available
-            if (isAnnual && wasteHoursPerAuthorPerWeek > 0 && totalAuthors > 0) {
-                html += '<div class="efficiency-details" style="margin-top: 20px; padding: 16px; background: #f5f5f5; border-radius: 8px;">';
-                const perAuthorCostFormatted = '$' + Math.round(wasteCostPerAuthorPerWeek).toLocaleString('en-US');
-                const perAuthorHoursFormatted = wasteHoursPerAuthorPerWeek.toFixed(1);
-                html += `<p style="margin: 0; font-size: 14px; color: #666;"><strong>Weekly waste per PR author:</strong> ${perAuthorCostFormatted} • ${perAuthorHoursFormatted} hrs (${totalAuthors} authors)</p>`;
-                html += '</div>';
+                html += `<div class="efficiency-message">${headcount.toFixed(1)} headcount • ${formatTimeUnit(annualWasteHours)}</div>`;
+                html += '</div>'; // Close efficiency-box
             }
 
             html += '</div>';
@@ -1648,52 +1697,72 @@
             if (coordFactor) config.coordination_factor = parseFloat(coordFactor);
 
             // Build request based on mode
-            let endpoint, request, useStreaming = false;
+            let endpoint, request, useStreaming = false, queryParams = new URLSearchParams();
+
             if (mode === 'pr') {
                 endpoint = '/v1/calculate';
-                request = {
-                    url: document.getElementById('prUrl').value.trim()
-                };
+                const prUrl = document.getElementById('prUrl').value.trim();
+                request = { url: prUrl };
+                queryParams.set('url', prUrl);
             } else if (mode === 'repo') {
                 endpoint = '/v1/calculate/repo/stream';
                 useStreaming = true;
-                request = {
-                    owner: document.getElementById('repoOwner').value.trim(),
-                    repo: document.getElementById('repoName').value.trim()
-                };
+                const owner = document.getElementById('repoOwner').value.trim();
+                const repo = document.getElementById('repoName').value.trim();
+                request = { owner, repo };
+                queryParams.set('owner', owner);
+                queryParams.set('repo', repo);
+
                 const sampleSize = document.getElementById('repoSampleSize').value;
                 const days = document.getElementById('repoDays').value;
-                if (sampleSize) request.sample_size = parseInt(sampleSize);
-                if (days) request.days = parseInt(days);
+                if (sampleSize) {
+                    request.sample_size = parseInt(sampleSize);
+                    queryParams.set('sample', sampleSize);
+                }
+                if (days) {
+                    request.days = parseInt(days);
+                    queryParams.set('days', days);
+                }
             } else {
                 endpoint = '/v1/calculate/org/stream';
                 useStreaming = true;
-                request = {
-                    org: document.getElementById('orgName').value.trim()
-                };
+                const org = document.getElementById('orgName').value.trim();
+                request = { org };
+                queryParams.set('org', org);
+
                 const sampleSize = document.getElementById('orgSampleSize').value;
                 const days = document.getElementById('orgDays').value;
-                if (sampleSize) request.sample_size = parseInt(sampleSize);
-                if (days) request.days = parseInt(days);
+                if (sampleSize) {
+                    request.sample_size = parseInt(sampleSize);
+                    queryParams.set('sample', sampleSize);
+                }
+                if (days) {
+                    request.days = parseInt(days);
+                    queryParams.set('days', days);
+                }
             }
 
-            // Add config if present
+            // Add config to both request and query params
             if (Object.keys(config).length > 0) {
                 request.config = config;
+                if (config.annual_salary) queryParams.set('salary', config.annual_salary);
+                if (config.benefits_multiplier) queryParams.set('benefits', config.benefits_multiplier);
             }
+
+            // Update browser URL
+            queryParams.set('mode', mode);
+            const newUrl = `${window.location.pathname}?${queryParams.toString()}`;
+            window.history.pushState({ mode }, '', newUrl);
 
             try {
                 if (useStreaming) {
-                    // Use Server-Sent Events for streaming progress
+                    // Use Server-Sent Events for streaming progress (keep POST for streaming)
                     await handleStreamingRequest(endpoint, request, resultDiv);
                 } else {
-                    // Regular fetch for single PR
-                    const response = await fetch(endpoint, {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json'
-                        },
-                        body: JSON.stringify(request)
+                    // Use GET for single PR calculations
+                    const getUrl = `${endpoint}?${queryParams.toString()}`;
+                    const response = await fetch(getUrl, {
+                        method: 'GET'
                     });
 
                     if (!response.ok) {
@@ -1719,7 +1788,7 @@
                     const { grade, message } = efficiencyGrade(efficiencyPct);
 
                     // Generate HTML with efficiency section at top
-                    let html = formatEfficiencyHTML(efficiencyPct, grade, message, preventableCost, preventableHours, b.total_cost, totalHours, false, 0, 0);
+                    let html = formatEfficiencyHTML(efficiencyPct, grade, message, preventableCost, preventableHours, b.total_cost, totalHours, b.pr_duration, false, 0, 0);
                     html += '<div class="result-section">';
                     html += '<h2>Cost Breakdown</h2>';
                     html += '<pre><code>' + formatBreakdown(data) + '</code></pre>';
@@ -1829,7 +1898,8 @@
                                         const wasteHoursPerAuthorPerWeek = e.waste_hours_per_author_per_week || 0;
                                         const wasteCostPerAuthorPerWeek = e.waste_cost_per_author_per_week || 0;
                                         const totalAuthors = e.total_authors || 0;
-                                        html += formatEfficiencyHTML(extEfficiencyPct, extEfficiency.grade, extEfficiency.message, extPreventableCost, extPreventableHours, e.total_cost, e.total_hours, true, annualWasteCost, annualWasteHours, wasteHoursPerWeek, wasteCostPerWeek, wasteHoursPerAuthorPerWeek, wasteCostPerAuthorPerWeek, totalAuthors, salary, benefitsMultiplier, analysisType, sourceName);
+                                        const avgPRDurationHours = e.avg_pr_duration_hours || 0;
+                                        html += formatEfficiencyHTML(extEfficiencyPct, extEfficiency.grade, extEfficiency.message, extPreventableCost, extPreventableHours, e.total_cost, e.total_hours, avgPRDurationHours, true, annualWasteCost, annualWasteHours, wasteHoursPerWeek, wasteCostPerWeek, wasteHoursPerAuthorPerWeek, wasteCostPerAuthorPerWeek, totalAuthors, salary, benefitsMultiplier, analysisType, sourceName);
 
                                         // Calculate average PR efficiency
                                         const totalPRs = e.total_prs;
@@ -1907,6 +1977,54 @@
                 });
             });
         }
+
+        // Initialize page - check for URL parameters and auto-load
+        window.addEventListener('DOMContentLoaded', () => {
+            const params = new URLSearchParams(window.location.search);
+
+            if (params.size === 0) return;
+
+            // Determine mode
+            let mode = params.get('mode');
+            if (!mode) {
+                // Infer mode from parameters
+                if (params.has('url')) mode = 'pr';
+                else if (params.has('owner') && params.has('repo')) mode = 'repo';
+                else if (params.has('org')) mode = 'org';
+            }
+
+            if (!mode) return;
+
+            // Set mode radio button
+            const modeRadio = document.querySelector(`input[name="mode"][value="${mode}"]`);
+            if (modeRadio) {
+                modeRadio.checked = true;
+                modeRadio.dispatchEvent(new Event('change'));
+            }
+
+            // Populate fields based on mode
+            if (mode === 'pr' && params.has('url')) {
+                document.getElementById('prUrl').value = params.get('url');
+            } else if (mode === 'repo') {
+                if (params.has('owner')) document.getElementById('repoOwner').value = params.get('owner');
+                if (params.has('repo')) document.getElementById('repoName').value = params.get('repo');
+                if (params.has('sample')) document.getElementById('repoSampleSize').value = params.get('sample');
+                if (params.has('days')) document.getElementById('repoDays').value = params.get('days');
+            } else if (mode === 'org') {
+                if (params.has('org')) document.getElementById('orgName').value = params.get('org');
+                if (params.has('sample')) document.getElementById('orgSampleSize').value = params.get('sample');
+                if (params.has('days')) document.getElementById('orgDays').value = params.get('days');
+            }
+
+            // Populate advanced config if present
+            if (params.has('salary')) document.getElementById('salary').value = params.get('salary');
+            if (params.has('benefits')) document.getElementById('benefits').value = params.get('benefits');
+
+            // Auto-submit the form
+            setTimeout(() => {
+                document.getElementById('submitBtn').click();
+            }, 100);
+        });
     </script>
 </body>
 </html>

@@ -460,24 +460,24 @@ func efficiencyGrade(efficiencyPct float64) (string, string) {
 }
 
 // mergeVelocityGrade returns a grade based on average PR open time in days.
-// A: 1 day or less, B: 2.5 days or less, C: 2.5-4 days, D: 4-5 days, F: 5+ days.
+// A+: 4h, A: 8h, A-: 12h, B+: 18h, B: 24h, B-: 36h, C: 100h, D: 120h, F: 120h+
 func mergeVelocityGrade(avgOpenDays float64) (string, string) {
 	switch {
-	case avgOpenDays <= 0.1875: // 4.5 hours
+	case avgOpenDays <= 0.1667: // 4 hours
 		return "A+", "Impeccable"
-	case avgOpenDays <= 1.0:
+	case avgOpenDays <= 0.3333: // 8 hours
 		return "A", "Excellent"
-	case avgOpenDays <= 1.5:
+	case avgOpenDays <= 0.5: // 12 hours
 		return "A-", "Nearly excellent"
-	case avgOpenDays <= 2.0:
+	case avgOpenDays <= 0.75: // 18 hours
 		return "B+", "Acceptable+"
-	case avgOpenDays <= 2.5:
+	case avgOpenDays <= 1.0: // 24 hours
 		return "B", "Acceptable"
-	case avgOpenDays <= 3.0:
+	case avgOpenDays <= 1.5: // 36 hours
 		return "B-", "Nearly acceptable"
-	case avgOpenDays <= 4.0:
+	case avgOpenDays <= 4.1667: // 100 hours
 		return "C", "Average"
-	case avgOpenDays <= 5.0:
+	case avgOpenDays <= 5.0: // 120 hours
 		return "D", "Not good my friend."
 	default:
 		return "F", "Failing"
