@@ -48,7 +48,6 @@ func FetchPRsFromRepo(ctx context.Context, owner, repo string, since time.Time, 
 		return nil, err
 	}
 
-
 	// If we didn't hit the limit, we got all PRs within the period - done!
 	if !hitLimit {
 		return recent, nil

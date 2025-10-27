@@ -60,7 +60,6 @@ func isBotAuthor(author string) bool {
 // Uses library functions from pkg/github and pkg/cost for fetching, sampling,
 // and extrapolation - all functionality is available to external clients.
 func analyzeRepository(ctx context.Context, owner, repo string, sampleSize, days int, cfg cost.Config, token string, dataSource string) error {
-
 	// Calculate since date
 	since := time.Now().AddDate(0, 0, -days)
 
@@ -283,28 +282,13 @@ func analyzeOrganization(ctx context.Context, org string, sampleSize, days int, 
 	// Count unique authors across all PRs (not just samples)
 	totalAuthors := github.CountUniqueAuthors(prs)
 
-	// Count open PRs across all unique repos in the organization
-	uniqueRepos := make(map[string]bool)
-	for _, pr := range prs {
-		repoKey := pr.Owner + "/" + pr.Repo
-		uniqueRepos[repoKey] = true
+	// Count open PRs across the entire organization with a single query
+	totalOpenPRs, err := github.CountOpenPRsInOrg(ctx, org, token)
+	if err != nil {
+		slog.Warn("Failed to count open PRs in organization, using 0", "error", err)
+		totalOpenPRs = 0
 	}
-
-	totalOpenPRs := 0
-	for repoKey := range uniqueRepos {
-		parts := strings.SplitN(repoKey, "/", 2)
-		if len(parts) != 2 {
-			continue
-		}
-		owner, repo := parts[0], parts[1]
-		openCount, err := github.CountOpenPRsInRepo(ctx, owner, repo, token)
-		if err != nil {
-			slog.Warn("Failed to count open PRs for repo", "repo", repoKey, "error", err)
-			continue
-		}
-		totalOpenPRs += openCount
-	}
-	slog.Info("Counted total open PRs across organization", "open_prs", totalOpenPRs, "repos", len(uniqueRepos))
+	slog.Info("Counted total open PRs across organization", "org", org, "open_prs", totalOpenPRs)
 
 	// Extrapolate costs from samples using library function
 	extrapolated := cost.ExtrapolateFromSamples(breakdowns, len(prs), totalAuthors, totalOpenPRs, actualDays, cfg)
@@ -433,14 +417,18 @@ func printExtrapolatedResults(title string, days int, ext *cost.ExtrapolatedBrea
 	fmt.Printf("  Development Costs (%d PRs, %s total LOC)\n", ext.HumanPRs, totalLOCStr)
 	fmt.Println("  ────────────────────────────────────────")
 
+	// Calculate average events and sessions
+	avgAuthorEvents := float64(ext.AuthorEvents) / float64(ext.TotalPRs)
+	avgAuthorSessions := float64(ext.AuthorSessions) / float64(ext.TotalPRs)
+
 	fmt.Printf("    New Development            $%10s    %s  (%s LOC)\n",
 		formatWithCommas(avgAuthorNewCodeCost), formatTimeUnit(avgAuthorNewCodeHours), newLOCStr)
 	fmt.Printf("    Adaptation                 $%10s    %s  (%s LOC)\n",
 		formatWithCommas(avgAuthorAdaptationCost), formatTimeUnit(avgAuthorAdaptationHours), modifiedLOCStr)
-	fmt.Printf("    GitHub Activity            $%10s    %s\n",
-		formatWithCommas(avgAuthorGitHubCost), formatTimeUnit(avgAuthorGitHubHours))
-	fmt.Printf("    Context Switching          $%10s    %s\n",
-		formatWithCommas(avgAuthorGitHubContextCost), formatTimeUnit(avgAuthorGitHubContextHours))
+	fmt.Printf("    GitHub Activity            $%10s    %s  (%.1f events)\n",
+		formatWithCommas(avgAuthorGitHubCost), formatTimeUnit(avgAuthorGitHubHours), avgAuthorEvents)
+	fmt.Printf("    Context Switching          $%10s    %s  (%.1f sessions)\n",
+		formatWithCommas(avgAuthorGitHubContextCost), formatTimeUnit(avgAuthorGitHubContextHours), avgAuthorSessions)
 
 	// Show bot PR LOC even though cost is $0
 	if ext.BotPRs > 0 {
@@ -457,18 +445,23 @@ func printExtrapolatedResults(title string, days int, ext *cost.ExtrapolatedBrea
 
 	// Participants section (if any participants)
 	if ext.ParticipantTotalCost > 0 {
+		avgParticipantEvents := float64(ext.ParticipantEvents) / float64(ext.TotalPRs)
+		avgParticipantSessions := float64(ext.ParticipantSessions) / float64(ext.TotalPRs)
+
+		avgParticipantReviews := float64(ext.ParticipantReviews) / float64(ext.TotalPRs)
+
 		fmt.Println("  Participant Costs")
 		fmt.Println("  ─────────────────")
 		if avgParticipantReviewCost > 0 {
-			fmt.Printf("    Review Activity            $%10s    %s\n",
-				formatWithCommas(avgParticipantReviewCost), formatTimeUnit(avgParticipantReviewHours))
+			fmt.Printf("    Review Activity            $%10s    %s  (%.1f reviews)\n",
+				formatWithCommas(avgParticipantReviewCost), formatTimeUnit(avgParticipantReviewHours), avgParticipantReviews)
 		}
 		if avgParticipantGitHubCost > 0 {
-			fmt.Printf("    GitHub Activity            $%10s    %s\n",
-				formatWithCommas(avgParticipantGitHubCost), formatTimeUnit(avgParticipantGitHubHours))
+			fmt.Printf("    GitHub Activity            $%10s    %s  (%.1f events)\n",
+				formatWithCommas(avgParticipantGitHubCost), formatTimeUnit(avgParticipantGitHubHours), avgParticipantEvents)
 		}
-		fmt.Printf("    Context Switching          $%10s    %s\n",
-			formatWithCommas(avgParticipantContextCost), formatTimeUnit(avgParticipantContextHours))
+		fmt.Printf("    Context Switching          $%10s    %s  (%.1f sessions)\n",
+			formatWithCommas(avgParticipantContextCost), formatTimeUnit(avgParticipantContextHours), avgParticipantSessions)
 		fmt.Println("                                ──────────")
 		participantPct := (avgParticipantTotalCost / avgTotalCost) * 100
 		fmt.Printf("    Subtotal                   $%10s    %s  (%.1f%%)\n",
@@ -533,8 +526,9 @@ func printExtrapolatedResults(title string, days int, ext *cost.ExtrapolatedBrea
 				formatWithCommas(avgFutureMergeCost), formatTimeUnit(avgFutureMergeHours), ext.FutureMergePRCount)
 		}
 		if ext.FutureContextCost > 0.01 {
-			fmt.Printf("    Context Switching          $%10s    %s\n",
-				formatWithCommas(avgFutureContextCost), formatTimeUnit(avgFutureContextHours))
+			avgFutureContextSessions := float64(ext.FutureContextSessions) / float64(ext.TotalPRs)
+			fmt.Printf("    Context Switching          $%10s    %s  (%.1f sessions)\n",
+				formatWithCommas(avgFutureContextCost), formatTimeUnit(avgFutureContextHours), avgFutureContextSessions)
 		}
 		avgFutureCost := avgCodeChurnCost + avgFutureReviewCost + avgFutureMergeCost + avgFutureContextCost
 		avgFutureHours := avgCodeChurnHours + avgFutureReviewHours + avgFutureMergeHours + avgFutureContextHours
@@ -589,10 +583,10 @@ func printExtrapolatedResults(title string, days int, ext *cost.ExtrapolatedBrea
 		formatWithCommas(ext.AuthorNewCodeCost), formatTimeUnit(ext.AuthorNewCodeHours), totalNewLOCStr)
 	fmt.Printf("    Adaptation                 $%10s    %s  (%s LOC)\n",
 		formatWithCommas(ext.AuthorAdaptationCost), formatTimeUnit(ext.AuthorAdaptationHours), totalModifiedLOCStr)
-	fmt.Printf("    GitHub Activity            $%10s    %s\n",
-		formatWithCommas(ext.AuthorGitHubCost), formatTimeUnit(ext.AuthorGitHubHours))
-	fmt.Printf("    Context Switching          $%10s    %s\n",
-		formatWithCommas(ext.AuthorGitHubContextCost), formatTimeUnit(ext.AuthorGitHubContextHours))
+	fmt.Printf("    GitHub Activity            $%10s    %s  (%d events)\n",
+		formatWithCommas(ext.AuthorGitHubCost), formatTimeUnit(ext.AuthorGitHubHours), ext.AuthorEvents)
+	fmt.Printf("    Context Switching          $%10s    %s  (%d sessions)\n",
+		formatWithCommas(ext.AuthorGitHubContextCost), formatTimeUnit(ext.AuthorGitHubContextHours), ext.AuthorSessions)
 
 	// Show bot PR LOC even though cost is $0
 	if ext.BotPRs > 0 {
@@ -612,15 +606,15 @@ func printExtrapolatedResults(title string, days int, ext *cost.ExtrapolatedBrea
 		fmt.Println("  Participant Costs")
 		fmt.Println("  ─────────────────")
 		if ext.ParticipantReviewCost > 0 {
-			fmt.Printf("    Review Activity            $%10s    %s\n",
-				formatWithCommas(ext.ParticipantReviewCost), formatTimeUnit(ext.ParticipantReviewHours))
+			fmt.Printf("    Review Activity            $%10s    %s  (%d reviews)\n",
+				formatWithCommas(ext.ParticipantReviewCost), formatTimeUnit(ext.ParticipantReviewHours), ext.ParticipantReviews)
 		}
 		if ext.ParticipantGitHubCost > 0 {
-			fmt.Printf("    GitHub Activity            $%10s    %s\n",
-				formatWithCommas(ext.ParticipantGitHubCost), formatTimeUnit(ext.ParticipantGitHubHours))
+			fmt.Printf("    GitHub Activity            $%10s    %s  (%d events)\n",
+				formatWithCommas(ext.ParticipantGitHubCost), formatTimeUnit(ext.ParticipantGitHubHours), ext.ParticipantEvents)
 		}
-		fmt.Printf("    Context Switching          $%10s    %s\n",
-			formatWithCommas(ext.ParticipantContextCost), formatTimeUnit(ext.ParticipantContextHours))
+		fmt.Printf("    Context Switching          $%10s    %s  (%d sessions)\n",
+			formatWithCommas(ext.ParticipantContextCost), formatTimeUnit(ext.ParticipantContextHours), ext.ParticipantSessions)
 		fmt.Println("                                ──────────")
 		pct = (ext.ParticipantTotalCost / ext.TotalCost) * 100
 		fmt.Printf("    Subtotal                   $%10s    %s  (%.1f%%)\n",
@@ -681,8 +675,8 @@ func printExtrapolatedResults(title string, days int, ext *cost.ExtrapolatedBrea
 				formatWithCommas(ext.FutureMergeCost), formatTimeUnit(ext.FutureMergeHours), ext.FutureMergePRCount)
 		}
 		if ext.FutureContextCost > 0.01 {
-			fmt.Printf("    Context Switching          $%10s    %s\n",
-				formatWithCommas(ext.FutureContextCost), formatTimeUnit(ext.FutureContextHours))
+			fmt.Printf("    Context Switching          $%10s    %s  (%d sessions)\n",
+				formatWithCommas(ext.FutureContextCost), formatTimeUnit(ext.FutureContextHours), ext.FutureContextSessions)
 		}
 		extFutureCost := ext.CodeChurnCost + ext.FutureReviewCost + ext.FutureMergeCost + ext.FutureContextCost
 		extFutureHours := ext.CodeChurnHours + ext.FutureReviewHours + ext.FutureMergeHours + ext.FutureContextHours

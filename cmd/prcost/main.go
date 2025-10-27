@@ -428,6 +428,13 @@ func formatWithCommas(amount float64) string {
 
 // formatLOC formats lines of code in kilo format with appropriate precision and commas for large values.
 func formatLOC(kloc float64) string {
+	loc := kloc * 1000 // Convert to actual lines
+
+	// For values < 1k LOC, just show LOC count without 'k' suffix
+	if loc < 1000 {
+		return fmt.Sprintf("%d LOC", int(loc))
+	}
+
 	// For values >= 100k, add commas (e.g., "1,517k" instead of "1517k")
 	if kloc >= 100.0 {
 		intPart := int(kloc)

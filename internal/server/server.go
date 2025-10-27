@@ -1412,28 +1412,13 @@ func (s *Server) processOrgSample(ctx context.Context, req *OrgSampleRequest, to
 	// Count unique authors across all PRs (not just samples)
 	totalAuthors := github.CountUniqueAuthors(prs)
 
-	// Count open PRs across all unique repos in the organization
-	uniqueRepos := make(map[string]bool)
-	for _, pr := range prs {
-		repoKey := pr.Owner + "/" + pr.Repo
-		uniqueRepos[repoKey] = true
+	// Count open PRs across the entire organization with a single query
+	totalOpenPRs, err := github.CountOpenPRsInOrg(ctx, req.Org, token)
+	if err != nil {
+		s.logger.WarnContext(ctx, "Failed to count open PRs in organization, using 0", errorKey, err)
+		totalOpenPRs = 0
 	}
-
-	totalOpenPRs := 0
-	for repoKey := range uniqueRepos {
-		parts := strings.SplitN(repoKey, "/", 2)
-		if len(parts) != 2 {
-			continue
-		}
-		owner, repo := parts[0], parts[1]
-		openCount, err := github.CountOpenPRsInRepo(ctx, owner, repo, token)
-		if err != nil {
-			s.logger.WarnContext(ctx, "Failed to count open PRs for repo", "repo", repoKey, errorKey, err)
-			continue
-		}
-		totalOpenPRs += openCount
-	}
-	s.logger.InfoContext(ctx, "Counted total open PRs across organization", "open_prs", totalOpenPRs, "repos", len(uniqueRepos))
+	s.logger.InfoContext(ctx, "Counted total open PRs across organization", "org", req.Org, "open_prs", totalOpenPRs)
 
 	// Extrapolate costs from samples
 	extrapolated := cost.ExtrapolateFromSamples(breakdowns, len(prs), totalAuthors, totalOpenPRs, actualDays, cfg)
