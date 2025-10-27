@@ -93,22 +93,22 @@ type Config struct {
 // DefaultConfig returns reasonable defaults for cost calculation.
 func DefaultConfig() Config {
 	return Config{
-		AnnualSalary:                249000.0,                        // Average Staff Software Engineer salary (2025, Glassdoor)
-		BenefitsMultiplier:          1.3,                             // 30% benefits overhead
-		HoursPerYear:                2080.0,                          // Standard full-time hours
-		EventDuration:               10 * time.Minute,                // 10 minutes per GitHub event
-		ContextSwitchInDuration:     3 * time.Minute,                 // 3 min to context switch in (Microsoft Research)
-		ContextSwitchOutDuration:    16*time.Minute + 33*time.Second, // 16m33s to context switch out (Microsoft Research)
-		SessionGapThreshold:         20 * time.Minute,                // Events within 20 min are same session
-		DeliveryDelayFactor:         0.15,                            // 15% opportunity cost
-		AutomatedUpdatesFactor:      0.01,                            // 1% overhead for bot PRs
-		PRTrackingMinutesPerDay:     1.0,                             // 1 minute per day for PRs open >24 hours
-		MaxDelayAfterLastEvent:      14 * 24 * time.Hour,             // 14 days (2 weeks) after last event
-		MaxProjectDelay:             90 * 24 * time.Hour,             // 90 days absolute max
-		MaxCodeDrift:                90 * 24 * time.Hour,             // 90 days
-		ReviewInspectionRate:        275.0,                           // 275 LOC/hour (average of optimal 150-400 range)
-		ModificationCostFactor:      0.4,                             // Modified code costs 40% of new code
-		COCOMO:                      cocomo.DefaultConfig(),
+		AnnualSalary:             249000.0,                        // Average Staff Software Engineer salary (2025, Glassdoor)
+		BenefitsMultiplier:       1.3,                             // 30% benefits overhead
+		HoursPerYear:             2080.0,                          // Standard full-time hours
+		EventDuration:            10 * time.Minute,                // 10 minutes per GitHub event
+		ContextSwitchInDuration:  3 * time.Minute,                 // 3 min to context switch in (Microsoft Research)
+		ContextSwitchOutDuration: 16*time.Minute + 33*time.Second, // 16m33s to context switch out (Microsoft Research)
+		SessionGapThreshold:      20 * time.Minute,                // Events within 20 min are same session
+		DeliveryDelayFactor:      0.15,                            // 15% opportunity cost
+		AutomatedUpdatesFactor:   0.01,                            // 1% overhead for bot PRs
+		PRTrackingMinutesPerDay:  1.0,                             // 1 minute per day for PRs open >24 hours
+		MaxDelayAfterLastEvent:   14 * 24 * time.Hour,             // 14 days (2 weeks) after last event
+		MaxProjectDelay:          90 * 24 * time.Hour,             // 90 days absolute max
+		MaxCodeDrift:             90 * 24 * time.Hour,             // 90 days
+		ReviewInspectionRate:     275.0,                           // 275 LOC/hour (average of optimal 150-400 range)
+		ModificationCostFactor:   0.4,                             // Modified code costs 40% of new code
+		COCOMO:                   cocomo.DefaultConfig(),
 	}
 }
 

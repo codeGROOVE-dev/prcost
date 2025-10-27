@@ -35,6 +35,10 @@ type ExtrapolatedBreakdown struct {
 	AuthorGitHubContextHours float64 `json:"author_github_context_hours"`
 	AuthorTotalHours         float64 `json:"author_total_hours"`
 
+	// Author activity metrics (extrapolated)
+	AuthorEvents   int `json:"author_events"`   // Total GitHub events by authors
+	AuthorSessions int `json:"author_sessions"` // Total GitHub work sessions by authors
+
 	// LOC metrics (extrapolated totals)
 	TotalNewLines      int `json:"total_new_lines"`      // Total net new lines across all PRs
 	TotalModifiedLines int `json:"total_modified_lines"` // Total modified lines across all PRs
@@ -53,6 +57,11 @@ type ExtrapolatedBreakdown struct {
 	ParticipantGitHubHours  float64 `json:"participant_github_hours"`
 	ParticipantContextHours float64 `json:"participant_context_hours"`
 	ParticipantTotalHours   float64 `json:"participant_total_hours"`
+
+	// Participant activity metrics (extrapolated)
+	ParticipantEvents   int `json:"participant_events"`   // Total GitHub events by participants
+	ParticipantSessions int `json:"participant_sessions"` // Total GitHub work sessions by participants
+	ParticipantReviews  int `json:"participant_reviews"`  // Total number of reviews performed
 
 	// Delay costs (extrapolated)
 	DeliveryDelayCost    float64 `json:"delivery_delay_cost"`
@@ -75,9 +84,11 @@ type ExtrapolatedBreakdown struct {
 	DelayTotalHours       float64 `json:"delay_total_hours"`
 
 	// Counts for future costs (extrapolated)
-	CodeChurnPRCount    int `json:"code_churn_pr_count"`    // Number of PRs with code churn
-	FutureReviewPRCount int `json:"future_review_pr_count"` // Number of PRs with future review costs
-	FutureMergePRCount  int `json:"future_merge_pr_count"`  // Number of PRs with future merge costs
+	CodeChurnPRCount      int     `json:"code_churn_pr_count"`     // Number of PRs with code churn
+	FutureReviewPRCount   int     `json:"future_review_pr_count"`  // Number of PRs with future review costs
+	FutureMergePRCount    int     `json:"future_merge_pr_count"`   // Number of PRs with future merge costs
+	FutureContextSessions int     `json:"future_context_sessions"` // Estimated future context switching sessions
+	AvgReworkPercentage   float64 `json:"avg_rework_percentage"`   // Average code drift/rework percentage
 
 	// Grand totals
 	TotalCost  float64 `json:"total_cost"`
@@ -138,6 +149,10 @@ func ExtrapolateFromSamples(breakdowns []Breakdown, totalPRs, totalAuthors, actu
 	var sumPRDuration float64
 	var sumNewLines, sumModifiedLines int
 	var sumBotNewLines, sumBotModifiedLines int
+	var sumAuthorEvents, sumAuthorSessions int
+	var sumParticipantEvents, sumParticipantSessions, sumParticipantReviews int
+	var sumFutureContextSessions int
+	var sumReworkPercentage float64
 	var countCodeChurn, countFutureReview, countFutureMerge int
 
 	for i := range breakdowns {
@@ -180,6 +195,8 @@ func ExtrapolateFromSamples(breakdowns []Breakdown, totalPRs, totalAuthors, actu
 		sumAuthorGitHubHours += breakdown.Author.GitHubHours
 		sumAuthorGitHubContextHours += breakdown.Author.GitHubContextHours
 		sumAuthorHours += breakdown.Author.TotalHours
+		sumAuthorEvents += breakdown.Author.Events
+		sumAuthorSessions += breakdown.Author.Sessions
 
 		// Accumulate participant costs (combined across all participants)
 		for _, p := range breakdown.Participants {
@@ -191,6 +208,11 @@ func ExtrapolateFromSamples(breakdowns []Breakdown, totalPRs, totalAuthors, actu
 			sumParticipantGitHubHours += p.GitHubHours
 			sumParticipantContextHours += p.GitHubContextHours
 			sumParticipantHours += p.TotalHours
+			sumParticipantEvents += p.Events
+			sumParticipantSessions += p.Sessions
+			if p.ReviewCost > 0 {
+				sumParticipantReviews++ // Count reviewers (participants who performed reviews)
+			}
 		}
 
 		// Accumulate delay costs
@@ -202,15 +224,20 @@ func ExtrapolateFromSamples(breakdowns []Breakdown, totalPRs, totalAuthors, actu
 		sumFutureMergeCost += breakdown.DelayCostDetail.FutureMergeCost
 		sumFutureContextCost += breakdown.DelayCostDetail.FutureContextCost
 
-		// Count PRs with each future cost type
+		// Count PRs with each future cost type and accumulate rework percentage
 		if breakdown.DelayCostDetail.CodeChurnCost > 0.01 {
 			countCodeChurn++
+			sumReworkPercentage += breakdown.DelayCostDetail.ReworkPercentage
 		}
 		if breakdown.DelayCostDetail.FutureReviewCost > 0.01 {
 			countFutureReview++
 		}
 		if breakdown.DelayCostDetail.FutureMergeCost > 0.01 {
 			countFutureMerge++
+		}
+		if breakdown.DelayCostDetail.FutureContextCost > 0.01 {
+			// Future context cost assumes 3 sessions per open PR (review request, review, merge)
+			sumFutureContextSessions += 3
 		}
 		sumDeliveryDelayHours += breakdown.DelayCostDetail.DeliveryDelayHours
 		sumCodeChurnHours += breakdown.DelayCostDetail.CodeChurnHours
@@ -244,6 +271,8 @@ func ExtrapolateFromSamples(breakdowns []Breakdown, totalPRs, totalAuthors, actu
 	extAuthorGitHubContextHours := sumAuthorGitHubContextHours / samples * multiplier
 	extAuthorTotal := extAuthorNewCodeCost + extAuthorAdaptationCost + extAuthorGitHubCost + extAuthorGitHubContextCost
 	extAuthorHours := sumAuthorHours / samples * multiplier
+	extAuthorEvents := int(float64(sumAuthorEvents) / samples * multiplier)
+	extAuthorSessions := int(float64(sumAuthorSessions) / samples * multiplier)
 
 	extParticipantReviewCost := sumParticipantReviewCost / samples * multiplier
 	extParticipantGitHubCost := sumParticipantGitHubCost / samples * multiplier
@@ -253,6 +282,9 @@ func ExtrapolateFromSamples(breakdowns []Breakdown, totalPRs, totalAuthors, actu
 	extParticipantGitHubHours := sumParticipantGitHubHours / samples * multiplier
 	extParticipantContextHours := sumParticipantContextHours / samples * multiplier
 	extParticipantHours := sumParticipantHours / samples * multiplier
+	extParticipantEvents := int(float64(sumParticipantEvents) / samples * multiplier)
+	extParticipantSessions := int(float64(sumParticipantSessions) / samples * multiplier)
+	extParticipantReviews := int(float64(sumParticipantReviews) / samples * multiplier)
 
 	extDeliveryDelayCost := sumDeliveryDelayCost / samples * multiplier
 	extCodeChurnCost := sumCodeChurnCost / samples * multiplier
@@ -278,8 +310,15 @@ func ExtrapolateFromSamples(breakdowns []Breakdown, totalPRs, totalAuthors, actu
 	extCodeChurnPRCount := int(float64(countCodeChurn) / samples * multiplier)
 	extFutureReviewPRCount := int(float64(countFutureReview) / samples * multiplier)
 	extFutureMergePRCount := int(float64(countFutureMerge) / samples * multiplier)
+	extFutureContextSessions := int(float64(sumFutureContextSessions) / samples * multiplier)
 	// Use actual open PR count from repository query, not extrapolated from sample
 	extOpenPRs := actualOpenPRs
+
+	// Calculate average rework percentage (only for PRs with code churn)
+	var avgReworkPercentage float64
+	if countCodeChurn > 0 {
+		avgReworkPercentage = sumReworkPercentage / float64(countCodeChurn)
+	}
 
 	extTotalCost := sumTotalCost / samples * multiplier
 	extTotalHours := extAuthorHours + extParticipantHours + extDelayHours
@@ -419,6 +458,9 @@ func ExtrapolateFromSamples(breakdowns []Breakdown, totalPRs, totalAuthors, actu
 		AuthorGitHubContextHours: extAuthorGitHubContextHours,
 		AuthorTotalHours:         extAuthorHours,
 
+		AuthorEvents:   extAuthorEvents,
+		AuthorSessions: extAuthorSessions,
+
 		TotalNewLines:      extTotalNewLines,
 		TotalModifiedLines: extTotalModifiedLines,
 		BotNewLines:        extBotNewLines,
@@ -435,10 +477,14 @@ func ExtrapolateFromSamples(breakdowns []Breakdown, totalPRs, totalAuthors, actu
 		ParticipantContextHours: extParticipantContextHours,
 		ParticipantTotalHours:   extParticipantHours,
 
+		ParticipantEvents:   extParticipantEvents,
+		ParticipantSessions: extParticipantSessions,
+		ParticipantReviews:  extParticipantReviews,
+
 		DeliveryDelayCost:    extDeliveryDelayCost,
 		CodeChurnCost:        extCodeChurnCost,
 		AutomatedUpdatesCost: extAutomatedUpdatesCost,
-		PRTrackingCost:   extPRTrackingCost,
+		PRTrackingCost:       extPRTrackingCost,
 		FutureReviewCost:     extFutureReviewCost,
 		FutureMergeCost:      extFutureMergeCost,
 		FutureContextCost:    extFutureContextCost,
@@ -447,15 +493,17 @@ func ExtrapolateFromSamples(breakdowns []Breakdown, totalPRs, totalAuthors, actu
 		DeliveryDelayHours:    extDeliveryDelayHours,
 		CodeChurnHours:        extCodeChurnHours,
 		AutomatedUpdatesHours: extAutomatedUpdatesHours,
-		PRTrackingHours:   extPRTrackingHours,
+		PRTrackingHours:       extPRTrackingHours,
 		FutureReviewHours:     extFutureReviewHours,
 		FutureMergeHours:      extFutureMergeHours,
 		FutureContextHours:    extFutureContextHours,
 		DelayTotalHours:       extDelayHours,
 
-		CodeChurnPRCount:    extCodeChurnPRCount,
-		FutureReviewPRCount: extFutureReviewPRCount,
-		FutureMergePRCount:  extFutureMergePRCount,
+		CodeChurnPRCount:      extCodeChurnPRCount,
+		FutureReviewPRCount:   extFutureReviewPRCount,
+		FutureMergePRCount:    extFutureMergePRCount,
+		FutureContextSessions: extFutureContextSessions,
+		AvgReworkPercentage:   avgReworkPercentage,
 
 		TotalCost:  extTotalCost,
 		TotalHours: extTotalHours,
