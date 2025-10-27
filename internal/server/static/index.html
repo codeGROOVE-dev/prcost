@@ -1412,15 +1412,26 @@
             return html;
         }
 
-        function formatR2RCallout(avgOpenHours) {
+        function formatR2RCallout(avgOpenHours, r2rSavings) {
             // Only show if average merge velocity is > 1 hour
             if (avgOpenHours <= 1) {
                 return '';
             }
 
+            // Format savings with appropriate precision
+            let savingsText;
+            if (r2rSavings >= 1000000) {
+                savingsText = '$' + (r2rSavings / 1000000).toFixed(1) + 'M';
+            } else if (r2rSavings >= 1000) {
+                savingsText = '$' + (r2rSavings / 1000).toFixed(0) + 'K';
+            } else {
+                savingsText = '$' + r2rSavings.toFixed(0);
+            }
+
             let html = '<div style="margin: 24px 0; padding: 12px 20px; background: linear-gradient(135deg, #e6f9f0 0%, #ffffff 100%); border-left: 3px solid #00c853; border-radius: 8px; font-size: 14px; color: #1d1d1f; line-height: 1.6;">';
-            html += '✓ <a href="https://codegroove.dev/" target="_blank" rel="noopener" style="color: #00c853; font-weight: 600; text-decoration: none;">Ready-to-Review</a>: <strong>$4/mo</strong> to cut merge latency to <strong>≤40 min</strong><br>';
-            html += 'Stop losing engineering hours to code review lag. Free for OSS projects. Let\'s chat: <a href="mailto:go-faster@codeGROOVE.dev" style="color: #00c853; text-decoration: none;">go-faster@codeGROOVE.dev</a>';
+            html += '✓ Based on this calculation, <a href="https://codegroove.dev/" target="_blank" rel="noopener" style="color: #00c853; font-weight: 600; text-decoration: none;">Ready-to-Review</a> would save you <strong>~' + savingsText + '/yr</strong> by cutting average merge time to ≤40 min. ';
+            html += 'Stop losing engineering hours to code review lag. Free for OSS projects. ';
+            html += 'Let\'s chat: <a href="mailto:go-faster@codeGROOVE.dev" style="color: #00c853; text-decoration: none;">go-faster@codeGROOVE.dev</a>';
             html += '</div>';
             return html;
         }
@@ -2025,7 +2036,8 @@
 
                                         // Add R2R callout if enabled and merge velocity > 1 hour
                                         if (data.r2r_callout) {
-                                            html += formatR2RCallout(avgPRDurationHours);
+                                            const r2rSavings = e.r2r_savings || 0;
+                                            html += formatR2RCallout(avgPRDurationHours, r2rSavings);
                                         }
 
                                         // Calculate average PR efficiency

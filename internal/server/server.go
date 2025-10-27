@@ -196,8 +196,11 @@ func New() *Server {
 		logger.InfoContext(ctx, "No fallback token available - requests must provide Authorization header")
 	}
 
-	// Start cache cleanup goroutine.
-	go server.cleanupCachesPeriodically()
+	// Note: We don't clear caches periodically because:
+	// - PR data is immutable (closed PRs don't change)
+	// - Memory usage is bounded by request patterns
+	// - Cloud Run instances are ephemeral and restart frequently anyway
+	// If needed in the future, implement LRU eviction with size limits instead of time-based clearing
 
 	return server
 }
@@ -302,36 +305,6 @@ func (s *Server) limiter(ctx context.Context, ip string) *rate.Limiter {
 	}
 
 	return limiter
-}
-
-// cleanupCachesPeriodically clears all caches every 30 minutes to prevent unbounded growth.
-// Cloud Run instances are ephemeral, so no complex TTL logic is needed.
-func (s *Server) cleanupCachesPeriodically() {
-	ticker := time.NewTicker(30 * time.Minute)
-	defer ticker.Stop()
-
-	for range ticker.C {
-		s.clearCache(&s.prQueryCacheMu, s.prQueryCache, "pr_query")
-		s.clearCache(&s.prDataCacheMu, s.prDataCache, "pr_data")
-	}
-}
-
-// clearCache removes all entries from a cache.
-func (s *Server) clearCache(mu *sync.RWMutex, cache map[string]*cacheEntry, name string) {
-	mu.Lock()
-	defer mu.Unlock()
-
-	count := len(cache)
-	// Clear map by creating new map
-	for key := range cache {
-		delete(cache, key)
-	}
-
-	if count > 0 {
-		s.logger.Info("Cleared cache",
-			"cache", name,
-			"cleared", count)
-	}
 }
 
 // cachedPRQuery retrieves cached PR query results.

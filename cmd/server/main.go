@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"runtime"
 	"syscall"
 	"time"
@@ -36,10 +37,19 @@ func main() {
 	// Create root context
 	ctx := context.Background()
 
-	// Set up logging
+	// Set up logging with short source paths
 	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
 		AddSource: true,
 		Level:     slog.LevelInfo,
+		ReplaceAttr: func(groups []string, a slog.Attr) slog.Attr {
+			// Shorten source file paths to show only filename:line
+			if a.Key == slog.SourceKey {
+				if src, ok := a.Value.Any().(*slog.Source); ok {
+					src.File = filepath.Base(src.File)
+				}
+			}
+			return a
+		},
 	}))
 	slog.SetDefault(logger)
 
