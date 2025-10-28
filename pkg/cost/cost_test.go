@@ -27,8 +27,8 @@ func TestDefaultConfig(t *testing.T) {
 		t.Errorf("Expected 20 minute session gap, got %v", cfg.SessionGapThreshold)
 	}
 
-	if cfg.DeliveryDelayFactor != 0.15 {
-		t.Errorf("Expected delivery delay factor 0.15, got %.2f", cfg.DeliveryDelayFactor)
+	if cfg.DeliveryDelayFactor != 0.20 {
+		t.Errorf("Expected delivery delay factor 0.20, got %.2f", cfg.DeliveryDelayFactor)
 	}
 
 	if cfg.MaxDelayAfterLastEvent != 14*24*time.Hour {
@@ -585,7 +585,7 @@ func TestDelayHoursNeverExceedPRAge(t *testing.T) {
 				},
 				CreatedAt: now.Add(-24 * time.Hour),
 			},
-			wantMax: 24.0 * 0.15, // 15% of 24 hours = 3.6 hours
+			wantMax: 24.0 * 0.20, // 20% of 24 hours = 4.8 hours
 		},
 		{
 			name:   "7 day old PR",
@@ -598,7 +598,7 @@ func TestDelayHoursNeverExceedPRAge(t *testing.T) {
 				},
 				CreatedAt: now.Add(-7 * 24 * time.Hour),
 			},
-			wantMax: 168.0 * 0.15, // 15% of 168 hours = 25.2 hours
+			wantMax: 168.0 * 0.20, // 20% of 168 hours = 33.6 hours
 		},
 	}
 
@@ -608,17 +608,17 @@ func TestDelayHoursNeverExceedPRAge(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			breakdown := Calculate(tc.prData, cfg)
 
-			// Delivery delay hours should not exceed 15% of PR age
+			// Delivery delay hours should not exceed 20% of PR age
 			if breakdown.DelayCostDetail.DeliveryDelayHours > tc.wantMax+0.1 { // Allow 0.1 hr tolerance for floating point
-				t.Errorf("Delay hours exceed 15%% of PR age: got %.2f hours, want <= %.2f hours (PR age: %.1f hrs)",
+				t.Errorf("Delay hours exceed 20%% of PR age: got %.2f hours, want <= %.2f hours (PR age: %.1f hrs)",
 					breakdown.DelayCostDetail.DeliveryDelayHours, tc.wantMax, tc.ageHrs)
 			}
 
-			// Verify delivery should be 15%
-			expectedDelivery := tc.ageHrs * 0.15
+			// Verify delivery should be 20%
+			expectedDelivery := tc.ageHrs * 0.20
 
 			if breakdown.DelayCostDetail.DeliveryDelayHours > expectedDelivery+0.1 {
-				t.Errorf("Delivery delay hours too high: got %.2f, want %.2f (15%% of %.1f)",
+				t.Errorf("Delivery delay hours too high: got %.2f, want %.2f (20%% of %.1f)",
 					breakdown.DelayCostDetail.DeliveryDelayHours, expectedDelivery, tc.ageHrs)
 			}
 		})

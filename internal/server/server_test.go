@@ -460,6 +460,12 @@ func TestParseRequest(t *testing.T) {
 }
 
 func TestHandleCalculateNoToken(t *testing.T) {
+	// Clear environment variables that could provide a fallback token
+	// t.Setenv automatically restores the original value after the test
+	t.Setenv("GITHUB_TOKEN", "")
+	// Clear PATH to prevent gh CLI lookup
+	t.Setenv("PATH", "")
+
 	s := New()
 
 	reqBody := CalculateRequest{

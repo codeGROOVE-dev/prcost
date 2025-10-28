@@ -41,7 +41,7 @@ func main() {
 	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
 		AddSource: true,
 		Level:     slog.LevelInfo,
-		ReplaceAttr: func(groups []string, a slog.Attr) slog.Attr {
+		ReplaceAttr: func(_ []string, a slog.Attr) slog.Attr {
 			// Shorten source file paths to show only filename:line
 			if a.Key == slog.SourceKey {
 				if src, ok := a.Value.Any().(*slog.Source); ok {

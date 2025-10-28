@@ -23,6 +23,10 @@ type PRSummary struct {
 	UpdatedAt time.Time // Last update time
 }
 
+// ProgressCallback is called during PR fetching to report progress.
+// Parameters: queryName (e.g., "recent", "old", "early"), currentPage, totalPRsSoFar
+type ProgressCallback func(queryName string, page int, prCount int)
+
 // FetchPRsFromRepo queries GitHub GraphQL API for all PRs in a repository
 // modified since the specified date.
 //
@@ -38,12 +42,13 @@ type PRSummary struct {
 //   - repo: GitHub repository name
 //   - since: Only include PRs updated after this time
 //   - token: GitHub authentication token
+//   - progress: Optional callback for progress updates (can be nil)
 //
 // Returns:
 //   - Slice of PRSummary for all matching PRs (deduplicated)
-func FetchPRsFromRepo(ctx context.Context, owner, repo string, since time.Time, token string) ([]PRSummary, error) {
+func FetchPRsFromRepo(ctx context.Context, owner, repo string, since time.Time, token string, progress ProgressCallback) ([]PRSummary, error) {
 	// Query 1: Recent activity (updated DESC) - get up to 1000 PRs
-	recent, hitLimit, err := fetchPRsFromRepoWithSort(ctx, owner, repo, since, token, "UPDATED_AT", "DESC", 1000)
+	recent, hitLimit, err := fetchPRsFromRepoWithSort(ctx, owner, repo, since, token, "UPDATED_AT", "DESC", 1000, "recent", progress)
 	if err != nil {
 		return nil, err
 	}
@@ -55,7 +60,7 @@ func FetchPRsFromRepo(ctx context.Context, owner, repo string, since time.Time, 
 
 	// Hit limit - need more coverage for earlier periods
 	// Query 2: Old activity (updated ASC) - get ~500 more
-	old, _, err := fetchPRsFromRepoWithSort(ctx, owner, repo, since, token, "UPDATED_AT", "ASC", 500)
+	old, _, err := fetchPRsFromRepoWithSort(ctx, owner, repo, since, token, "UPDATED_AT", "ASC", 500, "old", progress)
 	if err != nil {
 		slog.Warn("Failed to fetch old PRs, falling back to recent only", "error", err)
 		return recent, nil
@@ -81,7 +86,7 @@ func FetchPRsFromRepo(ctx context.Context, owner, repo string, since time.Time, 
 			slog.Info("Gap > 1 week detected, fetching early period PRs to fill coverage hole")
 
 			// Query 3: Early period (created ASC) - get ~250 more
-			early, _, err := fetchPRsFromRepoWithSort(ctx, owner, repo, since, token, "CREATED_AT", "ASC", 250)
+			early, _, err := fetchPRsFromRepoWithSort(ctx, owner, repo, since, token, "CREATED_AT", "ASC", 250, "early", progress)
 			if err != nil {
 				slog.Warn("Failed to fetch early PRs, proceeding with recent+old", "error", err)
 				return deduplicatePRs(append(recent, old...)), nil
@@ -102,7 +107,7 @@ func FetchPRsFromRepo(ctx context.Context, owner, repo string, since time.Time, 
 // Returns PRs and a boolean indicating if the API limit (1000) was hit.
 func fetchPRsFromRepoWithSort(
 	ctx context.Context, owner, repo string, since time.Time,
-	token, field, direction string, maxPRs int,
+	token, field, direction string, maxPRs int, queryName string, progress ProgressCallback,
 ) ([]PRSummary, bool, error) {
 	query := fmt.Sprintf(`
 	query($owner: String!, $name: String!, $cursor: String) {
@@ -254,6 +259,11 @@ func fetchPRsFromRepoWithSort(
 			}
 		}
 
+		// Call progress callback after processing each page
+		if progress != nil {
+			progress(queryName, pageNum, len(allPRs))
+		}
+
 		// Check if we need to fetch more pages
 		if !result.Data.Repository.PullRequests.PageInfo.HasNextPage {
 			break
@@ -298,14 +308,15 @@ func deduplicatePRs(prs []PRSummary) []PRSummary {
 //   - org: GitHub organization name
 //   - since: Only include PRs updated after this time
 //   - token: GitHub authentication token
+//   - progress: Optional callback for progress updates (can be nil)
 //
 // Returns:
 //   - Slice of PRSummary for all matching PRs (deduplicated)
-func FetchPRsFromOrg(ctx context.Context, org string, since time.Time, token string) ([]PRSummary, error) {
+func FetchPRsFromOrg(ctx context.Context, org string, since time.Time, token string, progress ProgressCallback) ([]PRSummary, error) {
 	sinceStr := since.Format("2006-01-02")
 
 	// Query 1: Recent activity (updated desc) - get up to 1000 PRs
-	recent, hitLimit, err := fetchPRsFromOrgWithSort(ctx, org, sinceStr, token, "updated", "desc", 1000)
+	recent, hitLimit, err := fetchPRsFromOrgWithSort(ctx, org, sinceStr, token, "updated", "desc", 1000, "recent", progress)
 	if err != nil {
 		return nil, err
 	}
@@ -321,7 +332,7 @@ func FetchPRsFromOrg(ctx context.Context, org string, since time.Time, token str
 
 	// Hit limit - need more coverage for earlier periods
 	// Query 2: Old activity (updated asc) - get ~500 more
-	old, _, err := fetchPRsFromOrgWithSort(ctx, org, sinceStr, token, "updated", "asc", 500)
+	old, _, err := fetchPRsFromOrgWithSort(ctx, org, sinceStr, token, "updated", "asc", 500, "old", progress)
 	if err != nil {
 		slog.Warn("Failed to fetch old PRs from org, falling back to recent only", "error", err)
 		return recent, nil
@@ -347,7 +358,7 @@ func FetchPRsFromOrg(ctx context.Context, org string, since time.Time, token str
 			slog.Info("Gap > 1 week detected, fetching early period PRs to fill coverage hole (org)")
 
 			// Query 3: Early period (created asc) - get ~250 more
-			early, _, err := fetchPRsFromOrgWithSort(ctx, org, sinceStr, token, "created", "asc", 250)
+			early, _, err := fetchPRsFromOrgWithSort(ctx, org, sinceStr, token, "created", "asc", 250, "early", progress)
 			if err != nil {
 				slog.Warn("Failed to fetch early PRs from org, proceeding with recent+old", "error", err)
 				return deduplicatePRsByOwnerRepoNumber(append(recent, old...)), nil
@@ -367,7 +378,7 @@ func FetchPRsFromOrg(ctx context.Context, org string, since time.Time, token str
 // fetchPRsFromOrgWithSort queries GitHub Search API with configurable sort order.
 // Returns PRs and a boolean indicating if the API limit (1000) was hit.
 func fetchPRsFromOrgWithSort(
-	ctx context.Context, org, sinceStr, token, field, direction string, maxPRs int,
+	ctx context.Context, org, sinceStr, token, field, direction string, maxPRs int, queryName string, progress ProgressCallback,
 ) ([]PRSummary, bool, error) {
 	// Build search query with sort
 	// Query format: org:myorg is:pr updated:>2025-07-25 sort:updated-desc
@@ -517,6 +528,11 @@ func fetchPRsFromOrgWithSort(
 					"direction", direction)
 				return allPRs, hitLimit, nil
 			}
+		}
+
+		// Call progress callback after processing each page
+		if progress != nil {
+			progress(queryName, pageNum, len(allPRs))
 		}
 
 		// Check if we need to fetch more pages
@@ -800,7 +816,7 @@ func CountOpenPRsInRepo(ctx context.Context, owner, repo, token string) (int, er
 	if err != nil {
 		return 0, fmt.Errorf("request failed: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }() //nolint:errcheck // best effort close
 
 	if resp.StatusCode != http.StatusOK {
 		return 0, fmt.Errorf("unexpected status code: %d", resp.StatusCode)
@@ -881,7 +897,7 @@ func CountOpenPRsInOrg(ctx context.Context, org, token string) (int, error) {
 	if err != nil {
 		return 0, fmt.Errorf("request failed: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }() //nolint:errcheck // best effort close
 
 	if resp.StatusCode != http.StatusOK {
 		return 0, fmt.Errorf("unexpected status code: %d", resp.StatusCode)

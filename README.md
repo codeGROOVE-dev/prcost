@@ -67,7 +67,7 @@ go install github.com/codeGROOVE-dev/prcost/cmd/prcost@latest
 prcost https://github.com/owner/repo/pull/123
 prcost --salary 300000 https://github.com/owner/repo/pull/123
 
-# Repository analysis (samples 25 PRs from last 90 days)
+# Repository analysis (samples 30 PRs from last 90 days)
 prcost --org kubernetes --repo kubernetes
 prcost --org myorg --repo myrepo --samples 50 --days 30
 
@@ -85,8 +85,8 @@ go run ./cmd/server
 
 Repository and organization modes use time-bucket sampling to ensure even distribution across the time period, avoiding temporal clustering that would bias estimates.
 
-- **25 samples** (default): Fast analysis with ±20% confidence interval
-- **50 samples**: More accurate with ±14% confidence interval (1.4× better precision)
+- **30 samples** (default): Fast analysis with ±18% confidence interval
+- **50 samples**: More accurate with ±14% confidence interval (1.3× better precision)
 
 ## Cost Model: Scientific Foundations
 
