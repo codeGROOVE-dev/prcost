@@ -20,6 +20,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/codeGROOVE-dev/ds9"
 	"github.com/codeGROOVE-dev/gsm"
 	"github.com/codeGROOVE-dev/prcost/pkg/cost"
 	"github.com/codeGROOVE-dev/prcost/pkg/github"
@@ -54,10 +55,27 @@ var tokenPattern = regexp.MustCompile(
 //go:embed static/*
 var staticFS embed.FS
 
-// cacheEntry holds cached data.
+// cacheEntry holds cached data for in-memory cache.
 // No TTL needed - Cloud Run kills processes frequently, providing natural cache invalidation.
 type cacheEntry struct {
 	data any
+}
+
+// prDataCacheEntity represents a cached PR data entry in DataStore with TTL.
+type prDataCacheEntity struct {
+	Data      string    `datastore:"data,noindex"` // JSON-encoded cost.PRData
+	CachedAt  time.Time `datastore:"cached_at"`    // When this was cached
+	ExpiresAt time.Time `datastore:"expires_at"`   // When this expires (1 hour from CachedAt)
+	URL       string    `datastore:"url"`          // PR URL for debugging
+}
+
+// prQueryCacheEntity represents a cached PR query result in DataStore with TTL.
+type prQueryCacheEntity struct {
+	Data      string    `datastore:"data,noindex"` // JSON-encoded []github.PRSummary
+	CachedAt  time.Time `datastore:"cached_at"`    // When this was cached
+	ExpiresAt time.Time `datastore:"expires_at"`   // When this expires (varies by type)
+	QueryType string    `datastore:"query_type"`   // "repo" or "org"
+	QueryKey  string    `datastore:"query_key"`    // Full query key for debugging
 }
 
 // Server handles HTTP requests for the PR Cost API.
@@ -87,6 +105,8 @@ type Server struct {
 	prDataCache    map[string]*cacheEntry
 	prQueryCacheMu sync.RWMutex
 	prDataCacheMu  sync.RWMutex
+	// DataStore client for persistent caching (nil if not enabled).
+	dsClient *ds9.Client
 }
 
 // CalculateRequest represents a request to calculate PR costs.
@@ -202,6 +222,21 @@ func New() *Server {
 	// - Cloud Run instances are ephemeral and restart frequently anyway
 	// If needed in the future, implement LRU eviction with size limits instead of time-based clearing
 
+	// Initialize DataStore client if DATASTORE_DB is set (persistent caching across restarts).
+	if dbID := os.Getenv("DATASTORE_DB"); dbID != "" {
+		dsClient, err := ds9.NewClientWithDatabase(ctx, "", dbID)
+		if err != nil {
+			logger.WarnContext(ctx, "Failed to initialize DataStore client - persistent caching disabled",
+				"database_id", dbID, "error", err)
+		} else {
+			server.dsClient = dsClient
+			logger.InfoContext(ctx, "DataStore persistent caching enabled",
+				"database_id", dbID)
+		}
+	} else {
+		logger.InfoContext(ctx, "DataStore persistent caching disabled (DATASTORE_DB not set)")
+	}
+
 	return server
 }
 
@@ -307,52 +342,201 @@ func (s *Server) limiter(ctx context.Context, ip string) *rate.Limiter {
 	return limiter
 }
 
-// cachedPRQuery retrieves cached PR query results.
-func (s *Server) cachedPRQuery(key string) ([]github.PRSummary, bool) {
+// cachedPRQuery retrieves cached PR query results from memory first, then DataStore as fallback.
+func (s *Server) cachedPRQuery(ctx context.Context, key string) ([]github.PRSummary, bool) {
+	// Check in-memory cache first (fast path).
 	s.prQueryCacheMu.RLock()
-	defer s.prQueryCacheMu.RUnlock()
-
 	entry, exists := s.prQueryCache[key]
-	if !exists {
+	s.prQueryCacheMu.RUnlock()
+
+	if exists {
+		prs, ok := entry.data.([]github.PRSummary)
+		if ok {
+			s.logger.DebugContext(ctx, "PR query cache hit (memory)", "key", key)
+			return prs, true
+		}
+	}
+
+	// Memory miss - try DataStore if available.
+	if s.dsClient == nil {
 		return nil, false
 	}
 
-	prs, ok := entry.data.([]github.PRSummary)
-	return prs, ok
-}
-
-// cachePRQuery stores PR query results in cache.
-func (s *Server) cachePRQuery(key string, prs []github.PRSummary) {
-	s.prQueryCacheMu.Lock()
-	defer s.prQueryCacheMu.Unlock()
-
-	s.prQueryCache[key] = &cacheEntry{
-		data: prs,
+	dsKey := ds9.NameKey("PRQueryCache", key, nil)
+	var entity prQueryCacheEntity
+	err := s.dsClient.Get(ctx, dsKey, &entity)
+	if err != nil {
+		if !errors.Is(err, ds9.ErrNoSuchEntity) {
+			s.logger.WarnContext(ctx, "DataStore cache read failed", "key", key, "error", err)
+		}
+		return nil, false
 	}
+
+	// Check if expired (TTL varies by query type).
+	if time.Now().After(entity.ExpiresAt) {
+		s.logger.DebugContext(ctx, "DataStore cache entry expired", "key", key, "expires_at", entity.ExpiresAt)
+		return nil, false
+	}
+
+	// Deserialize the cached data.
+	var prs []github.PRSummary
+	if err := json.Unmarshal([]byte(entity.Data), &prs); err != nil {
+		s.logger.WarnContext(ctx, "Failed to deserialize cached PR query", "key", key, "error", err)
+		return nil, false
+	}
+
+	s.logger.InfoContext(ctx, "PR query cache hit (DataStore)",
+		"key", key, "query_type", entity.QueryType, "cached_at", entity.CachedAt, "pr_count", len(prs))
+
+	// Populate in-memory cache for faster subsequent access.
+	s.prQueryCacheMu.Lock()
+	s.prQueryCache[key] = &cacheEntry{data: prs}
+	s.prQueryCacheMu.Unlock()
+
+	return prs, true
 }
 
-// cachedPRData retrieves cached PR data.
-func (s *Server) cachedPRData(key string) (cost.PRData, bool) {
-	s.prDataCacheMu.RLock()
-	defer s.prDataCacheMu.RUnlock()
+// cachePRQuery stores PR query results in both memory and DataStore caches.
+func (s *Server) cachePRQuery(ctx context.Context, key string, prs []github.PRSummary) {
+	// Write to in-memory cache first (fast path).
+	s.prQueryCacheMu.Lock()
+	s.prQueryCache[key] = &cacheEntry{data: prs}
+	s.prQueryCacheMu.Unlock()
 
+	// Write to DataStore if available (persistent cache).
+	if s.dsClient == nil {
+		return
+	}
+
+	// Serialize the PR query results.
+	dataJSON, err := json.Marshal(prs)
+	if err != nil {
+		s.logger.WarnContext(ctx, "Failed to serialize PR query for DataStore", "key", key, "error", err)
+		return
+	}
+
+	// Determine query type and TTL from key format.
+	var queryType string
+	var ttl time.Duration
+	switch {
+	case strings.HasPrefix(key, "repo:"):
+		queryType = "repo"
+		ttl = 72 * time.Hour // 72 hours for repo queries
+	case strings.HasPrefix(key, "org:"):
+		queryType = "org"
+		ttl = 72 * time.Hour // 72 hours for org queries
+	default:
+		s.logger.WarnContext(ctx, "Unknown query type for key, using default TTL", "key", key)
+		queryType = "unknown"
+		ttl = 72 * time.Hour // Default to 72 hours
+	}
+
+	now := time.Now()
+	entity := prQueryCacheEntity{
+		Data:      string(dataJSON),
+		CachedAt:  now,
+		ExpiresAt: now.Add(ttl),
+		QueryType: queryType,
+		QueryKey:  key,
+	}
+
+	dsKey := ds9.NameKey("PRQueryCache", key, nil)
+	if _, err := s.dsClient.Put(ctx, dsKey, &entity); err != nil {
+		s.logger.WarnContext(ctx, "Failed to write PR query to DataStore", "key", key, "error", err)
+		return
+	}
+
+	s.logger.DebugContext(ctx, "PR query cached to DataStore",
+		"key", key, "query_type", queryType, "ttl", ttl, "expires_at", entity.ExpiresAt, "pr_count", len(prs))
+}
+
+// cachedPRData retrieves cached PR data from memory first, then DataStore as fallback.
+func (s *Server) cachedPRData(ctx context.Context, key string) (cost.PRData, bool) {
+	// Check in-memory cache first (fast path).
+	s.prDataCacheMu.RLock()
 	entry, exists := s.prDataCache[key]
-	if !exists {
+	s.prDataCacheMu.RUnlock()
+
+	if exists {
+		prData, ok := entry.data.(cost.PRData)
+		if ok {
+			s.logger.DebugContext(ctx, "PR data cache hit (memory)", "key", key)
+			return prData, true
+		}
+	}
+
+	// Memory miss - try DataStore if available.
+	if s.dsClient == nil {
 		return cost.PRData{}, false
 	}
 
-	prData, ok := entry.data.(cost.PRData)
-	return prData, ok
+	dsKey := ds9.NameKey("PRDataCache", key, nil)
+	var entity prDataCacheEntity
+	err := s.dsClient.Get(ctx, dsKey, &entity)
+	if err != nil {
+		if !errors.Is(err, ds9.ErrNoSuchEntity) {
+			s.logger.WarnContext(ctx, "DataStore cache read failed", "key", key, "error", err)
+		}
+		return cost.PRData{}, false
+	}
+
+	// Check if expired (1 hour TTL for PRs).
+	if time.Now().After(entity.ExpiresAt) {
+		s.logger.DebugContext(ctx, "DataStore cache entry expired", "key", key, "expires_at", entity.ExpiresAt)
+		return cost.PRData{}, false
+	}
+
+	// Deserialize the cached data.
+	var prData cost.PRData
+	if err := json.Unmarshal([]byte(entity.Data), &prData); err != nil {
+		s.logger.WarnContext(ctx, "Failed to deserialize cached PR data", "key", key, "error", err)
+		return cost.PRData{}, false
+	}
+
+	s.logger.InfoContext(ctx, "PR data cache hit (DataStore)", "key", key, "cached_at", entity.CachedAt)
+
+	// Populate in-memory cache for faster subsequent access.
+	s.prDataCacheMu.Lock()
+	s.prDataCache[key] = &cacheEntry{data: prData}
+	s.prDataCacheMu.Unlock()
+
+	return prData, true
 }
 
-// cachePRData stores PR data in cache.
-func (s *Server) cachePRData(key string, prData cost.PRData) {
+// cachePRData stores PR data in both memory and DataStore caches.
+func (s *Server) cachePRData(ctx context.Context, key string, prData cost.PRData) {
+	// Write to in-memory cache first (fast path).
 	s.prDataCacheMu.Lock()
-	defer s.prDataCacheMu.Unlock()
+	s.prDataCache[key] = &cacheEntry{data: prData}
+	s.prDataCacheMu.Unlock()
 
-	s.prDataCache[key] = &cacheEntry{
-		data: prData,
+	// Write to DataStore if available (persistent cache).
+	if s.dsClient == nil {
+		return
 	}
+
+	// Serialize the PR data.
+	dataJSON, err := json.Marshal(prData)
+	if err != nil {
+		s.logger.WarnContext(ctx, "Failed to serialize PR data for DataStore", "key", key, "error", err)
+		return
+	}
+
+	now := time.Now()
+	entity := prDataCacheEntity{
+		Data:      string(dataJSON),
+		CachedAt:  now,
+		ExpiresAt: now.Add(1 * time.Hour), // 1 hour TTL for PRs
+		URL:       key,
+	}
+
+	dsKey := ds9.NameKey("PRDataCache", key, nil)
+	if _, err := s.dsClient.Put(ctx, dsKey, &entity); err != nil {
+		s.logger.WarnContext(ctx, "Failed to write PR data to DataStore", "key", key, "error", err)
+		return
+	}
+
+	s.logger.DebugContext(ctx, "PR data cached to DataStore", "key", key, "expires_at", entity.ExpiresAt)
 }
 
 // SetTokenValidation configures GitHub token validation.
@@ -735,7 +919,7 @@ func (s *Server) processRequest(ctx context.Context, req *CalculateRequest, toke
 
 	// Try cache first
 	cacheKey := fmt.Sprintf("pr:%s", req.URL)
-	prData, cached := s.cachedPRData(cacheKey)
+	prData, cached := s.cachedPRData(ctx, cacheKey)
 	if cached {
 		s.logger.InfoContext(ctx, "[processRequest] Using cached PR data", "url", req.URL)
 	} else {
@@ -761,7 +945,7 @@ func (s *Server) processRequest(ctx context.Context, req *CalculateRequest, toke
 		}
 
 		// Cache PR data
-		s.cachePRData(cacheKey, prData)
+		s.cachePRData(ctx, cacheKey, prData)
 	}
 
 	// Calculate costs.
@@ -1242,7 +1426,7 @@ func (s *Server) processRepoSample(ctx context.Context, req *RepoSampleRequest, 
 
 	// Try cache first
 	cacheKey := fmt.Sprintf("repo:%s/%s:days=%d", req.Owner, req.Repo, req.Days)
-	prs, cached := s.cachedPRQuery(cacheKey)
+	prs, cached := s.cachedPRQuery(ctx, cacheKey)
 	if cached {
 		s.logger.InfoContext(ctx, "Using cached PR query results",
 			"owner", req.Owner, "repo", req.Repo, "total_prs", len(prs))
@@ -1258,7 +1442,7 @@ func (s *Server) processRepoSample(ctx context.Context, req *RepoSampleRequest, 
 			"owner", req.Owner, "repo", req.Repo, "total_prs", len(prs))
 
 		// Cache query results
-		s.cachePRQuery(cacheKey, prs)
+		s.cachePRQuery(ctx, cacheKey, prs)
 	}
 
 	if len(prs) == 0 {
@@ -1283,7 +1467,7 @@ func (s *Server) processRepoSample(ctx context.Context, req *RepoSampleRequest, 
 
 		// Try cache first
 		prCacheKey := fmt.Sprintf("pr:%s", prURL)
-		prData, prCached := s.cachedPRData(prCacheKey)
+		prData, prCached := s.cachedPRData(ctx, prCacheKey)
 		if !prCached {
 			var err error
 			// Use configured data source with updatedAt for effective caching
@@ -1298,7 +1482,7 @@ func (s *Server) processRepoSample(ctx context.Context, req *RepoSampleRequest, 
 			}
 
 			// Cache PR data
-			s.cachePRData(prCacheKey, prData)
+			s.cachePRData(ctx, prCacheKey, prData)
 		}
 
 		breakdown := cost.Calculate(prData, cfg)
@@ -1343,7 +1527,7 @@ func (s *Server) processOrgSample(ctx context.Context, req *OrgSampleRequest, to
 
 	// Try cache first
 	cacheKey := fmt.Sprintf("org:%s:days=%d", req.Org, req.Days)
-	prs, cached := s.cachedPRQuery(cacheKey)
+	prs, cached := s.cachedPRQuery(ctx, cacheKey)
 	if cached {
 		s.logger.InfoContext(ctx, "Using cached PR query results",
 			"org", req.Org, "total_prs", len(prs))
@@ -1358,7 +1542,7 @@ func (s *Server) processOrgSample(ctx context.Context, req *OrgSampleRequest, to
 		s.logger.InfoContext(ctx, "Fetched PRs from organization", "org", req.Org, "total_prs", len(prs))
 
 		// Cache query results
-		s.cachePRQuery(cacheKey, prs)
+		s.cachePRQuery(ctx, cacheKey, prs)
 	}
 
 	if len(prs) == 0 {
@@ -1383,7 +1567,7 @@ func (s *Server) processOrgSample(ctx context.Context, req *OrgSampleRequest, to
 
 		// Try cache first
 		prCacheKey := fmt.Sprintf("pr:%s", prURL)
-		prData, prCached := s.cachedPRData(prCacheKey)
+		prData, prCached := s.cachedPRData(ctx, prCacheKey)
 		if !prCached {
 			var err error
 			// Use configured data source with updatedAt for effective caching
@@ -1398,7 +1582,7 @@ func (s *Server) processOrgSample(ctx context.Context, req *OrgSampleRequest, to
 			}
 
 			// Cache PR data
-			s.cachePRData(prCacheKey, prData)
+			s.cachePRData(ctx, prCacheKey, prData)
 		}
 
 		breakdown := cost.Calculate(prData, cfg)
@@ -1715,7 +1899,7 @@ func (s *Server) processRepoSampleWithProgress(ctx context.Context, req *RepoSam
 
 	// Try cache first
 	cacheKey := fmt.Sprintf("repo:%s/%s:days=%d", req.Owner, req.Repo, req.Days)
-	prs, cached := s.cachedPRQuery(cacheKey)
+	prs, cached := s.cachedPRQuery(ctx, cacheKey)
 	if !cached {
 		// Send progress update before GraphQL query
 		logSSEError(ctx, s.logger, sendSSE(writer, ProgressUpdate{
@@ -1759,7 +1943,7 @@ func (s *Server) processRepoSampleWithProgress(ctx context.Context, req *RepoSam
 		}
 
 		// Cache query results
-		s.cachePRQuery(cacheKey, prs)
+		s.cachePRQuery(ctx, cacheKey, prs)
 	}
 
 	if len(prs) == 0 {
@@ -1851,7 +2035,7 @@ func (s *Server) processOrgSampleWithProgress(ctx context.Context, req *OrgSampl
 
 	// Try cache first
 	cacheKey := fmt.Sprintf("org:%s:days=%d", req.Org, req.Days)
-	prs, cached := s.cachedPRQuery(cacheKey)
+	prs, cached := s.cachedPRQuery(ctx, cacheKey)
 	if !cached {
 		// Send progress update before GraphQL query
 		logSSEError(ctx, s.logger, sendSSE(writer, ProgressUpdate{
@@ -1893,7 +2077,7 @@ func (s *Server) processOrgSampleWithProgress(ctx context.Context, req *OrgSampl
 		}
 
 		// Cache query results
-		s.cachePRQuery(cacheKey, prs)
+		s.cachePRQuery(ctx, cacheKey, prs)
 	}
 
 	if len(prs) == 0 {
@@ -2013,7 +2197,7 @@ func (s *Server) processPRsInParallel(workCtx, reqCtx context.Context, samples [
 
 			// Try cache first
 			prCacheKey := fmt.Sprintf("pr:%s", prURL)
-			prData, prCached := s.cachedPRData(prCacheKey)
+			prData, prCached := s.cachedPRData(workCtx, prCacheKey)
 			if !prCached {
 				var err error
 				// Use work context for actual API calls (not tied to client connection)
@@ -2039,7 +2223,7 @@ func (s *Server) processPRsInParallel(workCtx, reqCtx context.Context, samples [
 				}
 
 				// Cache the PR data
-				s.cachePRData(prCacheKey, prData)
+				s.cachePRData(workCtx, prCacheKey, prData)
 			}
 
 			// Send "processing" update using request context for SSE

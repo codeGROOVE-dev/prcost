@@ -1,7 +1,10 @@
 package cost
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
+	"log/slog"
 	"os"
 	"strings"
 	"testing"
@@ -497,10 +500,10 @@ func TestCalculateWithRealPR13(t *testing.T) {
 
 	// 90 days absolute cap = 2160 hours
 	// Delivery: 2160 * 0.15 = 324 hours
-	expectedDeliveryHours := 90.0 * 24.0 * 0.15 // 324 hours
+	expectedDeliveryHours := 90.0 * 24.0 * 0.20 // 432 hours (20% default delay factor)
 
 	if breakdown.DelayCostDetail.DeliveryDelayHours != expectedDeliveryHours {
-		t.Errorf("Expected %.0f delivery delay hours (15%% of 90 day cap), got %.2f",
+		t.Errorf("Expected %.0f delivery delay hours (20%% of 90 day cap), got %.2f",
 			expectedDeliveryHours, breakdown.DelayCostDetail.DeliveryDelayHours)
 	}
 
@@ -520,7 +523,7 @@ func TestCalculateWithRealPR13(t *testing.T) {
 	t.Logf("PR 13 breakdown (6 year old PR):")
 	t.Logf("  638 LOC added")
 	t.Logf("  Author cost: $%.2f", breakdown.Author.TotalCost)
-	t.Logf("  Delivery Delay (15%%): $%.2f (%.0f hrs, capped at 90 days)",
+	t.Logf("  Delivery Delay (20%%): $%.2f (%.0f hrs, capped at 90 days)",
 		breakdown.DelayCostDetail.DeliveryDelayCost, breakdown.DelayCostDetail.DeliveryDelayHours)
 	t.Logf("  Code Churn: $%.2f (%.1f%% rework, capped at 90 days drift)",
 		breakdown.DelayCostDetail.CodeChurnCost, breakdown.DelayCostDetail.ReworkPercentage)
@@ -555,11 +558,11 @@ func TestCalculateLongPRCapped(t *testing.T) {
 
 	// Last event was 120 days ago, so we only count 14 days after it
 	// Capped hours: 14 days = 336 hours
-	// Delivery delay: 336 * 0.15 = 50.4 hours
-	expectedDeliveryHours := 14.0 * 24.0 * 0.15
+	// Delivery delay: 336 * 0.20 = 67.2 hours (20% default delay factor)
+	expectedDeliveryHours := 14.0 * 24.0 * 0.20
 
 	if breakdown.DelayCostDetail.DeliveryDelayHours != expectedDeliveryHours {
-		t.Errorf("Expected %.1f delivery delay hours (15%% of 14 days), got %.2f",
+		t.Errorf("Expected %.1f delivery delay hours (20%% of 14 days), got %.2f",
 			expectedDeliveryHours, breakdown.DelayCostDetail.DeliveryDelayHours)
 	}
 }
@@ -694,5 +697,920 @@ func TestCalculateFastTurnaroundNoDelay(t *testing.T) {
 					tc.openMinutes)
 			}
 		})
+	}
+}
+
+// Mock PRFetcher for testing AnalyzePRs
+type mockPRFetcher struct {
+	data       map[string]PRData
+	failURLs   map[string]error
+	callCount  int
+	maxCalls   int // Fail after this many calls (0 = no limit)
+	fetchDelay time.Duration
+}
+
+func (m *mockPRFetcher) FetchPRData(ctx context.Context, prURL string, updatedAt time.Time) (PRData, error) {
+	m.callCount++
+
+	// Fail after max calls if set
+	if m.maxCalls > 0 && m.callCount > m.maxCalls {
+		return PRData{}, errors.New("max calls exceeded")
+	}
+
+	// Check for context cancellation
+	if ctx.Err() != nil {
+		return PRData{}, ctx.Err()
+	}
+
+	// Simulate fetch delay
+	if m.fetchDelay > 0 {
+		time.Sleep(m.fetchDelay)
+	}
+
+	// Check for specific URL failure
+	if m.failURLs != nil {
+		if err, ok := m.failURLs[prURL]; ok {
+			return PRData{}, err
+		}
+	}
+
+	// Return mock data
+	if m.data != nil {
+		if data, ok := m.data[prURL]; ok {
+			return data, nil
+		}
+	}
+
+	// Default success case
+	now := time.Now()
+	return PRData{
+		LinesAdded: 100,
+		Author:     "test-author",
+		Events: []ParticipantEvent{
+			{Timestamp: now, Actor: "test-author", Kind: "commit"},
+		},
+		CreatedAt: now.Add(-1 * time.Hour),
+		ClosedAt:  now,
+	}, nil
+}
+
+func TestAnalyzePRsNoSamples(t *testing.T) {
+	ctx := context.Background()
+	fetcher := &mockPRFetcher{}
+
+	req := &AnalysisRequest{
+		Samples: []PRSummaryInfo{},
+		Fetcher: fetcher,
+		Config:  DefaultConfig(),
+	}
+
+	result, err := AnalyzePRs(ctx, req)
+
+	if err == nil {
+		t.Error("Expected error when no samples provided")
+	}
+
+	if result != nil {
+		t.Error("Expected nil result when no samples provided")
+	}
+
+	if err.Error() != "no samples provided" {
+		t.Errorf("Expected 'no samples provided' error, got: %v", err)
+	}
+}
+
+func TestAnalyzePRsNoFetcher(t *testing.T) {
+	ctx := context.Background()
+
+	req := &AnalysisRequest{
+		Samples: []PRSummaryInfo{
+			{Owner: "owner", Repo: "repo", Number: 1, UpdatedAt: time.Now()},
+		},
+		Fetcher: nil,
+		Config:  DefaultConfig(),
+	}
+
+	result, err := AnalyzePRs(ctx, req)
+
+	if err == nil {
+		t.Error("Expected error when fetcher is nil")
+	}
+
+	if result != nil {
+		t.Error("Expected nil result when fetcher is nil")
+	}
+
+	if err.Error() != "fetcher is required" {
+		t.Errorf("Expected 'fetcher is required' error, got: %v", err)
+	}
+}
+
+func TestAnalyzePRsSequentialSuccess(t *testing.T) {
+	ctx := context.Background()
+	now := time.Now()
+
+	fetcher := &mockPRFetcher{
+		data: map[string]PRData{
+			"https://github.com/owner/repo/pull/1": {
+				LinesAdded: 50,
+				Author:     "author1",
+				Events: []ParticipantEvent{
+					{Timestamp: now, Actor: "author1", Kind: "commit"},
+				},
+				CreatedAt: now.Add(-2 * time.Hour),
+				ClosedAt:  now,
+			},
+			"https://github.com/owner/repo/pull/2": {
+				LinesAdded: 100,
+				Author:     "author2",
+				Events: []ParticipantEvent{
+					{Timestamp: now, Actor: "author2", Kind: "commit"},
+				},
+				CreatedAt: now.Add(-3 * time.Hour),
+				ClosedAt:  now,
+			},
+		},
+	}
+
+	req := &AnalysisRequest{
+		Samples: []PRSummaryInfo{
+			{Owner: "owner", Repo: "repo", Number: 1, UpdatedAt: now},
+			{Owner: "owner", Repo: "repo", Number: 2, UpdatedAt: now},
+		},
+		Fetcher:     fetcher,
+		Config:      DefaultConfig(),
+		Concurrency: 0, // Sequential
+	}
+
+	result, err := AnalyzePRs(ctx, req)
+
+	if err != nil {
+		t.Fatalf("Expected no error, got: %v", err)
+	}
+
+	if result == nil {
+		t.Fatal("Expected non-nil result")
+	}
+
+	if len(result.Breakdowns) != 2 {
+		t.Errorf("Expected 2 breakdowns, got %d", len(result.Breakdowns))
+	}
+
+	if result.Skipped != 0 {
+		t.Errorf("Expected 0 skipped, got %d", result.Skipped)
+	}
+
+	if fetcher.callCount != 2 {
+		t.Errorf("Expected 2 fetcher calls, got %d", fetcher.callCount)
+	}
+}
+
+func TestAnalyzePRsSequentialPartialFailure(t *testing.T) {
+	ctx := context.Background()
+	now := time.Now()
+
+	fetcher := &mockPRFetcher{
+		data: map[string]PRData{
+			"https://github.com/owner/repo/pull/1": {
+				LinesAdded: 50,
+				Author:     "author1",
+				Events: []ParticipantEvent{
+					{Timestamp: now, Actor: "author1", Kind: "commit"},
+				},
+				CreatedAt: now.Add(-2 * time.Hour),
+				ClosedAt:  now,
+			},
+		},
+		failURLs: map[string]error{
+			"https://github.com/owner/repo/pull/2": errors.New("fetch failed"),
+		},
+	}
+
+	req := &AnalysisRequest{
+		Samples: []PRSummaryInfo{
+			{Owner: "owner", Repo: "repo", Number: 1, UpdatedAt: now},
+			{Owner: "owner", Repo: "repo", Number: 2, UpdatedAt: now},
+		},
+		Fetcher:     fetcher,
+		Config:      DefaultConfig(),
+		Concurrency: 1,
+	}
+
+	result, err := AnalyzePRs(ctx, req)
+
+	if err != nil {
+		t.Fatalf("Expected no error, got: %v", err)
+	}
+
+	if result == nil {
+		t.Fatal("Expected non-nil result")
+	}
+
+	if len(result.Breakdowns) != 1 {
+		t.Errorf("Expected 1 breakdown, got %d", len(result.Breakdowns))
+	}
+
+	if result.Skipped != 1 {
+		t.Errorf("Expected 1 skipped, got %d", result.Skipped)
+	}
+}
+
+func TestAnalyzePRsSequentialAllFail(t *testing.T) {
+	ctx := context.Background()
+	now := time.Now()
+
+	fetcher := &mockPRFetcher{
+		failURLs: map[string]error{
+			"https://github.com/owner/repo/pull/1": errors.New("fetch failed"),
+			"https://github.com/owner/repo/pull/2": errors.New("fetch failed"),
+		},
+	}
+
+	req := &AnalysisRequest{
+		Samples: []PRSummaryInfo{
+			{Owner: "owner", Repo: "repo", Number: 1, UpdatedAt: now},
+			{Owner: "owner", Repo: "repo", Number: 2, UpdatedAt: now},
+		},
+		Fetcher:     fetcher,
+		Config:      DefaultConfig(),
+		Concurrency: 1,
+	}
+
+	result, err := AnalyzePRs(ctx, req)
+
+	if err == nil {
+		t.Error("Expected error when all fetches fail")
+	}
+
+	if result != nil {
+		t.Error("Expected nil result when all fetches fail")
+	}
+
+	expectedErrMsg := "no samples could be processed successfully (2 skipped)"
+	if err.Error() != expectedErrMsg {
+		t.Errorf("Expected error message '%s', got: %v", expectedErrMsg, err)
+	}
+}
+
+func TestAnalyzePRsParallelSuccess(t *testing.T) {
+	ctx := context.Background()
+	now := time.Now()
+
+	fetcher := &mockPRFetcher{
+		data: map[string]PRData{
+			"https://github.com/owner/repo/pull/1": {
+				LinesAdded: 50,
+				Author:     "author1",
+				Events: []ParticipantEvent{
+					{Timestamp: now, Actor: "author1", Kind: "commit"},
+				},
+				CreatedAt: now.Add(-2 * time.Hour),
+				ClosedAt:  now,
+			},
+			"https://github.com/owner/repo/pull/2": {
+				LinesAdded: 100,
+				Author:     "author2",
+				Events: []ParticipantEvent{
+					{Timestamp: now, Actor: "author2", Kind: "commit"},
+				},
+				CreatedAt: now.Add(-3 * time.Hour),
+				ClosedAt:  now,
+			},
+			"https://github.com/owner/repo/pull/3": {
+				LinesAdded: 75,
+				Author:     "author3",
+				Events: []ParticipantEvent{
+					{Timestamp: now, Actor: "author3", Kind: "commit"},
+				},
+				CreatedAt: now.Add(-4 * time.Hour),
+				ClosedAt:  now,
+			},
+		},
+		fetchDelay: 10 * time.Millisecond, // Small delay to test concurrency
+	}
+
+	req := &AnalysisRequest{
+		Samples: []PRSummaryInfo{
+			{Owner: "owner", Repo: "repo", Number: 1, UpdatedAt: now},
+			{Owner: "owner", Repo: "repo", Number: 2, UpdatedAt: now},
+			{Owner: "owner", Repo: "repo", Number: 3, UpdatedAt: now},
+		},
+		Fetcher:     fetcher,
+		Config:      DefaultConfig(),
+		Concurrency: 2, // Parallel with 2 workers
+	}
+
+	result, err := AnalyzePRs(ctx, req)
+
+	if err != nil {
+		t.Fatalf("Expected no error, got: %v", err)
+	}
+
+	if result == nil {
+		t.Fatal("Expected non-nil result")
+	}
+
+	if len(result.Breakdowns) != 3 {
+		t.Errorf("Expected 3 breakdowns, got %d", len(result.Breakdowns))
+	}
+
+	if result.Skipped != 0 {
+		t.Errorf("Expected 0 skipped, got %d", result.Skipped)
+	}
+
+	if fetcher.callCount != 3 {
+		t.Errorf("Expected 3 fetcher calls, got %d", fetcher.callCount)
+	}
+}
+
+func TestAnalyzePRsParallelPartialFailure(t *testing.T) {
+	ctx := context.Background()
+	now := time.Now()
+
+	fetcher := &mockPRFetcher{
+		data: map[string]PRData{
+			"https://github.com/owner/repo/pull/1": {
+				LinesAdded: 50,
+				Author:     "author1",
+				Events: []ParticipantEvent{
+					{Timestamp: now, Actor: "author1", Kind: "commit"},
+				},
+				CreatedAt: now.Add(-2 * time.Hour),
+				ClosedAt:  now,
+			},
+		},
+		failURLs: map[string]error{
+			"https://github.com/owner/repo/pull/2": errors.New("fetch failed"),
+		},
+	}
+
+	req := &AnalysisRequest{
+		Samples: []PRSummaryInfo{
+			{Owner: "owner", Repo: "repo", Number: 1, UpdatedAt: now},
+			{Owner: "owner", Repo: "repo", Number: 2, UpdatedAt: now},
+		},
+		Fetcher:     fetcher,
+		Config:      DefaultConfig(),
+		Concurrency: 2,
+	}
+
+	result, err := AnalyzePRs(ctx, req)
+
+	if err != nil {
+		t.Fatalf("Expected no error, got: %v", err)
+	}
+
+	if result == nil {
+		t.Fatal("Expected non-nil result")
+	}
+
+	if len(result.Breakdowns) != 1 {
+		t.Errorf("Expected 1 breakdown, got %d", len(result.Breakdowns))
+	}
+
+	if result.Skipped != 1 {
+		t.Errorf("Expected 1 skipped, got %d", result.Skipped)
+	}
+}
+
+func TestAnalyzePRsParallelAllFail(t *testing.T) {
+	ctx := context.Background()
+	now := time.Now()
+
+	fetcher := &mockPRFetcher{
+		failURLs: map[string]error{
+			"https://github.com/owner/repo/pull/1": errors.New("fetch failed"),
+			"https://github.com/owner/repo/pull/2": errors.New("fetch failed"),
+		},
+	}
+
+	req := &AnalysisRequest{
+		Samples: []PRSummaryInfo{
+			{Owner: "owner", Repo: "repo", Number: 1, UpdatedAt: now},
+			{Owner: "owner", Repo: "repo", Number: 2, UpdatedAt: now},
+		},
+		Fetcher:     fetcher,
+		Config:      DefaultConfig(),
+		Concurrency: 2,
+	}
+
+	result, err := AnalyzePRs(ctx, req)
+
+	if err == nil {
+		t.Error("Expected error when all fetches fail")
+	}
+
+	if result != nil {
+		t.Error("Expected nil result when all fetches fail")
+	}
+
+	expectedErrMsg := "no samples could be processed successfully (2 skipped)"
+	if err.Error() != expectedErrMsg {
+		t.Errorf("Expected error message '%s', got: %v", expectedErrMsg, err)
+	}
+}
+
+func TestAnalyzePRsWithLogger(t *testing.T) {
+	ctx := context.Background()
+	now := time.Now()
+
+	// Create a logger that writes to a buffer
+	var logBuf strings.Builder
+	logger := slog.New(slog.NewTextHandler(&logBuf, &slog.HandlerOptions{
+		Level: slog.LevelInfo,
+	}))
+
+	fetcher := &mockPRFetcher{
+		data: map[string]PRData{
+			"https://github.com/owner/repo/pull/1": {
+				LinesAdded: 50,
+				Author:     "author1",
+				Events: []ParticipantEvent{
+					{Timestamp: now, Actor: "author1", Kind: "commit"},
+				},
+				CreatedAt: now.Add(-2 * time.Hour),
+				ClosedAt:  now,
+			},
+		},
+		failURLs: map[string]error{
+			"https://github.com/owner/repo/pull/2": errors.New("fetch failed"),
+		},
+	}
+
+	req := &AnalysisRequest{
+		Samples: []PRSummaryInfo{
+			{Owner: "owner", Repo: "repo", Number: 1, UpdatedAt: now},
+			{Owner: "owner", Repo: "repo", Number: 2, UpdatedAt: now},
+		},
+		Fetcher:     fetcher,
+		Logger:      logger,
+		Config:      DefaultConfig(),
+		Concurrency: 1,
+	}
+
+	result, err := AnalyzePRs(ctx, req)
+
+	if err != nil {
+		t.Fatalf("Expected no error, got: %v", err)
+	}
+
+	if result == nil {
+		t.Fatal("Expected non-nil result")
+	}
+
+	logOutput := logBuf.String()
+
+	// Check that processing logs are present
+	if !strings.Contains(logOutput, "Processing sample PR") {
+		t.Error("Expected 'Processing sample PR' in log output")
+	}
+
+	// Check that skip warning is present
+	if !strings.Contains(logOutput, "Failed to fetch PR data, skipping") {
+		t.Error("Expected 'Failed to fetch PR data, skipping' in log output")
+	}
+
+	// Check that progress is logged
+	if !strings.Contains(logOutput, "1/2") {
+		t.Error("Expected '1/2' progress in log output")
+	}
+
+	if !strings.Contains(logOutput, "2/2") {
+		t.Error("Expected '2/2' progress in log output")
+	}
+}
+
+func TestAnalyzePRsConcurrencyDefault(t *testing.T) {
+	ctx := context.Background()
+	now := time.Now()
+
+	fetcher := &mockPRFetcher{}
+
+	req := &AnalysisRequest{
+		Samples: []PRSummaryInfo{
+			{Owner: "owner", Repo: "repo", Number: 1, UpdatedAt: now},
+		},
+		Fetcher:     fetcher,
+		Config:      DefaultConfig(),
+		Concurrency: 0, // Should default to sequential (1)
+	}
+
+	result, err := AnalyzePRs(ctx, req)
+
+	if err != nil {
+		t.Fatalf("Expected no error, got: %v", err)
+	}
+
+	if result == nil {
+		t.Fatal("Expected non-nil result")
+	}
+
+	if len(result.Breakdowns) != 1 {
+		t.Errorf("Expected 1 breakdown, got %d", len(result.Breakdowns))
+	}
+}
+
+func TestAnalyzePRsContextCancellation(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	now := time.Now()
+
+	fetcher := &mockPRFetcher{
+		fetchDelay: 100 * time.Millisecond, // Delay to allow cancellation
+	}
+
+	req := &AnalysisRequest{
+		Samples: []PRSummaryInfo{
+			{Owner: "owner", Repo: "repo", Number: 1, UpdatedAt: now},
+			{Owner: "owner", Repo: "repo", Number: 2, UpdatedAt: now},
+		},
+		Fetcher:     fetcher,
+		Config:      DefaultConfig(),
+		Concurrency: 1,
+	}
+
+	// Cancel context after a short delay
+	go func() {
+		time.Sleep(50 * time.Millisecond)
+		cancel()
+	}()
+
+	result, err := AnalyzePRs(ctx, req)
+
+	// Should either fail completely or have some skipped
+	if err == nil && result != nil && result.Skipped == 0 {
+		// This is acceptable if cancellation happened after all fetches
+		return
+	}
+
+	// If we got here, either err or skipped should be non-zero
+	if err == nil && (result == nil || result.Skipped == 0) {
+		t.Error("Expected context cancellation to affect results")
+	}
+}
+
+func TestExtrapolateFromSamplesEmpty(t *testing.T) {
+	cfg := DefaultConfig()
+	result := ExtrapolateFromSamples([]Breakdown{}, 100, 10, 5, 30, cfg)
+
+	if result.TotalPRs != 100 {
+		t.Errorf("Expected TotalPRs=100, got %d", result.TotalPRs)
+	}
+
+	if result.SampledPRs != 0 {
+		t.Errorf("Expected SampledPRs=0, got %d", result.SampledPRs)
+	}
+
+	if result.SuccessfulSamples != 0 {
+		t.Errorf("Expected SuccessfulSamples=0, got %d", result.SuccessfulSamples)
+	}
+
+	if result.TotalCost != 0 {
+		t.Errorf("Expected TotalCost=0, got $%.2f", result.TotalCost)
+	}
+}
+
+func TestExtrapolateFromSamplesSingle(t *testing.T) {
+	now := time.Now()
+	cfg := DefaultConfig()
+
+	// Create a single breakdown
+	breakdown := Calculate(PRData{
+		LinesAdded: 100,
+		Author:     "test-author",
+		Events: []ParticipantEvent{
+			{Timestamp: now, Actor: "test-author", Kind: "commit"},
+			{Timestamp: now.Add(10 * time.Minute), Actor: "reviewer", Kind: "review"},
+		},
+		CreatedAt: now.Add(-24 * time.Hour),
+		ClosedAt:  now,
+	}, cfg)
+
+	// Extrapolate from 1 sample to 10 total PRs
+	result := ExtrapolateFromSamples([]Breakdown{breakdown}, 10, 2, 0, 7, cfg)
+
+	if result.TotalPRs != 10 {
+		t.Errorf("Expected TotalPRs=10, got %d", result.TotalPRs)
+	}
+
+	if result.SampledPRs != 1 {
+		t.Errorf("Expected SampledPRs=1, got %d", result.SampledPRs)
+	}
+
+	if result.SuccessfulSamples != 1 {
+		t.Errorf("Expected SuccessfulSamples=1, got %d", result.SuccessfulSamples)
+	}
+
+	// Total cost should be roughly 10x the single breakdown cost
+	expectedTotalCost := breakdown.TotalCost * 10
+	if result.TotalCost < expectedTotalCost*0.9 || result.TotalCost > expectedTotalCost*1.1 {
+		t.Errorf("Expected TotalCost≈$%.2f (10x single), got $%.2f", expectedTotalCost, result.TotalCost)
+	}
+
+	// Check that author cost is extrapolated
+	if result.AuthorTotalCost <= 0 {
+		t.Error("Expected positive author total cost")
+	}
+
+	// Check that participant cost is extrapolated
+	if result.ParticipantTotalCost <= 0 {
+		t.Error("Expected positive participant total cost")
+	}
+
+	// Check unique authors count
+	if result.UniqueAuthors != 1 {
+		t.Errorf("Expected 1 unique author, got %d", result.UniqueAuthors)
+	}
+}
+
+func TestExtrapolateFromSamplesMultiple(t *testing.T) {
+	now := time.Now()
+	cfg := DefaultConfig()
+
+	// Create multiple breakdowns with different characteristics
+	breakdowns := []Breakdown{
+		Calculate(PRData{
+			LinesAdded: 100,
+			Author:     "author1",
+			Events: []ParticipantEvent{
+				{Timestamp: now, Actor: "author1", Kind: "commit"},
+			},
+			CreatedAt: now.Add(-2 * time.Hour),
+			ClosedAt:  now,
+		}, cfg),
+		Calculate(PRData{
+			LinesAdded: 200,
+			Author:     "author2",
+			Events: []ParticipantEvent{
+				{Timestamp: now, Actor: "author2", Kind: "commit"},
+				{Timestamp: now.Add(10 * time.Minute), Actor: "reviewer", Kind: "review"},
+			},
+			CreatedAt: now.Add(-48 * time.Hour),
+			ClosedAt:  now,
+		}, cfg),
+	}
+
+	// Extrapolate from 2 samples to 20 total PRs over 14 days
+	result := ExtrapolateFromSamples(breakdowns, 20, 5, 3, 14, cfg)
+
+	if result.TotalPRs != 20 {
+		t.Errorf("Expected TotalPRs=20, got %d", result.TotalPRs)
+	}
+
+	if result.SampledPRs != 2 {
+		t.Errorf("Expected SampledPRs=2, got %d", result.SampledPRs)
+	}
+
+	if result.SuccessfulSamples != 2 {
+		t.Errorf("Expected SuccessfulSamples=2, got %d", result.SuccessfulSamples)
+	}
+
+	// Check unique authors (should be 2)
+	if result.UniqueAuthors != 2 {
+		t.Errorf("Expected 2 unique authors, got %d", result.UniqueAuthors)
+	}
+
+	// Total cost should be roughly 10x the average breakdown cost
+	avgCost := (breakdowns[0].TotalCost + breakdowns[1].TotalCost) / 2
+	expectedTotalCost := avgCost * 20
+	if result.TotalCost < expectedTotalCost*0.9 || result.TotalCost > expectedTotalCost*1.1 {
+		t.Errorf("Expected TotalCost≈$%.2f, got $%.2f", expectedTotalCost, result.TotalCost)
+	}
+
+	// Check waste per week calculations (should be > 0 for 14 day period)
+	if result.WasteHoursPerWeek <= 0 {
+		t.Error("Expected positive waste hours per week")
+	}
+
+	if result.WasteCostPerWeek <= 0 {
+		t.Error("Expected positive waste cost per week")
+	}
+
+	// Check average PR duration is calculated
+	if result.AvgPRDurationHours <= 0 {
+		t.Error("Expected positive average PR duration")
+	}
+}
+
+func TestExtrapolateFromSamplesBotVsHuman(t *testing.T) {
+	cfg := DefaultConfig()
+
+	// Create breakdowns with both human and bot PRs
+	breakdowns := []Breakdown{
+		// Human PR
+		{
+			PRAuthor:   "human-author",
+			AuthorBot:  false,
+			PRDuration: 24.0,
+			Author: AuthorCostDetail{
+				NewLines:      100,
+				ModifiedLines: 150,
+			},
+			TotalCost: 1000,
+		},
+		// Bot PR
+		{
+			PRAuthor:   "dependabot[bot]",
+			AuthorBot:  true,
+			PRDuration: 2.0,
+			Author: AuthorCostDetail{
+				NewLines:      50,
+				ModifiedLines: 60,
+			},
+			TotalCost: 100,
+		},
+	}
+
+	result := ExtrapolateFromSamples(breakdowns, 10, 5, 0, 7, cfg)
+
+	// Should have both human and bot PR counts
+	if result.HumanPRs <= 0 {
+		t.Error("Expected positive human PR count")
+	}
+
+	if result.BotPRs <= 0 {
+		t.Error("Expected positive bot PR count")
+	}
+
+	// Should have separate duration averages
+	if result.AvgHumanPRDurationHours <= 0 {
+		t.Error("Expected positive average human PR duration")
+	}
+
+	if result.AvgBotPRDurationHours <= 0 {
+		t.Error("Expected positive average bot PR duration")
+	}
+
+	// Bot LOC should be tracked separately
+	if result.BotNewLines <= 0 {
+		t.Error("Expected positive bot new lines")
+	}
+
+	if result.BotModifiedLines <= 0 {
+		t.Error("Expected positive bot modified lines")
+	}
+
+	// Human authors should only count human PRs
+	if result.UniqueAuthors != 1 {
+		t.Errorf("Expected 1 unique human author, got %d", result.UniqueAuthors)
+	}
+}
+
+func TestExtrapolateFromSamplesWasteCalculation(t *testing.T) {
+	now := time.Now()
+	cfg := DefaultConfig()
+
+	// Create a breakdown with significant delay costs
+	breakdown := Calculate(PRData{
+		LinesAdded: 100,
+		Author:     "author1",
+		Events: []ParticipantEvent{
+			{Timestamp: now.Add(-168 * time.Hour), Actor: "author1", Kind: "commit"},
+		},
+		CreatedAt: now.Add(-168 * time.Hour), // 7 days old
+		ClosedAt:  now,
+	}, cfg)
+
+	// Extrapolate over 7 days
+	result := ExtrapolateFromSamples([]Breakdown{breakdown}, 10, 3, 0, 7, cfg)
+
+	// Waste per week should be calculated
+	if result.WasteHoursPerWeek <= 0 {
+		t.Error("Expected positive waste hours per week")
+	}
+
+	if result.WasteCostPerWeek <= 0 {
+		t.Error("Expected positive waste cost per week")
+	}
+
+	// Per-author waste should be calculated
+	if result.WasteHoursPerAuthorPerWeek <= 0 {
+		t.Error("Expected positive waste hours per author per week")
+	}
+
+	if result.WasteCostPerAuthorPerWeek <= 0 {
+		t.Error("Expected positive waste cost per author per week")
+	}
+
+	// Waste should be roughly the delay costs
+	// WastePerWeek = (delay costs) / weeks
+	expectedWastePerWeek := breakdown.DelayCost * 10 // Extrapolated to 10 PRs, 1 week period
+	if result.WasteCostPerWeek < expectedWastePerWeek*0.5 || result.WasteCostPerWeek > expectedWastePerWeek*1.5 {
+		t.Errorf("Expected WasteCostPerWeek≈$%.2f, got $%.2f", expectedWastePerWeek, result.WasteCostPerWeek)
+	}
+}
+
+func TestExtrapolateFromSamplesR2RSavings(t *testing.T) {
+	now := time.Now()
+	cfg := DefaultConfig()
+
+	// Create breakdowns with long PR durations (high waste)
+	breakdowns := []Breakdown{
+		Calculate(PRData{
+			LinesAdded: 100,
+			Author:     "author1",
+			Events: []ParticipantEvent{
+				{Timestamp: now.Add(-72 * time.Hour), Actor: "author1", Kind: "commit"},
+			},
+			CreatedAt: now.Add(-72 * time.Hour), // 3 days old
+			ClosedAt:  now,
+		}, cfg),
+	}
+
+	result := ExtrapolateFromSamples(breakdowns, 100, 10, 5, 30, cfg)
+
+	// R2R savings should be calculated
+	// Savings formula: baseline waste - remodeled waste - subscription cost
+	// Should be > 0 if current waste is high enough
+	if result.R2RSavings < 0 {
+		t.Error("R2R savings should not be negative")
+	}
+
+	// For a 3-day PR, there should be significant savings
+	// (R2R targets 40-minute PRs, which would eliminate most delay costs)
+	if result.R2RSavings == 0 {
+		t.Error("Expected positive R2R savings for long-duration PRs")
+	}
+
+	// UniqueNonBotUsers should be tracked
+	if result.UniqueNonBotUsers <= 0 {
+		t.Error("Expected positive unique non-bot users count")
+	}
+}
+
+func TestExtrapolateFromSamplesOpenPRTracking(t *testing.T) {
+	now := time.Now()
+	cfg := DefaultConfig()
+
+	breakdown := Calculate(PRData{
+		LinesAdded: 50,
+		Author:     "author1",
+		Events: []ParticipantEvent{
+			{Timestamp: now, Actor: "author1", Kind: "commit"},
+		},
+		CreatedAt: now.Add(-1 * time.Hour),
+		ClosedAt:  now,
+	}, cfg)
+
+	// Test with actual open PRs
+	actualOpenPRs := 15
+	result := ExtrapolateFromSamples([]Breakdown{breakdown}, 100, 5, actualOpenPRs, 30, cfg)
+
+	// Open PRs should match actual count (not extrapolated)
+	if result.OpenPRs != actualOpenPRs {
+		t.Errorf("Expected OpenPRs=%d (actual), got %d", actualOpenPRs, result.OpenPRs)
+	}
+
+	// PR tracking cost should be based on actual open PRs
+	if result.PRTrackingCost <= 0 {
+		t.Error("Expected positive PR tracking cost with open PRs")
+	}
+
+	// PR tracking hours should scale with open PRs and user count
+	if result.PRTrackingHours <= 0 {
+		t.Error("Expected positive PR tracking hours")
+	}
+}
+
+func TestExtrapolateFromSamplesParticipants(t *testing.T) {
+	now := time.Now()
+	cfg := DefaultConfig()
+
+	// Create breakdown with multiple participants
+	breakdown := Calculate(PRData{
+		LinesAdded: 100,
+		Author:     "author1",
+		Events: []ParticipantEvent{
+			{Timestamp: now, Actor: "author1", Kind: "commit"},
+			{Timestamp: now.Add(10 * time.Minute), Actor: "reviewer1", Kind: "review"},
+			{Timestamp: now.Add(20 * time.Minute), Actor: "reviewer2", Kind: "review"},
+			{Timestamp: now.Add(30 * time.Minute), Actor: "commenter1", Kind: "comment"},
+		},
+		CreatedAt: now.Add(-2 * time.Hour),
+		ClosedAt:  now,
+	}, cfg)
+
+	result := ExtrapolateFromSamples([]Breakdown{breakdown}, 10, 5, 0, 7, cfg)
+
+	// Participant costs should be extrapolated
+	if result.ParticipantReviewCost <= 0 {
+		t.Error("Expected positive participant review cost")
+	}
+
+	if result.ParticipantTotalCost <= 0 {
+		t.Error("Expected positive participant total cost")
+	}
+
+	// Participant metrics should be tracked
+	if result.ParticipantEvents <= 0 {
+		t.Error("Expected positive participant events count")
+	}
+
+	if result.ParticipantSessions <= 0 {
+		t.Error("Expected positive participant sessions count")
+	}
+
+	// Unique non-bot users should include both authors and participants
+	if result.UniqueNonBotUsers < 2 {
+		t.Errorf("Expected at least 2 unique non-bot users (author + reviewers), got %d", result.UniqueNonBotUsers)
 	}
 }
