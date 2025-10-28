@@ -112,7 +112,7 @@ type CalculateResponse struct {
 type RepoSampleRequest struct {
 	Owner      string       `json:"owner"`
 	Repo       string       `json:"repo"`
-	SampleSize int          `json:"sample_size,omitempty"` // Default: 25
+	SampleSize int          `json:"sample_size,omitempty"` // Default: 30
 	Days       int          `json:"days,omitempty"`        // Default: 90
 	Config     *cost.Config `json:"config,omitempty"`
 }
@@ -122,7 +122,7 @@ type RepoSampleRequest struct {
 //nolint:govet // fieldalignment: API struct field order optimized for readability
 type OrgSampleRequest struct {
 	Org        string       `json:"org"`
-	SampleSize int          `json:"sample_size,omitempty"` // Default: 25
+	SampleSize int          `json:"sample_size,omitempty"` // Default: 30
 	Days       int          `json:"days,omitempty"`        // Default: 90
 	Config     *cost.Config `json:"config,omitempty"`
 }
@@ -1150,18 +1150,18 @@ func (s *Server) parseRepoSampleRequest(ctx context.Context, r *http.Request) (*
 
 	// Set defaults
 	if req.SampleSize == 0 {
-		req.SampleSize = 25
+		req.SampleSize = 30
 	}
 	if req.Days == 0 {
 		req.Days = 90
 	}
 
-	// Validate reasonable limits (silently cap at 25)
+	// Validate reasonable limits (silently cap at 50)
 	if req.SampleSize < 1 {
 		return nil, errors.New("sample_size must be at least 1")
 	}
-	if req.SampleSize > 25 {
-		req.SampleSize = 25
+	if req.SampleSize > 50 {
+		req.SampleSize = 50
 	}
 	if req.Days < 1 || req.Days > 365 {
 		return nil, errors.New("days must be between 1 and 365")
@@ -1208,18 +1208,18 @@ func (s *Server) parseOrgSampleRequest(ctx context.Context, r *http.Request) (*O
 
 	// Set defaults
 	if req.SampleSize == 0 {
-		req.SampleSize = 25
+		req.SampleSize = 30
 	}
 	if req.Days == 0 {
 		req.Days = 90
 	}
 
-	// Validate reasonable limits (silently cap at 25)
+	// Validate reasonable limits (silently cap at 50)
 	if req.SampleSize < 1 {
 		return nil, errors.New("sample_size must be at least 1")
 	}
-	if req.SampleSize > 25 {
-		req.SampleSize = 25
+	if req.SampleSize > 50 {
+		req.SampleSize = 50
 	}
 	if req.Days < 1 || req.Days > 365 {
 		return nil, errors.New("days must be between 1 and 365")
@@ -1249,7 +1249,7 @@ func (s *Server) processRepoSample(ctx context.Context, req *RepoSampleRequest, 
 	} else {
 		// Fetch all PRs modified since the date
 		var err error
-		prs, err = github.FetchPRsFromRepo(ctx, req.Owner, req.Repo, since, token)
+		prs, err = github.FetchPRsFromRepo(ctx, req.Owner, req.Repo, since, token, nil)
 		if err != nil {
 			return nil, fmt.Errorf("failed to fetch PRs: %w", err)
 		}
@@ -1350,7 +1350,7 @@ func (s *Server) processOrgSample(ctx context.Context, req *OrgSampleRequest, to
 	} else {
 		// Fetch all PRs across the org modified since the date
 		var err error
-		prs, err = github.FetchPRsFromOrg(ctx, req.Org, since, token)
+		prs, err = github.FetchPRsFromOrg(ctx, req.Org, since, token, nil)
 		if err != nil {
 			return nil, fmt.Errorf("failed to fetch PRs: %w", err)
 		}
@@ -1648,30 +1648,30 @@ func sendSSE(w http.ResponseWriter, update ProgressUpdate) error {
 // startKeepAlive starts a goroutine that sends SSE keep-alive comments every 2 seconds.
 // This prevents client-side timeouts during long operations.
 // Returns a stop channel (to stop keep-alive) and an error channel (signals connection failure).
-func startKeepAlive(w http.ResponseWriter) (chan struct{}, <-chan error) {
-	stop := make(chan struct{})
-	connErr := make(chan error, 1)
+func startKeepAlive(w http.ResponseWriter) (stop chan struct{}, connErr <-chan error) {
+	stopChan := make(chan struct{})
+	errChan := make(chan error, 1)
 	go func() {
 		ticker := time.NewTicker(2 * time.Second)
 		defer ticker.Stop()
-		defer close(connErr)
+		defer close(errChan)
 		for {
 			select {
 			case <-ticker.C:
 				// Send SSE comment (keeps connection alive, ignored by client)
 				if _, err := fmt.Fprint(w, ": keepalive\n\n"); err != nil {
-					connErr <- fmt.Errorf("keepalive write failed: %w", err)
+					errChan <- fmt.Errorf("keepalive write failed: %w", err)
 					return
 				}
 				if flusher, ok := w.(http.Flusher); ok {
 					flusher.Flush()
 				}
-			case <-stop:
+			case <-stopChan:
 				return
 			}
 		}
 	}()
-	return stop, connErr
+	return stopChan, errChan
 }
 
 // logSSEError logs an error from sendSSE if it occurs.
@@ -1737,10 +1737,19 @@ func (s *Server) processRepoSampleWithProgress(ctx context.Context, req *RepoSam
 			}
 		}()
 
-		// Fetch all PRs modified since the date
+		// Fetch all PRs modified since the date with progress updates
 		var err error
+		progressCallback := func(queryName string, page int, prCount int) {
+			logSSEError(ctx, s.logger, sendSSE(writer, ProgressUpdate{
+				Type:     "fetching",
+				PR:       0,
+				Owner:    req.Owner,
+				Repo:     req.Repo,
+				Progress: fmt.Sprintf("Fetching %s PRs (page %d, %d PRs found)...", queryName, page, prCount),
+			}))
+		}
 		//nolint:contextcheck // Using background context intentionally to prevent client timeout from canceling work
-		prs, err = github.FetchPRsFromRepo(workCtx, req.Owner, req.Repo, since, token)
+		prs, err = github.FetchPRsFromRepo(workCtx, req.Owner, req.Repo, since, token, progressCallback)
 		if err != nil {
 			logSSEError(ctx, s.logger, sendSSE(writer, ProgressUpdate{
 				Type:  "error",
@@ -1862,10 +1871,19 @@ func (s *Server) processOrgSampleWithProgress(ctx context.Context, req *OrgSampl
 			}
 		}()
 
-		// Fetch all PRs across the org modified since the date
+		// Fetch all PRs across the org modified since the date with progress updates
 		var err error
+		progressCallback := func(queryName string, page int, prCount int) {
+			logSSEError(ctx, s.logger, sendSSE(writer, ProgressUpdate{
+				Type:     "fetching",
+				PR:       0,
+				Owner:    req.Org,
+				Repo:     "",
+				Progress: fmt.Sprintf("Fetching %s PRs (page %d, %d PRs found)...", queryName, page, prCount),
+			}))
+		}
 		//nolint:contextcheck // Using background context intentionally to prevent client timeout from canceling work
-		prs, err = github.FetchPRsFromOrg(workCtx, req.Org, since, token)
+		prs, err = github.FetchPRsFromOrg(workCtx, req.Org, since, token, progressCallback)
 		if err != nil {
 			logSSEError(ctx, s.logger, sendSSE(writer, ProgressUpdate{
 				Type:  "error",

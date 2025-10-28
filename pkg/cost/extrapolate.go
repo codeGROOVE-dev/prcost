@@ -290,9 +290,11 @@ func ExtrapolateFromSamples(breakdowns []Breakdown, totalPRs, totalAuthors, actu
 	extCodeChurnCost := sumCodeChurnCost / samples * multiplier
 	extAutomatedUpdatesCost := sumAutomatedUpdatesCost / samples * multiplier
 	// Calculate Open PR Tracking cost based on actual open PRs (not from samples)
-	// Formula: actualOpenPRs × (tracking_minutes_per_day / 60) × daysInPeriod × hourlyRate
+	// Formula: actualOpenPRs × uniqueUsers × (tracking_minutes_per_day_per_person / 60) × daysInPeriod × hourlyRate
+	// This scales with team size: larger teams spend more total time tracking open PRs
 	hourlyRate := cfg.AnnualSalary * cfg.BenefitsMultiplier / cfg.HoursPerYear
-	extPRTrackingHours := float64(actualOpenPRs) * (cfg.PRTrackingMinutesPerDay / 60.0) * float64(daysInPeriod)
+	uniqueUserCount := len(uniqueNonBotUsers)
+	extPRTrackingHours := float64(actualOpenPRs) * float64(uniqueUserCount) * (cfg.PRTrackingMinutesPerDay / 60.0) * float64(daysInPeriod)
 	extPRTrackingCost := extPRTrackingHours * hourlyRate
 	extFutureReviewCost := sumFutureReviewCost / samples * multiplier
 	extFutureMergeCost := sumFutureMergeCost / samples * multiplier
@@ -377,7 +379,7 @@ func ExtrapolateFromSamples(breakdowns []Breakdown, totalPRs, totalAuthors, actu
 	// Calculate R2R savings
 	// Formula: baseline annual waste - (re-modeled waste with 40min PRs) - (R2R subscription cost)
 	// Baseline annual waste: preventable cost extrapolated to 52 weeks
-	uniqueUserCount := len(uniqueNonBotUsers)
+	// uniqueUserCount already defined above for PR tracking calculation
 	baselineAnnualWaste := (extCodeChurnCost + extDeliveryDelayCost + extAutomatedUpdatesCost + extPRTrackingCost) * (52.0 / (float64(daysInPeriod) / 7.0))
 
 	// Re-model with 40-minute PR merge times

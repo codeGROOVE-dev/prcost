@@ -31,7 +31,7 @@ func main() {
 	// Org/Repo sampling flags
 	org := flag.String("org", "", "GitHub organization to analyze (optionally with --repo for single repo)")
 	repo := flag.String("repo", "", "GitHub repository to analyze (requires --org)")
-	samples := flag.Int("samples", 25, "Number of PRs to sample for extrapolation (25=fast/±20%, 50=slower/±14%)")
+	samples := flag.Int("samples", 30, "Number of PRs to sample for extrapolation (30=fast/±18%, 50=slower/±14%)")
 	days := flag.Int("days", 60, "Number of days to look back for PR modifications")
 
 	flag.Usage = func() {
@@ -452,22 +452,22 @@ func formatLOC(kloc float64) string {
 
 		// Add fractional part if significant
 		if kloc < 1000.0 && fracPart >= 0.05 {
-			return fmt.Sprintf("%s.%dk", string(result), int(fracPart*10))
+			return fmt.Sprintf("%s.%dk LOC", string(result), int(fracPart*10))
 		}
-		return string(result) + "k"
+		return string(result) + "k LOC"
 	}
 
 	// For values < 100k, use existing precision logic
 	if kloc < 0.1 && kloc > 0 {
-		return fmt.Sprintf("%.2fk", kloc)
+		return fmt.Sprintf("%.2fk LOC", kloc)
 	}
 	if kloc < 1.0 {
-		return fmt.Sprintf("%.1fk", kloc)
+		return fmt.Sprintf("%.1fk LOC", kloc)
 	}
 	if kloc < 10.0 {
-		return fmt.Sprintf("%.1fk", kloc)
+		return fmt.Sprintf("%.1fk LOC", kloc)
 	}
-	return fmt.Sprintf("%.0fk", kloc)
+	return fmt.Sprintf("%.0fk LOC", kloc)
 }
 
 // efficiencyGrade returns a letter grade and message based on efficiency percentage (MIT scale).

@@ -1059,11 +1059,11 @@
                         <input
                             type="number"
                             id="repoSampleSize"
-                            value="25"
+                            value="30"
                             min="1"
                             max="50"
                         >
-                        <div class="help-text">25 (fast, ±20% accuracy) or 50 (slower, ±14% accuracy)</div>
+                        <div class="help-text">30 (fast, ±18% accuracy) or 50 (slower, ±14% accuracy)</div>
                     </div>
                     <div class="form-group">
                         <label for="repoDays">Days Back</label>
@@ -1099,11 +1099,11 @@
                         <input
                             type="number"
                             id="orgSampleSize"
-                            value="25"
+                            value="30"
                             min="1"
                             max="50"
                         >
-                        <div class="help-text">25 (fast, ±20% accuracy) or 50 (slower, ±14% accuracy)</div>
+                        <div class="help-text">30 (fast, ±18% accuracy) or 50 (slower, ±14% accuracy)</div>
                     </div>
                     <div class="form-group">
                         <label for="orgDays">Days Back</label>
@@ -1262,76 +1262,114 @@
 
                 // Add fractional part if significant
                 if (kloc < 1000.0 && fracPart >= 0.05) {
-                    return `${intStr}.${Math.floor(fracPart * 10)}k`;
+                    return `${intStr}.${Math.floor(fracPart * 10)}k LOC`;
                 }
-                return intStr + 'k';
+                return intStr + 'k LOC';
             }
 
             // For values < 100k, use existing precision logic
             if (kloc < 0.1 && kloc > 0) {
-                return kloc.toFixed(2) + 'k';
+                return kloc.toFixed(2) + 'k LOC';
             }
             if (kloc < 1.0) {
-                return kloc.toFixed(1) + 'k';
+                return kloc.toFixed(1) + 'k LOC';
             }
             if (kloc < 10.0) {
-                return kloc.toFixed(1) + 'k';
+                return kloc.toFixed(1) + 'k LOC';
             }
-            return Math.floor(kloc) + 'k';
+            return Math.floor(kloc) + 'k LOC';
         }
 
         function formatTimeUnit(hours) {
             if (hours < 1) {
-                return (hours * 60).toFixed(1) + ' min';
+                return (hours * 60).toFixed(1) + 'm';
             }
             if (hours < 48) {
-                return hours.toFixed(1) + ' hrs';
+                return hours.toFixed(1) + 'h';
             }
 
             const days = hours / 24;
             if (days < 14) {
-                return days.toFixed(1) + ' days';
+                return days.toFixed(1) + 'd';
             }
 
             const weeks = days / 7;
             if (weeks < 8) {
-                return weeks.toFixed(1) + ' weeks';
+                return weeks.toFixed(1) + 'w';
             }
 
             const months = days / 30;
             if (months < 24) {
-                return months.toFixed(1) + ' months';
+                return months.toFixed(1) + 'mo';
             }
 
             const years = days / 365;
-            return years.toFixed(1) + ' years';
+            return years.toFixed(1) + 'y';
+        }
+
+        // Ledger formatting functions - all output must use these for consistency
+
+        // formatItemLine formats a cost breakdown line item with 4-space indent
+        function formatItemLine(label, cost, timeUnit, detail) {
+            const paddedLabel = label.padEnd(30);
+            const paddedTimeUnit = timeUnit.padEnd(6);
+            if (cost === 0) {
+                return `    ${paddedLabel} ${'—'.padStart(15)}    ${paddedTimeUnit}  ${detail}\n`;
+            }
+            return `    ${paddedLabel} ${formatCurrency(cost).padStart(15)}    ${paddedTimeUnit}  ${detail}\n`;
+        }
+
+        // formatSubtotalLine formats a subtotal line with 4-space indent
+        function formatSubtotalLine(label, cost, timeUnit, detail) {
+            const paddedLabel = label.padEnd(30);
+            const paddedTimeUnit = timeUnit.padEnd(6);
+            return `    ${paddedLabel} ${formatCurrency(cost).padStart(15)}    ${paddedTimeUnit}  ${detail}\n`;
+        }
+
+        // formatSummaryLine formats a summary line (like Preventable Loss Total) with 2-space indent
+        function formatSummaryLine(label, cost, timeUnit, detail) {
+            const paddedLabel = label.padEnd(30);
+            const paddedTimeUnit = timeUnit.padEnd(6);
+            return `  ${paddedLabel} ${formatCurrency(cost).padStart(15)}    ${paddedTimeUnit}  ${detail}\n`;
+        }
+
+        // formatTotalLine formats a total line with 2-space indent
+        function formatTotalLine(label, cost, timeUnit) {
+            const paddedLabel = label.padEnd(30);
+            const paddedTimeUnit = timeUnit.padEnd(6);
+            return `  ${paddedLabel} ${formatCurrency(cost).padStart(15)}    ${paddedTimeUnit}\n`;
+        }
+
+        // formatSectionDivider formats the divider line under subtotals
+        function formatSectionDivider() {
+            return '                                ──────────────\n';
         }
 
         function formatEngTimeUnit(hours) {
             if (hours < 1) {
-                return (hours * 60).toFixed(1) + ' min';
+                return (hours * 60).toFixed(1) + 'm';
             }
             if (hours < 48) {
-                return hours.toFixed(1) + ' hrs';
+                return hours.toFixed(1) + 'h';
             }
 
             const days = hours / 24;
             if (days < 14) {
-                return days.toFixed(1) + ' days';
+                return days.toFixed(1) + 'd';
             }
 
             const weeks = days / 7;
             if (weeks < 8) {
-                return weeks.toFixed(1) + ' weeks';
+                return weeks.toFixed(1) + 'w';
             }
 
             const months = days / 30;
             if (months < 24) {
-                return months.toFixed(1) + ' months';
+                return months.toFixed(1) + 'mo';
             }
 
             const years = days / 365;
-            return years.toFixed(1) + ' years';
+            return years.toFixed(1) + 'y';
         }
 
         function efficiencyGrade(efficiencyPct) {
@@ -1435,10 +1473,10 @@
                 savingsText = '$' + r2rSavings.toFixed(0);
             }
 
-            let html = '<div style="margin: 24px 0; padding: 12px 20px; background: linear-gradient(135deg, #e6f9f0 0%, #ffffff 100%); border-left: 3px solid #00c853; border-radius: 8px; font-size: 14px; color: #1d1d1f; line-height: 1.6;">';
-            html += '✓ Based on this calculation, <a href="https://codegroove.dev/" target="_blank" rel="noopener" style="color: #00c853; font-weight: 600; text-decoration: none;">Ready-to-Review</a> would save you <strong>~' + savingsText + '/yr</strong> by cutting average merge time to ≤40 min. ';
-            html += 'Stop losing engineering hours to code review lag. Free for OSS projects. ';
-            html += 'Let\'s chat: <a href="mailto:go-faster@codeGROOVE.dev" style="color: #00c853; text-decoration: none;">go-faster@codeGROOVE.dev</a>';
+            let html = '<div style="margin: 24px 0; padding: 12px 20px; background: linear-gradient(135deg, #e6f9f0 0%, #ffffff 100%); border: 1px solid #00c853; border-radius: 8px; font-size: 14px; color: #1d1d1f; line-height: 1.6;">';
+            html += '✓ You\'re losing <strong>' + savingsText + '/yr</strong> to code review lag. ';
+            html += '<a href="https://codegroove.dev/" target="_blank" rel="noopener" style="color: #00c853; font-weight: 600; text-decoration: none;">Ready-to-Review</a> fixes it: <strong>&lt;40min merges</strong>, free for OSS. ';
+            html += '<a href="mailto:go-faster@codeGROOVE.dev" style="color: #00c853; text-decoration: none;">go-faster@codeGROOVE.dev</a>';
             html += '</div>';
             return html;
         }
@@ -1620,13 +1658,13 @@
             const avgAuthorSessions = e.author_sessions / totalPRs;
             output += `  Development Costs (${formatLOC(avgTotalLOC)} total)\n`;
             output += '  ──────────────────────────────────\n';
-            output += `    New Development            ${formatCurrency(avgAuthorNewCodeCost).padStart(10)}    ${formatTimeUnit(avgAuthorNewCodeHours)}  (${formatLOC(newLOC)})\n`;
-            output += `    Adaptation                 ${formatCurrency(avgAuthorAdaptationCost).padStart(10)}    ${formatTimeUnit(avgAuthorAdaptationHours)}  (${formatLOC(modifiedLOC)})\n`;
-            output += `    GitHub Activity            ${formatCurrency(avgAuthorGitHubCost).padStart(10)}    ${formatTimeUnit(avgAuthorGitHubHours)}  (${avgAuthorEvents.toFixed(1)} events)\n`;
-            output += `    Context Switching          ${formatCurrency(avgAuthorGitHubContextCost).padStart(10)}    ${formatTimeUnit(avgAuthorGitHubContextHours)}  (${avgAuthorSessions.toFixed(1)} sessions)\n`;
+            output += formatItemLine("New Development", avgAuthorNewCodeCost, formatTimeUnit(avgAuthorNewCodeHours), `(${formatLOC(newLOC)})`);
+            output += formatItemLine("Adaptation", avgAuthorAdaptationCost, formatTimeUnit(avgAuthorAdaptationHours), `(${formatLOC(modifiedLOC)})`);
+            output += formatItemLine("GitHub Activity", avgAuthorGitHubCost, formatTimeUnit(avgAuthorGitHubHours), `(${avgAuthorEvents.toFixed(1)} events)`);
+            output += formatItemLine("Context Switching", avgAuthorGitHubContextCost, formatTimeUnit(avgAuthorGitHubContextHours), `(${avgAuthorSessions.toFixed(1)} sessions)`);
             output += '                                ──────────\n';
             let pct = (avgAuthorTotalCost / avgTotalCost) * 100;
-            output += `    Subtotal                   ${formatCurrency(avgAuthorTotalCost).padStart(10)}    ${formatTimeUnit(avgAuthorTotalHours)}  (${pct.toFixed(1)}%)\n\n`;
+            output += `    Subtotal                   ${formatCurrency(avgAuthorTotalCost).padStart(15)}    ${formatTimeUnit(avgAuthorTotalHours)}  (${pct.toFixed(1)}%)\n\n`;
 
             // Participants
             if (e.participant_total_cost > 0) {
@@ -1636,33 +1674,33 @@
 
                 output += `  Participant Costs\n`;
                 output += '  ─────────────────\n';
-                output += `    Review Activity            ${formatCurrency(avgParticipantReviewCost).padStart(10)}    ${formatTimeUnit(avgParticipantReviewHours)}  (${avgParticipantReviews.toFixed(1)} reviews)\n`;
-                output += `    GitHub Activity            ${formatCurrency(avgParticipantGitHubCost).padStart(10)}    ${formatTimeUnit(avgParticipantGitHubHours)}  (${avgParticipantEvents.toFixed(1)} events)\n`;
-                output += `    Context Switching          ${formatCurrency(avgParticipantContextCost).padStart(10)}    ${formatTimeUnit(avgParticipantContextHours)}  (${avgParticipantSessions.toFixed(1)} sessions)\n`;
+                output += formatItemLine("Review Activity", avgParticipantReviewCost, formatTimeUnit(avgParticipantReviewHours), `(${avgParticipantReviews.toFixed(1)} reviews)`);
+                output += formatItemLine("GitHub Activity", avgParticipantGitHubCost, formatTimeUnit(avgParticipantGitHubHours), `(${avgParticipantEvents.toFixed(1)} events)`);
+                output += formatItemLine("Context Switching", avgParticipantContextCost, formatTimeUnit(avgParticipantContextHours), `(${avgParticipantSessions.toFixed(1)} sessions)`);
                 output += '                                ──────────\n';
                 pct = (avgParticipantTotalCost / avgTotalCost) * 100;
-                output += `    Subtotal                   ${formatCurrency(avgParticipantTotalCost).padStart(10)}    ${formatTimeUnit(avgParticipantTotalHours)}  (${pct.toFixed(1)}%)\n\n`;
+                output += `    Subtotal                   ${formatCurrency(avgParticipantTotalCost).padStart(15)}    ${formatTimeUnit(avgParticipantTotalHours)}  (${pct.toFixed(1)}%)\n\n`;
             }
 
             // Delay Costs
             output += '  Delay Costs\n';
             output += '  ───────────\n';
-            output += `    Workstream blockage        ${formatCurrency(avgDeliveryDelayCost).padStart(10)}    ${formatTimeUnit(avgDeliveryDelayHours)}  (${e.human_prs} PRs)\n`;
+            output += `    Workstream blockage        ${formatCurrency(avgDeliveryDelayCost).padStart(15)}    ${formatTimeUnit(avgDeliveryDelayHours)}  (${e.human_prs} PRs)\n`;
             const avgAutomatedUpdatesCost = e.automated_updates_cost / totalPRs;
             const avgAutomatedUpdatesHours = e.automated_updates_hours / totalPRs;
             const avgPRTrackingCost = e.pr_tracking_cost / totalPRs;
             const avgPRTrackingHours = e.pr_tracking_hours / totalPRs;
             if (avgAutomatedUpdatesCost > 0.01) {
-                output += `    Automated Updates          ${formatCurrency(avgAutomatedUpdatesCost).padStart(10)}    ${formatTimeUnit(avgAutomatedUpdatesHours)}  (${e.bot_prs} PRs)\n`;
+                output += `    Automated Updates          ${formatCurrency(avgAutomatedUpdatesCost).padStart(15)}    ${formatTimeUnit(avgAutomatedUpdatesHours)}  (${e.bot_prs} PRs)\n`;
             }
             if (avgPRTrackingCost > 0.01) {
-                output += `    PR Tracking                ${formatCurrency(avgPRTrackingCost).padStart(10)}    ${formatTimeUnit(avgPRTrackingHours)}  (${e.open_prs} open PRs)\n`;
+                output += `    PR Tracking                ${formatCurrency(avgPRTrackingCost).padStart(15)}    ${formatTimeUnit(avgPRTrackingHours)}  (${e.open_prs} open PRs)\n`;
             }
             const avgMergeDelayCost = avgDeliveryDelayCost + avgCodeChurnCost + avgAutomatedUpdatesCost + avgPRTrackingCost;
             const avgMergeDelayHours = avgDeliveryDelayHours + avgCodeChurnHours + avgAutomatedUpdatesHours + avgPRTrackingHours;
             output += '                                ──────────\n';
             pct = (avgMergeDelayCost / avgTotalCost) * 100;
-            output += `    Subtotal                   ${formatCurrency(avgMergeDelayCost).padStart(10)}    ${formatTimeUnit(avgMergeDelayHours)}  (${pct.toFixed(1)}%)\n\n`;
+            output += `    Subtotal                   ${formatCurrency(avgMergeDelayCost).padStart(15)}    ${formatTimeUnit(avgMergeDelayHours)}  (${pct.toFixed(1)}%)\n\n`;
 
             // Future Costs
             const hasFuture = e.code_churn_cost > 0.01 || e.future_review_cost > 0.01 || e.future_merge_cost > 0.01 || e.future_context_cost > 0.01;
@@ -1672,34 +1710,34 @@
                 if (e.code_churn_cost > 0.01) {
                     const avgReworkPct = e.avg_rework_percentage || 0;
                     const label = avgReworkPct > 0 ? `Code Churn (${avgReworkPct.toFixed(0)}% drift)` : 'Code Churn';
-                    output += `    ${label.padEnd(26)} ${formatCurrency(avgCodeChurnCost).padStart(10)}    ${formatTimeUnit(avgCodeChurnHours)}  (${e.code_churn_pr_count} PRs)\n`;
+                    output += `    ${label.padEnd(26)} ${formatCurrency(avgCodeChurnCost).padStart(15)}    ${formatTimeUnit(avgCodeChurnHours)}  (${e.code_churn_pr_count} PRs)\n`;
                 }
                 if (e.future_review_cost > 0.01) {
-                    output += `    Review                     ${formatCurrency(avgFutureReviewCost).padStart(10)}    ${formatTimeUnit(avgFutureReviewHours)}  (${e.future_review_pr_count} PRs)\n`;
+                    output += `    Review                     ${formatCurrency(avgFutureReviewCost).padStart(15)}    ${formatTimeUnit(avgFutureReviewHours)}  (${e.future_review_pr_count} PRs)\n`;
                 }
                 if (e.future_merge_cost > 0.01) {
-                    output += `    Merge                      ${formatCurrency(avgFutureMergeCost).padStart(10)}    ${formatTimeUnit(avgFutureMergeHours)}  (${e.future_merge_pr_count} PRs)\n`;
+                    output += `    Merge                      ${formatCurrency(avgFutureMergeCost).padStart(15)}    ${formatTimeUnit(avgFutureMergeHours)}  (${e.future_merge_pr_count} PRs)\n`;
                 }
                 if (e.future_context_cost > 0.01) {
                     const avgFutureContextSessions = e.future_context_sessions / totalPRs;
-                    output += `    Context Switching          ${formatCurrency(avgFutureContextCost).padStart(10)}    ${formatTimeUnit(avgFutureContextHours)}  (${avgFutureContextSessions.toFixed(1)} sessions)\n`;
+                    output += `    Context Switching          ${formatCurrency(avgFutureContextCost).padStart(15)}    ${formatTimeUnit(avgFutureContextHours)}  (${avgFutureContextSessions.toFixed(1)} sessions)\n`;
                 }
                 const avgFutureCost = avgCodeChurnCost + avgFutureReviewCost + avgFutureMergeCost + avgFutureContextCost;
                 const avgFutureHours = avgCodeChurnHours + avgFutureReviewHours + avgFutureMergeHours + avgFutureContextHours;
                 output += '                                ──────────\n';
                 pct = (avgFutureCost / avgTotalCost) * 100;
-                output += `    Subtotal                   ${formatCurrency(avgFutureCost).padStart(10)}    ${formatTimeUnit(avgFutureHours)}  (${pct.toFixed(1)}%)\n\n`;
+                output += `    Subtotal                   ${formatCurrency(avgFutureCost).padStart(15)}    ${formatTimeUnit(avgFutureHours)}  (${pct.toFixed(1)}%)\n\n`;
             }
 
             // Average Preventable Loss Total (before grand total)
             const avgPreventableCost = avgCodeChurnCost + avgDeliveryDelayCost + avgCodeChurnCost + (e.automated_updates_cost / totalPRs) + (e.pr_tracking_cost / totalPRs);
             const avgPreventableHours = avgCodeChurnHours + avgDeliveryDelayHours + avgCodeChurnHours + (e.automated_updates_hours / totalPRs) + (e.pr_tracking_hours / totalPRs);
             const avgPreventablePct = (avgPreventableCost / avgTotalCost) * 100;
-            output += `  Preventable Loss Total       ${formatCurrency(avgPreventableCost).padStart(10)}    ${formatTimeUnit(avgPreventableHours)}  (${avgPreventablePct.toFixed(1)}%)\n`;
+            output += `  Preventable Loss Total       ${formatCurrency(avgPreventableCost).padStart(15)}    ${formatTimeUnit(avgPreventableHours)}  (${avgPreventablePct.toFixed(1)}%)\n`;
 
             // Average Total
             output += '  ════════════════════════════════════════════════════\n';
-            output += `  Average Total                ${formatCurrency(avgTotalCost).padStart(10)}    ${formatTimeUnit(avgTotalHours)}\n\n`;
+            output += `  Average Total                ${formatCurrency(avgTotalCost).padStart(15)}    ${formatTimeUnit(avgTotalHours)}\n\n`;
 
             return output;
         }
@@ -1716,34 +1754,34 @@
             // Development Costs
             output += `  Development Costs (${e.human_prs || e.total_prs || 0} PRs, ${formatLOC(totalLOC)} total)\n`;
             output += '  ─────────────────────────────────────────────────────────────────────\n';
-            output += `    New Development            ${formatCurrency(e.author_new_code_cost).padStart(10)}    ${formatTimeUnit(e.author_new_code_hours)}  (${formatLOC(newLOC)})\n`;
-            output += `    Adaptation                 ${formatCurrency(e.author_adaptation_cost).padStart(10)}    ${formatTimeUnit(e.author_adaptation_hours)}  (${formatLOC(modifiedLOC)})\n`;
-            output += `    GitHub Activity            ${formatCurrency(e.author_github_cost).padStart(10)}    ${formatTimeUnit(e.author_github_hours)}  (${e.author_events || 0} events)\n`;
-            output += `    Context Switching          ${formatCurrency(e.author_github_context_cost).padStart(10)}    ${formatTimeUnit(e.author_github_context_hours)}  (${e.author_sessions || 0} sessions)\n`;
+            output += formatItemLine("New Development", e.author_new_code_cost, formatTimeUnit(e.author_new_code_hours), `(${formatLOC(newLOC)})`);
+            output += formatItemLine("Adaptation", e.author_adaptation_cost, formatTimeUnit(e.author_adaptation_hours), `(${formatLOC(modifiedLOC)})`);
+            output += formatItemLine("GitHub Activity", e.author_github_cost, formatTimeUnit(e.author_github_hours), `(${e.author_events || 0} events)`);
+            output += formatItemLine("Context Switching", e.author_github_context_cost, formatTimeUnit(e.author_github_context_hours), `(${e.author_sessions || 0} sessions)`);
 
             // Show bot PR LOC even though cost is $0
             if ((e.bot_prs || 0) > 0) {
-                output += `    Automated Updates          —             ${formatTimeUnit(0)}  (${e.bot_prs} PRs, ${formatLOC(botLOC)})\n`;
+                output += formatItemLine("Automated Updates", 0, formatTimeUnit(0), `(${e.bot_prs} PRs, ${formatLOC(botLOC)})`);
             }
 
             output += '                                ──────────\n';
             let pct = (e.author_total_cost / e.total_cost) * 100;
-            output += `    Subtotal                   ${formatCurrency(e.author_total_cost).padStart(10)}    ${formatTimeUnit(e.author_total_hours)}  (${pct.toFixed(1)}%)\n\n`;
+            output += `    Subtotal                   ${formatCurrency(e.author_total_cost).padStart(15)}    ${formatTimeUnit(e.author_total_hours)}  (${pct.toFixed(1)}%)\n\n`;
 
             // Participants
             if (e.participant_total_cost > 0) {
                 output += `  Participant Costs\n`;
                 output += '  ─────────────────\n';
                 if ((e.participant_review_cost || 0) > 0) {
-                    output += `    Review Activity            ${formatCurrency(e.participant_review_cost).padStart(10)}    ${formatTimeUnit(e.participant_review_hours)}  (${e.participant_reviews || 0} reviews)\n`;
+                    output += formatItemLine("Review Activity", e.participant_review_cost, formatTimeUnit(e.participant_review_hours), `(${e.participant_reviews || 0} reviews)`);
                 }
                 if ((e.participant_github_cost || 0) > 0) {
-                    output += `    GitHub Activity            ${formatCurrency(e.participant_github_cost).padStart(10)}    ${formatTimeUnit(e.participant_github_hours)}  (${e.participant_events || 0} events)\n`;
+                    output += formatItemLine("GitHub Activity", e.participant_github_cost, formatTimeUnit(e.participant_github_hours), `(${e.participant_events || 0} events)`);
                 }
-                output += `    Context Switching          ${formatCurrency(e.participant_context_cost).padStart(10)}    ${formatTimeUnit(e.participant_context_hours)}  (${e.participant_sessions || 0} sessions)\n`;
+                output += formatItemLine("Context Switching", e.participant_context_cost, formatTimeUnit(e.participant_context_hours), `(${e.participant_sessions || 0} sessions)`);
                 output += '                                ──────────\n';
                 pct = (e.participant_total_cost / e.total_cost) * 100;
-                output += `    Subtotal                   ${formatCurrency(e.participant_total_cost).padStart(10)}    ${formatTimeUnit(e.participant_total_hours)}  (${pct.toFixed(1)}%)\n\n`;
+                output += `    Subtotal                   ${formatCurrency(e.participant_total_cost).padStart(15)}    ${formatTimeUnit(e.participant_total_hours)}  (${pct.toFixed(1)}%)\n\n`;
             }
 
             // Delay Costs
@@ -1756,20 +1794,20 @@
             output += '  ' + '─'.repeat(delayCostsHeader.length - 2) + '\n';
 
             if ((e.delivery_delay_cost || 0) > 0) {
-                output += `    Workstream blockage        ${formatCurrency(e.delivery_delay_cost).padStart(10)}    ${formatTimeUnit(e.delivery_delay_hours)}  (${e.human_prs || 0} PRs)\n`;
+                output += `    Workstream blockage        ${formatCurrency(e.delivery_delay_cost).padStart(15)}    ${formatTimeUnit(e.delivery_delay_hours)}  (${e.human_prs || 0} PRs)\n`;
             }
             if ((e.automated_updates_cost || 0) > 0) {
-                output += `    Automated Updates          ${formatCurrency(e.automated_updates_cost).padStart(10)}    ${formatTimeUnit(e.automated_updates_hours)}  (${e.bot_prs || 0} PRs)\n`;
+                output += `    Automated Updates          ${formatCurrency(e.automated_updates_cost).padStart(15)}    ${formatTimeUnit(e.automated_updates_hours)}  (${e.bot_prs || 0} PRs)\n`;
             }
             if ((e.pr_tracking_cost || 0) > 0) {
-                output += `    PR Tracking                ${formatCurrency(e.pr_tracking_cost).padStart(10)}    ${formatTimeUnit(e.pr_tracking_hours)}  (${e.open_prs || 0} open PRs)\n`;
+                output += `    PR Tracking                ${formatCurrency(e.pr_tracking_cost).padStart(15)}    ${formatTimeUnit(e.pr_tracking_hours)}  (${e.open_prs || 0} open PRs)\n`;
             }
 
             const mergeDelayCost = (e.delivery_delay_cost || 0) + (e.code_churn_cost || 0) + (e.automated_updates_cost || 0) + (e.pr_tracking_cost || 0);
             const mergeDelayHours = (e.delivery_delay_hours || 0) + (e.code_churn_hours || 0) + (e.automated_updates_hours || 0) + (e.pr_tracking_hours || 0);
             output += '                                ──────────\n';
             pct = (mergeDelayCost / e.total_cost) * 100;
-            output += `    Subtotal                   ${formatCurrency(mergeDelayCost).padStart(10)}    ${formatTimeUnit(mergeDelayHours)}  (${pct.toFixed(1)}%)\n\n`;
+            output += `    Subtotal                   ${formatCurrency(mergeDelayCost).padStart(15)}    ${formatTimeUnit(mergeDelayHours)}  (${pct.toFixed(1)}%)\n\n`;
 
             // Future Costs
             const hasFuture = (e.code_churn_cost || 0) > 0.01 || (e.future_review_cost || 0) > 0.01 || (e.future_merge_cost || 0) > 0.01 || (e.future_context_cost || 0) > 0.01;
@@ -1777,40 +1815,35 @@
                 output += '  Future Costs\n';
                 output += '  ────────────\n';
                 if ((e.code_churn_cost || 0) > 0.01) {
-                    output += `    Code Churn                 ${formatCurrency(e.code_churn_cost).padStart(10)}    ${formatTimeUnit(e.code_churn_hours)}\n`;
+                    output += `    Code Churn                 ${formatCurrency(e.code_churn_cost).padStart(15)}    ${formatTimeUnit(e.code_churn_hours)}\n`;
                 }
                 if ((e.future_review_cost || 0) > 0.01) {
                     const openPRs = e.open_prs || 0;
-                    output += `    Review                     ${formatCurrency(e.future_review_cost).padStart(10)}    ${formatTimeUnit(e.future_review_hours)}  (${openPRs} PRs)\n`;
+                    output += `    Review                     ${formatCurrency(e.future_review_cost).padStart(15)}    ${formatTimeUnit(e.future_review_hours)}  (${openPRs} PRs)\n`;
                 }
                 if ((e.future_merge_cost || 0) > 0.01) {
                     const openPRs = e.open_prs || 0;
-                    output += `    Merge                      ${formatCurrency(e.future_merge_cost).padStart(10)}    ${formatTimeUnit(e.future_merge_hours)}  (${openPRs} PRs)\n`;
+                    output += `    Merge                      ${formatCurrency(e.future_merge_cost).padStart(15)}    ${formatTimeUnit(e.future_merge_hours)}  (${openPRs} PRs)\n`;
                 }
                 if ((e.future_context_cost || 0) > 0.01) {
-                    output += `    Context Switching          ${formatCurrency(e.future_context_cost).padStart(10)}    ${formatTimeUnit(e.future_context_hours)}  (${e.future_context_sessions || 0} sessions)\n`;
+                    output += `    Context Switching          ${formatCurrency(e.future_context_cost).padStart(15)}    ${formatTimeUnit(e.future_context_hours)}  (${e.future_context_sessions || 0} sessions)\n`;
                 }
                 const futureCost = (e.code_churn_cost || 0) + (e.future_review_cost || 0) + (e.future_merge_cost || 0) + (e.future_context_cost || 0);
                 const futureHours = (e.code_churn_hours || 0) + (e.future_review_hours || 0) + (e.future_merge_hours || 0) + (e.future_context_hours || 0);
                 output += '                                ──────────\n';
                 pct = (futureCost / e.total_cost) * 100;
-                output += `    Subtotal                   ${formatCurrency(futureCost).padStart(10)}    ${formatTimeUnit(futureHours)}  (${pct.toFixed(1)}%)\n\n`;
-            }
-
-            // Weekly waste per PR author
-            if ((e.waste_hours_per_author_per_week || 0) > 0 && (e.total_authors || 0) > 0) {
-                output += `  Weekly waste per PR author:     ${formatCurrency(e.waste_cost_per_author_per_week).padStart(12)}    ${formatTimeUnit(e.waste_hours_per_author_per_week)}  (${e.total_authors} authors)\n`;
+                output += `    Subtotal                   ${formatCurrency(futureCost).padStart(15)}    ${formatTimeUnit(futureHours)}  (${pct.toFixed(1)}%)\n\n`;
             }
 
             // Preventable Loss Total (before grand total)
             const preventableCost = (e.code_churn_cost || 0) + (e.delivery_delay_cost || 0) + (e.automated_updates_cost || 0) + (e.pr_tracking_cost || 0);
             const preventableHours = (e.code_churn_hours || 0) + (e.delivery_delay_hours || 0) + (e.automated_updates_hours || 0) + (e.pr_tracking_hours || 0);
             const preventablePct = (preventableCost / e.total_cost) * 100;
-            output += `  Preventable Loss Total       ${formatCurrency(preventableCost).padStart(10)}    ${formatTimeUnit(preventableHours)}  (${preventablePct.toFixed(1)}%)\n`;
+            output += `  Preventable Loss Total       ${formatCurrency(preventableCost).padStart(15)}    ${formatTimeUnit(preventableHours)}  (${preventablePct.toFixed(1)}%)\n`;
 
             // Total
             output += '  ════════════════════════════════════════════════════\n';
-            output += `  Total                        ${formatCurrency(e.total_cost).padStart(10)}    ${formatTimeUnit(e.total_hours)}\n\n`;
+            output += `  Total                        ${formatCurrency(e.total_cost).padStart(15)}    ${formatTimeUnit(e.total_hours)}\n\n`;
 
             return output;
         }
@@ -2077,16 +2110,16 @@
                                         const avgEfficiencyPct = avgTotalHours > 0 ? 100.0 * (avgTotalHours - avgPreventableHours) / avgTotalHours : 100.0;
                                         const avgEfficiency = efficiencyGrade(avgEfficiencyPct);
 
-                                        // Average PR section
-                                        html += '<div class="result-section">';
-                                        html += `<h2>Average PR (sampled over ${days} day period)</h2>`;
-                                        html += '<pre><code>' + formatAveragePR(e) + '</code></pre>';
-                                        html += '</div>';
-
                                         // Extrapolated total section
                                         html += '<div class="result-section">';
                                         html += `<h2>${days}-day Estimated Costs</h2>`;
                                         html += '<pre><code>' + formatExtrapolatedTotal(e, days) + '</code></pre>';
+                                        html += '</div>';
+
+                                        // Average PR section
+                                        html += '<div class="result-section">';
+                                        html += `<h2>Average PR (sampled over ${days} day period)</h2>`;
+                                        html += '<pre><code>' + formatAveragePR(e) + '</code></pre>';
                                         html += '</div>';
 
                                         resultDiv.innerHTML = html;
