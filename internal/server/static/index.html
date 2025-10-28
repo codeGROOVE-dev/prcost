@@ -1516,7 +1516,8 @@
             }
             output += '                              ────────────\n';
             let pct = (b.author.total_cost / b.total_cost) * 100;
-            output += `    Subtotal                  ${formatCurrency(b.author.total_cost).padStart(12)}    ${formatTimeUnit(b.author.total_hours)}  (${pct.toFixed(1)}%)\n\n`;
+            output += formatSubtotalLine("Subtotal", b.author.total_cost, formatTimeUnit(b.author.total_hours), `(${pct.toFixed(1)}%)`);
+            output += '\n';
 
             // Participants
             if (b.participants && b.participants.length > 0) {
@@ -1546,7 +1547,8 @@
                 });
                 output += '                              ────────────\n';
                 pct = (totalParticipantCost / b.total_cost) * 100;
-                output += `    Subtotal                  ${formatCurrency(totalParticipantCost).padStart(12)}    ${formatTimeUnit(totalParticipantHours)}  (${pct.toFixed(1)}%)\n\n`;
+                output += formatSubtotalLine("Subtotal", totalParticipantCost, formatTimeUnit(totalParticipantHours), `(${pct.toFixed(1)}%)`);
+                output += '\n';
             }
 
             // Delay and Future Costs - only show if there are any delay costs
@@ -1560,7 +1562,8 @@
                 const mergeDelayHours = b.delay_cost_detail.delivery_delay_hours + b.delay_cost_detail.code_churn_hours + b.delay_cost_detail.automated_updates_hours + b.delay_cost_detail.pr_tracking_hours;
                 output += '                              ────────────\n';
                 pct = (mergeDelayCost / b.total_cost) * 100;
-                output += `    Subtotal                ${formatCurrency(mergeDelayCost).padStart(12)}    ${formatTimeUnit(mergeDelayHours)}  (${pct.toFixed(1)}%)\n\n`;
+                output += formatSubtotalLine("Subtotal", mergeDelayCost, formatTimeUnit(mergeDelayHours), `(${pct.toFixed(1)}%)`);
+                output += '\n';
 
                 // Future Costs
                 const hasFuture = b.delay_cost_detail.rework_percentage > 0 ||
@@ -1591,7 +1594,8 @@
                                        b.delay_cost_detail.future_merge_hours + b.delay_cost_detail.future_context_hours;
                     output += '                              ────────────\n';
                     pct = (futureCost / b.total_cost) * 100;
-                    output += `    Subtotal                ${formatCurrency(futureCost).padStart(12)}    ${formatTimeUnit(futureHours)}  (${pct.toFixed(1)}%)\n\n`;
+                    output += formatSubtotalLine("Subtotal", futureCost, formatTimeUnit(futureHours), `(${pct.toFixed(1)}%)`);
+                    output += '\n';
                 }
             }
 
@@ -1664,7 +1668,8 @@
             output += formatItemLine("Context Switching", avgAuthorGitHubContextCost, formatTimeUnit(avgAuthorGitHubContextHours), `(${avgAuthorSessions.toFixed(1)} sessions)`);
             output += '                                ──────────\n';
             let pct = (avgAuthorTotalCost / avgTotalCost) * 100;
-            output += `    Subtotal                   ${formatCurrency(avgAuthorTotalCost).padStart(15)}    ${formatTimeUnit(avgAuthorTotalHours)}  (${pct.toFixed(1)}%)\n\n`;
+            output += formatSubtotalLine("Subtotal", avgAuthorTotalCost, formatTimeUnit(avgAuthorTotalHours), `(${pct.toFixed(1)}%)`);
+            output += '\n';
 
             // Participants
             if (e.participant_total_cost > 0) {
@@ -1679,7 +1684,8 @@
                 output += formatItemLine("Context Switching", avgParticipantContextCost, formatTimeUnit(avgParticipantContextHours), `(${avgParticipantSessions.toFixed(1)} sessions)`);
                 output += '                                ──────────\n';
                 pct = (avgParticipantTotalCost / avgTotalCost) * 100;
-                output += `    Subtotal                   ${formatCurrency(avgParticipantTotalCost).padStart(15)}    ${formatTimeUnit(avgParticipantTotalHours)}  (${pct.toFixed(1)}%)\n\n`;
+                output += formatSubtotalLine("Subtotal", avgParticipantTotalCost, formatTimeUnit(avgParticipantTotalHours), `(${pct.toFixed(1)}%)`);
+                output += '\n';
             }
 
             // Delay Costs
@@ -1700,7 +1706,8 @@
             const avgMergeDelayHours = avgDeliveryDelayHours + avgCodeChurnHours + avgAutomatedUpdatesHours + avgPRTrackingHours;
             output += '                                ──────────\n';
             pct = (avgMergeDelayCost / avgTotalCost) * 100;
-            output += `    Subtotal                   ${formatCurrency(avgMergeDelayCost).padStart(15)}    ${formatTimeUnit(avgMergeDelayHours)}  (${pct.toFixed(1)}%)\n\n`;
+            output += formatSubtotalLine("Subtotal", avgMergeDelayCost, formatTimeUnit(avgMergeDelayHours), `(${pct.toFixed(1)}%)`);
+            output += '\n';
 
             // Future Costs
             const hasFuture = e.code_churn_cost > 0.01 || e.future_review_cost > 0.01 || e.future_merge_cost > 0.01 || e.future_context_cost > 0.01;
@@ -1726,7 +1733,8 @@
                 const avgFutureHours = avgCodeChurnHours + avgFutureReviewHours + avgFutureMergeHours + avgFutureContextHours;
                 output += '                                ──────────\n';
                 pct = (avgFutureCost / avgTotalCost) * 100;
-                output += `    Subtotal                   ${formatCurrency(avgFutureCost).padStart(15)}    ${formatTimeUnit(avgFutureHours)}  (${pct.toFixed(1)}%)\n\n`;
+                output += formatSubtotalLine("Subtotal", avgFutureCost, formatTimeUnit(avgFutureHours), `(${pct.toFixed(1)}%)`);
+                output += '\n';
             }
 
             // Average Preventable Loss Total (before grand total)
@@ -1766,7 +1774,8 @@
 
             output += '                                ──────────\n';
             let pct = (e.author_total_cost / e.total_cost) * 100;
-            output += `    Subtotal                   ${formatCurrency(e.author_total_cost).padStart(15)}    ${formatTimeUnit(e.author_total_hours)}  (${pct.toFixed(1)}%)\n\n`;
+            output += formatSubtotalLine("Subtotal", e.author_total_cost, formatTimeUnit(e.author_total_hours), `(${pct.toFixed(1)}%)`);
+            output += '\n';
 
             // Participants
             if (e.participant_total_cost > 0) {
@@ -1781,7 +1790,8 @@
                 output += formatItemLine("Context Switching", e.participant_context_cost, formatTimeUnit(e.participant_context_hours), `(${e.participant_sessions || 0} sessions)`);
                 output += '                                ──────────\n';
                 pct = (e.participant_total_cost / e.total_cost) * 100;
-                output += `    Subtotal                   ${formatCurrency(e.participant_total_cost).padStart(15)}    ${formatTimeUnit(e.participant_total_hours)}  (${pct.toFixed(1)}%)\n\n`;
+                output += formatSubtotalLine("Subtotal", e.participant_total_cost, formatTimeUnit(e.participant_total_hours), `(${pct.toFixed(1)}%)`);
+                output += '\n';
             }
 
             // Delay Costs
@@ -1807,7 +1817,8 @@
             const mergeDelayHours = (e.delivery_delay_hours || 0) + (e.code_churn_hours || 0) + (e.automated_updates_hours || 0) + (e.pr_tracking_hours || 0);
             output += '                                ──────────\n';
             pct = (mergeDelayCost / e.total_cost) * 100;
-            output += `    Subtotal                   ${formatCurrency(mergeDelayCost).padStart(15)}    ${formatTimeUnit(mergeDelayHours)}  (${pct.toFixed(1)}%)\n\n`;
+            output += formatSubtotalLine("Subtotal", mergeDelayCost, formatTimeUnit(mergeDelayHours), `(${pct.toFixed(1)}%)`);
+            output += '\n';
 
             // Future Costs
             const hasFuture = (e.code_churn_cost || 0) > 0.01 || (e.future_review_cost || 0) > 0.01 || (e.future_merge_cost || 0) > 0.01 || (e.future_context_cost || 0) > 0.01;
@@ -1832,7 +1843,8 @@
                 const futureHours = (e.code_churn_hours || 0) + (e.future_review_hours || 0) + (e.future_merge_hours || 0) + (e.future_context_hours || 0);
                 output += '                                ──────────\n';
                 pct = (futureCost / e.total_cost) * 100;
-                output += `    Subtotal                   ${formatCurrency(futureCost).padStart(15)}    ${formatTimeUnit(futureHours)}  (${pct.toFixed(1)}%)\n\n`;
+                output += formatSubtotalLine("Subtotal", futureCost, formatTimeUnit(futureHours), `(${pct.toFixed(1)}%)`);
+                output += '\n';
             }
 
             // Preventable Loss Total (before grand total)
