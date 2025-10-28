@@ -1685,16 +1685,16 @@
             // Delay Costs
             output += '  Delay Costs\n';
             output += '  ───────────\n';
-            output += `    Workstream blockage        ${formatCurrency(avgDeliveryDelayCost).padStart(15)}    ${formatTimeUnit(avgDeliveryDelayHours)}  (${e.human_prs} PRs)\n`;
+            output += formatItemLine("Workstream blockage", avgDeliveryDelayCost, formatTimeUnit(avgDeliveryDelayHours), `(${e.human_prs} PRs)`);
             const avgAutomatedUpdatesCost = e.automated_updates_cost / totalPRs;
             const avgAutomatedUpdatesHours = e.automated_updates_hours / totalPRs;
             const avgPRTrackingCost = e.pr_tracking_cost / totalPRs;
             const avgPRTrackingHours = e.pr_tracking_hours / totalPRs;
             if (avgAutomatedUpdatesCost > 0.01) {
-                output += `    Automated Updates          ${formatCurrency(avgAutomatedUpdatesCost).padStart(15)}    ${formatTimeUnit(avgAutomatedUpdatesHours)}  (${e.bot_prs} PRs)\n`;
+                output += formatItemLine("Automated Updates", avgAutomatedUpdatesCost, formatTimeUnit(avgAutomatedUpdatesHours), `(${e.bot_prs} PRs)`);
             }
             if (avgPRTrackingCost > 0.01) {
-                output += `    PR Tracking                ${formatCurrency(avgPRTrackingCost).padStart(15)}    ${formatTimeUnit(avgPRTrackingHours)}  (${e.open_prs} open PRs)\n`;
+                output += formatItemLine("PR Tracking", avgPRTrackingCost, formatTimeUnit(avgPRTrackingHours), `(${e.open_prs} open PRs)`);
             }
             const avgMergeDelayCost = avgDeliveryDelayCost + avgCodeChurnCost + avgAutomatedUpdatesCost + avgPRTrackingCost;
             const avgMergeDelayHours = avgDeliveryDelayHours + avgCodeChurnHours + avgAutomatedUpdatesHours + avgPRTrackingHours;
@@ -1710,17 +1710,17 @@
                 if (e.code_churn_cost > 0.01) {
                     const avgReworkPct = e.avg_rework_percentage || 0;
                     const label = avgReworkPct > 0 ? `Code Churn (${avgReworkPct.toFixed(0)}% drift)` : 'Code Churn';
-                    output += `    ${label.padEnd(26)} ${formatCurrency(avgCodeChurnCost).padStart(15)}    ${formatTimeUnit(avgCodeChurnHours)}  (${e.code_churn_pr_count} PRs)\n`;
+                    output += formatItemLine(label, avgCodeChurnCost, formatTimeUnit(avgCodeChurnHours), `(${e.code_churn_pr_count} PRs)`);
                 }
                 if (e.future_review_cost > 0.01) {
-                    output += `    Review                     ${formatCurrency(avgFutureReviewCost).padStart(15)}    ${formatTimeUnit(avgFutureReviewHours)}  (${e.future_review_pr_count} PRs)\n`;
+                    output += formatItemLine("Review", avgFutureReviewCost, formatTimeUnit(avgFutureReviewHours), `(${e.future_review_pr_count} PRs)`);
                 }
                 if (e.future_merge_cost > 0.01) {
-                    output += `    Merge                      ${formatCurrency(avgFutureMergeCost).padStart(15)}    ${formatTimeUnit(avgFutureMergeHours)}  (${e.future_merge_pr_count} PRs)\n`;
+                    output += formatItemLine("Merge", avgFutureMergeCost, formatTimeUnit(avgFutureMergeHours), `(${e.future_merge_pr_count} PRs)`);
                 }
                 if (e.future_context_cost > 0.01) {
                     const avgFutureContextSessions = e.future_context_sessions / totalPRs;
-                    output += `    Context Switching          ${formatCurrency(avgFutureContextCost).padStart(15)}    ${formatTimeUnit(avgFutureContextHours)}  (${avgFutureContextSessions.toFixed(1)} sessions)\n`;
+                    output += formatItemLine("Context Switching", avgFutureContextCost, formatTimeUnit(avgFutureContextHours), `(${avgFutureContextSessions.toFixed(1)} sessions)`);
                 }
                 const avgFutureCost = avgCodeChurnCost + avgFutureReviewCost + avgFutureMergeCost + avgFutureContextCost;
                 const avgFutureHours = avgCodeChurnHours + avgFutureReviewHours + avgFutureMergeHours + avgFutureContextHours;
@@ -1794,13 +1794,13 @@
             output += '  ' + '─'.repeat(delayCostsHeader.length - 2) + '\n';
 
             if ((e.delivery_delay_cost || 0) > 0) {
-                output += `    Workstream blockage        ${formatCurrency(e.delivery_delay_cost).padStart(15)}    ${formatTimeUnit(e.delivery_delay_hours)}  (${e.human_prs || 0} PRs)\n`;
+                output += formatItemLine("Workstream blockage", e.delivery_delay_cost, formatTimeUnit(e.delivery_delay_hours), `(${e.human_prs || 0} PRs)`);
             }
             if ((e.automated_updates_cost || 0) > 0) {
-                output += `    Automated Updates          ${formatCurrency(e.automated_updates_cost).padStart(15)}    ${formatTimeUnit(e.automated_updates_hours)}  (${e.bot_prs || 0} PRs)\n`;
+                output += formatItemLine("Automated Updates", e.automated_updates_cost, formatTimeUnit(e.automated_updates_hours), `(${e.bot_prs || 0} PRs)`);
             }
             if ((e.pr_tracking_cost || 0) > 0) {
-                output += `    PR Tracking                ${formatCurrency(e.pr_tracking_cost).padStart(15)}    ${formatTimeUnit(e.pr_tracking_hours)}  (${e.open_prs || 0} open PRs)\n`;
+                output += formatItemLine("PR Tracking", e.pr_tracking_cost, formatTimeUnit(e.pr_tracking_hours), `(${e.open_prs || 0} open PRs)`);
             }
 
             const mergeDelayCost = (e.delivery_delay_cost || 0) + (e.code_churn_cost || 0) + (e.automated_updates_cost || 0) + (e.pr_tracking_cost || 0);
@@ -1815,18 +1815,18 @@
                 output += '  Future Costs\n';
                 output += '  ────────────\n';
                 if ((e.code_churn_cost || 0) > 0.01) {
-                    output += `    Code Churn                 ${formatCurrency(e.code_churn_cost).padStart(15)}    ${formatTimeUnit(e.code_churn_hours)}\n`;
+                    output += formatItemLine("Code Churn", e.code_churn_cost, formatTimeUnit(e.code_churn_hours), "");
                 }
                 if ((e.future_review_cost || 0) > 0.01) {
                     const openPRs = e.open_prs || 0;
-                    output += `    Review                     ${formatCurrency(e.future_review_cost).padStart(15)}    ${formatTimeUnit(e.future_review_hours)}  (${openPRs} PRs)\n`;
+                    output += formatItemLine("Review", e.future_review_cost, formatTimeUnit(e.future_review_hours), `(${openPRs} PRs)`);
                 }
                 if ((e.future_merge_cost || 0) > 0.01) {
                     const openPRs = e.open_prs || 0;
-                    output += `    Merge                      ${formatCurrency(e.future_merge_cost).padStart(15)}    ${formatTimeUnit(e.future_merge_hours)}  (${openPRs} PRs)\n`;
+                    output += formatItemLine("Merge", e.future_merge_cost, formatTimeUnit(e.future_merge_hours), `(${openPRs} PRs)`);
                 }
                 if ((e.future_context_cost || 0) > 0.01) {
-                    output += `    Context Switching          ${formatCurrency(e.future_context_cost).padStart(15)}    ${formatTimeUnit(e.future_context_hours)}  (${e.future_context_sessions || 0} sessions)\n`;
+                    output += formatItemLine("Context Switching", e.future_context_cost, formatTimeUnit(e.future_context_hours), `(${e.future_context_sessions || 0} sessions)`);
                 }
                 const futureCost = (e.code_churn_cost || 0) + (e.future_review_cost || 0) + (e.future_merge_cost || 0) + (e.future_context_cost || 0);
                 const futureHours = (e.code_churn_hours || 0) + (e.future_review_hours || 0) + (e.future_merge_hours || 0) + (e.future_context_hours || 0);
