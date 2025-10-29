@@ -14,7 +14,9 @@ import (
 // analyzeRepository performs repository-wide cost analysis by sampling PRs.
 // Uses library functions from pkg/github and pkg/cost for fetching, sampling,
 // and extrapolation - all functionality is available to external clients.
-func analyzeRepository(ctx context.Context, owner, repo string, sampleSize, days int, cfg cost.Config, token string, dataSource string) error {
+//
+//nolint:revive // argument-limit: acceptable for entry point function
+func analyzeRepository(ctx context.Context, owner, repo string, sampleSize, days int, cfg cost.Config, token, dataSource string, modelMergeTime *time.Duration) error {
 	// Calculate since date
 	since := time.Now().AddDate(0, 0, -days)
 
@@ -103,7 +105,7 @@ func analyzeRepository(ctx context.Context, owner, repo string, sampleSize, days
 	extrapolated := cost.ExtrapolateFromSamples(breakdowns, len(prs), totalAuthors, openPRCount, actualDays, cfg)
 
 	// Display results in itemized format
-	printExtrapolatedResults(fmt.Sprintf("%s/%s", owner, repo), actualDays, &extrapolated, cfg)
+	printExtrapolatedResults(fmt.Sprintf("%s/%s", owner, repo), actualDays, &extrapolated, cfg, *modelMergeTime)
 
 	return nil
 }
@@ -111,7 +113,9 @@ func analyzeRepository(ctx context.Context, owner, repo string, sampleSize, days
 // analyzeOrganization performs organization-wide cost analysis by sampling PRs across all repos.
 // Uses library functions from pkg/github and pkg/cost for fetching, sampling,
 // and extrapolation - all functionality is available to external clients.
-func analyzeOrganization(ctx context.Context, org string, sampleSize, days int, cfg cost.Config, token string, dataSource string) error {
+//
+//nolint:revive // argument-limit: acceptable for entry point function
+func analyzeOrganization(ctx context.Context, org string, sampleSize, days int, cfg cost.Config, token, dataSource string, modelMergeTime *time.Duration) error {
 	slog.Info("Fetching PR list from organization")
 
 	// Calculate since date
@@ -203,7 +207,7 @@ func analyzeOrganization(ctx context.Context, org string, sampleSize, days int, 
 	extrapolated := cost.ExtrapolateFromSamples(breakdowns, len(prs), totalAuthors, totalOpenPRs, actualDays, cfg)
 
 	// Display results in itemized format
-	printExtrapolatedResults(fmt.Sprintf("%s (organization)", org), actualDays, &extrapolated, cfg)
+	printExtrapolatedResults(fmt.Sprintf("%s (organization)", org), actualDays, &extrapolated, cfg, *modelMergeTime)
 
 	return nil
 }
@@ -274,7 +278,7 @@ func formatTimeUnit(hours float64) string {
 // printExtrapolatedResults displays extrapolated cost breakdown in itemized format.
 //
 //nolint:maintidx,revive // acceptable complexity/length for comprehensive display function
-func printExtrapolatedResults(title string, days int, ext *cost.ExtrapolatedBreakdown, cfg cost.Config) {
+func printExtrapolatedResults(title string, days int, ext *cost.ExtrapolatedBreakdown, cfg cost.Config, modelMergeTime time.Duration) {
 	fmt.Println()
 	fmt.Printf("  %s\n", title)
 	avgOpenTime := formatTimeUnit(ext.AvgPRDurationHours)
@@ -594,11 +598,11 @@ func printExtrapolatedResults(title string, days int, ext *cost.ExtrapolatedBrea
 	fmt.Println()
 
 	// Print extrapolated efficiency score + annual waste
-	printExtrapolatedEfficiency(ext, days, cfg)
+	printExtrapolatedEfficiency(ext, days, cfg, modelMergeTime)
 }
 
 // printExtrapolatedEfficiency prints the workflow efficiency + annual waste section for extrapolated totals.
-func printExtrapolatedEfficiency(ext *cost.ExtrapolatedBreakdown, days int, cfg cost.Config) {
+func printExtrapolatedEfficiency(ext *cost.ExtrapolatedBreakdown, days int, cfg cost.Config, modelMergeTime time.Duration) {
 	// Calculate preventable waste: Code Churn + All Delay Costs + Automated Updates + PR Tracking
 	preventableHours := ext.CodeChurnHours + ext.DeliveryDelayHours + ext.AutomatedUpdatesHours + ext.PRTrackingHours
 	preventableCost := ext.CodeChurnCost + ext.DeliveryDelayCost + ext.AutomatedUpdatesCost + ext.PRTrackingCost
@@ -654,4 +658,81 @@ func printExtrapolatedEfficiency(ext *cost.ExtrapolatedBreakdown, days int, cfg 
 	fmt.Printf("  If Sustained for 1 Year:        $%14s    %.1f headcount\n",
 		formatWithCommas(annualWasteCost), headcount)
 	fmt.Println()
+
+	// Print merge time modeling callout if average PR duration exceeds model merge time
+	if ext.AvgPRDurationHours > modelMergeTime.Hours() {
+		printExtrapolatedMergeTimeModelingCallout(ext, days, modelMergeTime, cfg)
+	}
+}
+
+// printExtrapolatedMergeTimeModelingCallout prints a callout showing potential savings from reduced merge time.
+func printExtrapolatedMergeTimeModelingCallout(ext *cost.ExtrapolatedBreakdown, days int, targetMergeTime time.Duration, cfg cost.Config) {
+	targetHours := targetMergeTime.Hours()
+
+	// Calculate hourly rate
+	hourlyRate := (cfg.AnnualSalary * cfg.BenefitsMultiplier) / cfg.HoursPerYear
+
+	// Recalculate average preventable costs with target merge time
+	// This mirrors the logic from ExtrapolateFromSamples but with target merge time
+
+	// Average delivery delay per PR at target merge time
+	remodelDeliveryDelayPerPR := hourlyRate * cfg.DeliveryDelayFactor * targetHours
+
+	// Code churn: minimal for short PRs (< 1 day = ~0%)
+	remodelCodeChurnPerPR := 0.0
+
+	// Automated updates: only for PRs open > 1 day
+	remodelAutomatedUpdatesPerPR := 0.0
+
+	// PR tracking: scales with open time
+	remodelPRTrackingPerPR := 0.0
+	if targetHours >= 1.0 { // Only track PRs open >= 1 hour
+		daysOpen := targetHours / 24.0
+		remodelPRTrackingHours := (cfg.PRTrackingMinutesPerDay / 60.0) * daysOpen
+		remodelPRTrackingPerPR = remodelPRTrackingHours * hourlyRate
+	}
+
+	// Calculate total remodeled preventable cost for the period
+	totalPRs := float64(ext.TotalPRs)
+	remodelPreventablePerPeriod := (remodelDeliveryDelayPerPR + remodelCodeChurnPerPR +
+		remodelAutomatedUpdatesPerPR + remodelPRTrackingPerPR) * totalPRs
+
+	// Current preventable cost for the period
+	currentPreventablePerPeriod := ext.CodeChurnCost + ext.DeliveryDelayCost +
+		ext.AutomatedUpdatesCost + ext.PRTrackingCost
+
+	// Calculate savings for the period
+	savingsPerPeriod := currentPreventablePerPeriod - remodelPreventablePerPeriod
+
+	// Calculate efficiency improvement
+	// Current efficiency: (total hours - preventable hours) / total hours
+	// Modeled efficiency: (total hours - remodeled preventable hours) / total hours
+	currentPreventableHours := ext.CodeChurnHours + ext.DeliveryDelayHours +
+		ext.AutomatedUpdatesHours + ext.PRTrackingHours
+	remodelPreventableHours := remodelPreventablePerPeriod / hourlyRate
+
+	var currentEfficiency, modeledEfficiency, efficiencyDelta float64
+	if ext.TotalHours > 0 {
+		currentEfficiency = 100.0 * (ext.TotalHours - currentPreventableHours) / ext.TotalHours
+		modeledEfficiency = 100.0 * (ext.TotalHours - remodelPreventableHours) / ext.TotalHours
+		efficiencyDelta = modeledEfficiency - currentEfficiency
+	}
+
+	if savingsPerPeriod > 0 {
+		// Annualize the savings
+		weeksInPeriod := float64(days) / 7.0
+		annualSavings := savingsPerPeriod * (52.0 / weeksInPeriod)
+
+		fmt.Println("  ┌─────────────────────────────────────────────────────────────┐")
+		fmt.Printf("  │ %-60s│\n", "MERGE TIME MODELING")
+		fmt.Println("  └─────────────────────────────────────────────────────────────┘")
+		fmt.Printf("  If you lowered your average merge time to %s, you would save\n", formatTimeUnit(targetHours))
+		fmt.Printf("  ~$%s/yr in engineering overhead", formatWithCommas(annualSavings))
+		if efficiencyDelta > 0 {
+			fmt.Printf(" (+%.1f%% throughput).\n", efficiencyDelta)
+		} else {
+			fmt.Println(".")
+		}
+		fmt.Println()
+	}
 }

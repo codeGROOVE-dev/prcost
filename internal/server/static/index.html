@@ -1457,7 +1457,7 @@
             return html;
         }
 
-        function formatR2RCallout(avgOpenHours, r2rSavings) {
+        function formatR2RCallout(avgOpenHours, r2rSavings, currentEfficiency, modeledEfficiency) {
             // Only show if average merge velocity is > 1 hour
             if (avgOpenHours <= 1) {
                 return '';
@@ -1473,10 +1473,44 @@
                 savingsText = '$' + r2rSavings.toFixed(0);
             }
 
+            const efficiencyDelta = modeledEfficiency - currentEfficiency;
+            let throughputText = '';
+            if (efficiencyDelta > 0) {
+                throughputText = ' (+' + efficiencyDelta.toFixed(1) + '% throughput)';
+            }
+
             let html = '<div style="margin: 24px 0; padding: 12px 20px; background: linear-gradient(135deg, #e6f9f0 0%, #ffffff 100%); border: 1px solid #00c853; border-radius: 8px; font-size: 14px; color: #1d1d1f; line-height: 1.6;">';
-            html += '✓ You\'re losing <strong>' + savingsText + '/yr</strong> to code review lag. ';
+            html += '✓ You\'re losing <strong>' + savingsText + '/yr</strong>' + throughputText + ' to code review lag. ';
             html += '<a href="https://codegroove.dev/" target="_blank" rel="noopener" style="color: #00c853; font-weight: 600; text-decoration: none;">Ready-to-Review</a> fixes it: <strong>&lt;40min merges</strong>, free for OSS. ';
             html += '<a href="mailto:go-faster@codeGROOVE.dev" style="color: #00c853; text-decoration: none;">go-faster@codeGROOVE.dev</a>';
+            html += '</div>';
+            return html;
+        }
+
+        function formatGenericMergeTimeCallout(avgOpenHours, modeledSavings, currentEfficiency, modeledEfficiency) {
+            // Only show if average merge velocity is > 1 hour
+            if (avgOpenHours <= 1) {
+                return '';
+            }
+
+            // Format savings with appropriate precision
+            let savingsText;
+            if (modeledSavings >= 1000000) {
+                savingsText = '$' + (modeledSavings / 1000000).toFixed(1) + 'M';
+            } else if (modeledSavings >= 1000) {
+                savingsText = '$' + (modeledSavings / 1000).toFixed(0) + 'K';
+            } else {
+                savingsText = '$' + modeledSavings.toFixed(0);
+            }
+
+            const efficiencyDelta = modeledEfficiency - currentEfficiency;
+            let throughputText = '';
+            if (efficiencyDelta > 0) {
+                throughputText = ' (+' + efficiencyDelta.toFixed(1) + '% throughput)';
+            }
+
+            let html = '<div style="margin: 24px 0; padding: 12px 20px; background: linear-gradient(135deg, #f0f4f9 0%, #ffffff 100%); border: 1px solid #0066cc; border-radius: 8px; font-size: 14px; color: #1d1d1f; line-height: 1.6;">';
+            html += '<strong>💡 Merge Time Modeling:</strong> If you lowered your average merge time to 1h, you would save <strong>~' + savingsText + '/yr</strong> in engineering overhead' + throughputText + '.';
             html += '</div>';
             return html;
         }
@@ -1667,8 +1701,9 @@
             }
 
             // Build the HTML for the timeline
-            let html = '<div class="workflow-timeline" style="margin-top: 32px;">';
-            html += '<h3 style="font-size: 18px; font-weight: 600; margin-bottom: 16px; color: #1d1d1f;">Workflow State Timeline</h3>';
+            let html = '<div class="workflow-timeline" style="margin-top: 32px; margin-bottom: 32px;">';
+            html += '<h3 style="font-size: 18px; font-weight: 600; margin-bottom: 4px; color: #1d1d1f;">Workflow State Timeline</h3>';
+            html += '<p style="font-size: 14px; color: #6e6e73; margin-bottom: 16px;">How long, on average, is a PR stuck in each state?</p>';
 
             // Stacked bar
             html += '<div style="display: flex; width: 100%; height: 40px; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">';
@@ -2090,15 +2125,16 @@
 
                     // Generate HTML with efficiency section at top
                     let html = formatEfficiencyHTML(efficiencyPct, grade, message, preventableCost, preventableHours, b.total_cost, totalHours, b.pr_duration, false, 0, 0);
-                    html += '<div class="result-section">';
-                    html += '<h2>Cost Breakdown</h2>';
-                    html += '<pre><code>' + formatBreakdown(data) + '</code></pre>';
-                    html += '</div>';
 
                     // Add workflow timeline if available (only when using turnserver)
                     if (data.seconds_in_state) {
                         html += formatWorkflowTimeline(data.seconds_in_state);
                     }
+
+                    html += '<div class="result-section">';
+                    html += '<h2>Cost Breakdown</h2>';
+                    html += '<pre><code>' + formatBreakdown(data) + '</code></pre>';
+                    html += '</div>';
 
                     resultDiv.innerHTML = html;
                 }
@@ -2211,10 +2247,32 @@
                                         const avgPRDurationHours = e.avg_pr_duration_hours || 0;
                                         html += formatEfficiencyHTML(extEfficiencyPct, extEfficiency.grade, extEfficiency.message, extPreventableCost, extPreventableHours, e.total_cost, e.total_hours, avgPRDurationHours, true, annualWasteCost, annualWasteHours, wasteHoursPerWeek, wasteCostPerWeek, wasteHoursPerAuthorPerWeek, wasteCostPerAuthorPerWeek, totalAuthors, salary, benefitsMultiplier, analysisType, sourceName);
 
-                                        // Add R2R callout if enabled and merge velocity > 1 hour
+                                        // Add R2R callout if enabled, otherwise generic merge time callout
+                                        // Calculate modeled efficiency (with 40min/1h merge time)
+                                        const targetMergeHours = 40 / 60; // 40 minutes in hours
+                                        const hourlyRate = (salary * benefitsMultiplier) / 2080;
+
+                                        // Remodel preventable costs with target merge time
+                                        const deliveryDelayFactor = 0.20; // From DefaultConfig
+                                        const remodelDeliveryDelayPerPR = hourlyRate * deliveryDelayFactor * targetMergeHours;
+                                        const remodelCodeChurnPerPR = 0; // < 1 day, no churn
+                                        const remodelAutomatedUpdatesPerPR = 0; // < 1 day, no automated updates
+                                        const remodelPRTrackingPerPR = 0; // < 1 hour, no tracking
+
+                                        const totalPRs = e.total_prs;
+                                        const remodelPreventableCost = (remodelDeliveryDelayPerPR + remodelCodeChurnPerPR +
+                                            remodelAutomatedUpdatesPerPR + remodelPRTrackingPerPR) * totalPRs;
+                                        const remodelPreventableHours = remodelPreventableCost / hourlyRate;
+
+                                        const modeledEfficiency = e.total_hours > 0 ?
+                                            100.0 * (e.total_hours - remodelPreventableHours) / e.total_hours : 100.0;
+
                                         if (data.r2r_callout) {
                                             const r2rSavings = e.r2r_savings || 0;
-                                            html += formatR2RCallout(avgPRDurationHours, r2rSavings);
+                                            html += formatR2RCallout(avgPRDurationHours, r2rSavings, extEfficiencyPct, modeledEfficiency);
+                                        } else {
+                                            const r2rSavings = e.r2r_savings || 0;
+                                            html += formatGenericMergeTimeCallout(avgPRDurationHours, r2rSavings, extEfficiencyPct, modeledEfficiency);
                                         }
 
                                         // Calculate average PR efficiency
@@ -2230,6 +2288,17 @@
                                         const avgEfficiencyPct = avgTotalHours > 0 ? 100.0 * (avgTotalHours - avgPreventableHours) / avgTotalHours : 100.0;
                                         const avgEfficiency = efficiencyGrade(avgEfficiencyPct);
 
+                                        // Add workflow timeline if available (only when using turnserver)
+                                        if (data.seconds_in_state) {
+                                            // Calculate average seconds per PR
+                                            const avgSecondsInState = {};
+                                            const sampleCount = e.successful_samples || 1;
+                                            for (const [state, totalSeconds] of Object.entries(data.seconds_in_state)) {
+                                                avgSecondsInState[state] = Math.round(totalSeconds / sampleCount);
+                                            }
+                                            html += formatWorkflowTimeline(avgSecondsInState);
+                                        }
+
                                         // Extrapolated total section
                                         html += '<div class="result-section">';
                                         html += `<h2>${days}-day Estimated Costs</h2>`;
@@ -2241,17 +2310,6 @@
                                         html += `<h2>Average PR (sampled over ${days} day period)</h2>`;
                                         html += '<pre><code>' + formatAveragePR(e) + '</code></pre>';
                                         html += '</div>';
-
-                                        // Add workflow timeline if available (only when using turnserver)
-                                        if (data.seconds_in_state) {
-                                            // Calculate average seconds per PR
-                                            const avgSecondsInState = {};
-                                            const sampleCount = e.successful_samples || 1;
-                                            for (const [state, totalSeconds] of Object.entries(data.seconds_in_state)) {
-                                                avgSecondsInState[state] = Math.round(totalSeconds / sampleCount);
-                                            }
-                                            html += formatWorkflowTimeline(avgSecondsInState);
-                                        }
 
                                         resultDiv.innerHTML = html;
                                         resolve();

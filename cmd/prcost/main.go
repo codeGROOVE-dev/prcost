@@ -34,6 +34,9 @@ func main() {
 	samples := flag.Int("samples", 30, "Number of PRs to sample for extrapolation (30=fast/±18%, 50=slower/±14%)")
 	days := flag.Int("days", 60, "Number of days to look back for PR modifications")
 
+	// Modeling flags
+	modelMergeTime := flag.Duration("model-merge-time", 1*time.Hour, "Model savings if average merge time was reduced to this duration")
+
 	flag.Usage = func() {
 		fmt.Fprintf(os.Stderr, "Usage: %s [options] <PR_URL>\n", os.Args[0])
 		fmt.Fprintf(os.Stderr, "       %s --org <org> [--repo <repo>] [options]\n\n", os.Args[0])
@@ -119,7 +122,7 @@ func main() {
 		if *repo != "" {
 			// Single repository mode
 
-			err := analyzeRepository(ctx, *org, *repo, *samples, *days, cfg, token, *dataSource)
+			err := analyzeRepository(ctx, *org, *repo, *samples, *days, cfg, token, *dataSource, modelMergeTime)
 			if err != nil {
 				log.Fatalf("Repository analysis failed: %v", err)
 			}
@@ -130,7 +133,7 @@ func main() {
 				"samples", *samples,
 				"days", *days)
 
-			err := analyzeOrganization(ctx, *org, *samples, *days, cfg, token, *dataSource)
+			err := analyzeOrganization(ctx, *org, *samples, *days, cfg, token, *dataSource, modelMergeTime)
 			if err != nil {
 				log.Fatalf("Organization analysis failed: %v", err)
 			}
@@ -174,7 +177,7 @@ func main() {
 		// Output in requested format
 		switch *format {
 		case "human":
-			printHumanReadable(&breakdown, prURL)
+			printHumanReadable(&breakdown, prURL, *modelMergeTime, cfg)
 		case "json":
 			encoder := json.NewEncoder(os.Stdout)
 			encoder.SetIndent("", "  ")
@@ -206,7 +209,7 @@ func authToken(ctx context.Context) (string, error) {
 }
 
 // printHumanReadable outputs a detailed itemized bill in human-readable format.
-func printHumanReadable(breakdown *cost.Breakdown, prURL string) {
+func printHumanReadable(breakdown *cost.Breakdown, prURL string, modelMergeTime time.Duration, cfg cost.Config) {
 	// Helper to format currency with commas
 	formatCurrency := func(amount float64) string {
 		return fmt.Sprintf("$%s", formatWithCommas(amount))
@@ -309,6 +312,11 @@ func printHumanReadable(breakdown *cost.Breakdown, prURL string) {
 
 	// Print efficiency score
 	printEfficiency(breakdown)
+
+	// Print modeling callout if PR duration exceeds model merge time
+	if breakdown.PRDuration > modelMergeTime.Hours() {
+		printMergeTimeModelingCallout(breakdown, modelMergeTime, cfg)
+	}
 }
 
 // printDelayCosts prints delay and future costs section.
@@ -516,6 +524,82 @@ func mergeVelocityGrade(avgOpenDays float64) (grade, message string) {
 		return "D", "Not good my friend."
 	default:
 		return "F", "Failing"
+	}
+}
+
+// printMergeTimeModelingCallout prints a callout showing potential savings from reduced merge time.
+func printMergeTimeModelingCallout(breakdown *cost.Breakdown, targetMergeTime time.Duration, cfg cost.Config) {
+	targetHours := targetMergeTime.Hours()
+	currentHours := breakdown.PRDuration
+
+	// Calculate hourly rate
+	hourlyRate := (cfg.AnnualSalary * cfg.BenefitsMultiplier) / cfg.HoursPerYear
+
+	// Recalculate delivery delay with target merge time
+	remodelDeliveryDelayCost := hourlyRate * cfg.DeliveryDelayFactor * targetHours
+
+	// Code churn: 40min-1h is too short for meaningful code churn (< 1 day)
+	remodelCodeChurnCost := 0.0
+
+	// Automated updates: only applies to PRs open > 1 day
+	remodelAutomatedUpdatesCost := 0.0
+
+	// PR tracking: scales with open time (already minimal for short PRs)
+	remodelPRTrackingCost := 0.0
+	if targetHours >= 1.0 { // Only track PRs open >= 1 hour
+		daysOpen := targetHours / 24.0
+		remodelPRTrackingHours := (cfg.PRTrackingMinutesPerDay / 60.0) * daysOpen
+		remodelPRTrackingCost = remodelPRTrackingHours * hourlyRate
+	}
+
+	// Calculate savings for this PR
+	currentPreventable := breakdown.DelayCostDetail.DeliveryDelayCost +
+		breakdown.DelayCostDetail.CodeChurnCost +
+		breakdown.DelayCostDetail.AutomatedUpdatesCost +
+		breakdown.DelayCostDetail.PRTrackingCost
+
+	remodelPreventable := remodelDeliveryDelayCost + remodelCodeChurnCost +
+		remodelAutomatedUpdatesCost + remodelPRTrackingCost
+
+	savingsPerPR := currentPreventable - remodelPreventable
+
+	// Calculate efficiency improvement
+	// Current efficiency: (total hours - preventable hours) / total hours
+	// Modeled efficiency: (total hours - remodeled preventable hours) / total hours
+	totalHours := breakdown.Author.TotalHours + breakdown.DelayCostDetail.TotalDelayHours
+	for _, p := range breakdown.Participants {
+		totalHours += p.TotalHours
+	}
+
+	var currentEfficiency, modeledEfficiency, efficiencyDelta float64
+	if totalHours > 0 {
+		currentEfficiency = 100.0 * (totalHours - (currentPreventable / hourlyRate)) / totalHours
+		modeledEfficiency = 100.0 * (totalHours - (remodelPreventable / hourlyRate)) / totalHours
+		efficiencyDelta = modeledEfficiency - currentEfficiency
+	}
+
+	// Estimate annual savings assuming similar PR frequency
+	// Use a conservative estimate: this PR represents typical overhead
+	// Extrapolate to 52 weeks based on how long this PR was open
+	if savingsPerPR > 0 && currentHours > 0 {
+		// Rough annual extrapolation: (savings per PR) × (52 weeks) / (weeks this PR was open)
+		weeksOpen := currentHours / (24.0 * 7.0)
+		if weeksOpen < 0.01 {
+			weeksOpen = 0.01 // Avoid division by zero, minimum 1% of a week
+		}
+		annualSavings := savingsPerPR * (52.0 / weeksOpen)
+
+		fmt.Println("  ┌─────────────────────────────────────────────────────────────┐")
+		fmt.Printf("  │ %-60s│\n", "MERGE TIME MODELING")
+		fmt.Println("  └─────────────────────────────────────────────────────────────┘")
+		fmt.Printf("  If you lowered your average merge time to %s, you would save\n", formatTimeUnit(targetHours))
+		fmt.Printf("  ~$%s/yr in engineering overhead", formatWithCommas(annualSavings))
+		if efficiencyDelta > 0 {
+			fmt.Printf(" (+%.1f%% throughput).\n", efficiencyDelta)
+		} else {
+			fmt.Println(".")
+		}
+		fmt.Println()
 	}
 }
 
