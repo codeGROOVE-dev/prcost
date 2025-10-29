@@ -1,0 +1,86 @@
+{
+  "events": [
+    {
+      "timestamp": "2025-10-29T02:04:26Z",
+      "kind": "commit",
+      "actor": "Thomas Stromberg",
+      "body": "Add TestCheckEventRaceCondition"
+    },
+    {
+      "timestamp": "2025-10-29T02:04:47Z",
+      "kind": "pr_opened",
+      "actor": "tstromberg",
+      "write_access": 2
+    },
+    {
+      "timestamp": "2025-10-29T02:05:04Z",
+      "kind": "merged",
+      "actor": "tstromberg"
+    },
+    {
+      "timestamp": "2025-10-29T02:05:04Z",
+      "kind": "closed",
+      "actor": "tstromberg"
+    },
+    {
+      "timestamp": "2025-10-29T02:05:04Z",
+      "kind": "pr_merged",
+      "actor": "tstromberg"
+    },
+    {
+      "timestamp": "2025-10-29T02:05:10Z",
+      "kind": "check_run",
+      "actor": "github",
+      "outcome": "success",
+      "body": "Kusari Inspector",
+      "description": "Security Analysis Passed: No security issues found",
+      "bot": true
+    }
+  ],
+  "pull_request": {
+    "created_at": "2025-10-29T02:04:47Z",
+    "updated_at": "2025-10-29T02:05:04Z",
+    "closed_at": "2025-10-29T02:05:04Z",
+    "merged_at": "2025-10-29T02:05:04Z",
+    "approval_summary": {
+      "approvals_with_write_access": 0,
+      "approvals_with_unknown_access": 0,
+      "approvals_without_write_access": 0,
+      "changes_requested": 0
+    },
+    "check_summary": {
+      "success": {
+        "Kusari Inspector": "Security Analysis Passed: No security issues found"
+      },
+      "failing": {},
+      "pending": {},
+      "cancelled": {},
+      "skipped": {},
+      "stale": {},
+      "neutral": {}
+    },
+    "mergeable": null,
+    "assignees": [],
+    "participant_access": {
+      "Thomas Stromberg": 0,
+      "tstromberg": 2
+    },
+    "mergeable_state": "unknown",
+    "mergeable_state_description": "Merge status is being calculated",
+    "author": "tstromberg",
+    "body": "",
+    "title": "Add TestCheckEventRaceCondition",
+    "merged_by": "tstromberg",
+    "state": "merged",
+    "test_state": "passing",
+    "head_sha": "03baab46ffa62f2d360eaaae7402bebe103639d8",
+    "number": 37,
+    "changed_files": 1,
+    "deletions": 0,
+    "additions": 324,
+    "author_write_access": 2,
+    "author_bot": false,
+    "merged": true,
+    "draft": false
+  }
+}

@@ -22,12 +22,14 @@ type PRFetcher interface {
 }
 
 // AnalysisRequest contains parameters for analyzing a set of PRs.
+//
+//nolint:govet // fieldalignment: struct field order optimized for API clarity
 type AnalysisRequest struct {
+	Fetcher     PRFetcher       // PR data fetcher
+	Config      Config          // Cost calculation configuration
 	Samples     []PRSummaryInfo // PRs to analyze
 	Logger      *slog.Logger    // Optional logger for progress
-	Fetcher     PRFetcher       // PR data fetcher
 	Concurrency int             // Number of concurrent fetches (0 = sequential)
-	Config      Config          // Cost calculation configuration
 }
 
 // PRSummaryInfo contains basic PR information needed for fetching.

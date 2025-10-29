@@ -208,29 +208,24 @@ func analyzeOrganization(ctx context.Context, org string, sampleSize, days int, 
 	return nil
 }
 
-// Ledger formatting functions - all output must use these for consistency
+// Ledger formatting functions - all output must use these for consistency.
 
 // formatItemLine formats a cost breakdown line item with 4-space indent.
-func formatItemLine(label string, cost float64, timeUnit string, detail string) string {
-	if cost == 0 {
+func formatItemLine(label string, amount float64, timeUnit string, detail string) string {
+	if amount == 0 {
 		return fmt.Sprintf("    %-30s %15s    %-6s  %s\n", label, "—", timeUnit, detail)
 	}
-	return fmt.Sprintf("    %-30s $%14s    %-6s  %s\n", label, formatWithCommas(cost), timeUnit, detail)
+	return fmt.Sprintf("    %-30s $%14s    %-6s  %s\n", label, formatWithCommas(amount), timeUnit, detail)
 }
 
 // formatSubtotalLine formats a subtotal line with 4-space indent.
-func formatSubtotalLine(label string, cost float64, timeUnit string, detail string) string {
-	return fmt.Sprintf("    %-30s $%14s    %-6s  %s\n", label, formatWithCommas(cost), timeUnit, detail)
+func formatSubtotalLine(amount float64, timeUnit string, detail string) string {
+	return fmt.Sprintf("    %-30s $%14s    %-6s  %s\n", "Subtotal", formatWithCommas(amount), timeUnit, detail)
 }
 
 // formatSummaryLine formats a summary line (like Preventable Loss Total) with 2-space indent.
-func formatSummaryLine(label string, cost float64, timeUnit string, detail string) string {
-	return fmt.Sprintf("  %-30s $%14s    %-6s  %s\n", label, formatWithCommas(cost), timeUnit, detail)
-}
-
-// formatTotalLine formats a total line with 2-space indent.
-func formatTotalLine(label string, cost float64, timeUnit string) string {
-	return fmt.Sprintf("  %-30s $%14s    %-6s\n", label, formatWithCommas(cost), timeUnit)
+func formatSummaryLine(label string, amount float64, timeUnit string, detail string) string {
+	return fmt.Sprintf("  %-30s $%14s    %-6s  %s\n", label, formatWithCommas(amount), timeUnit, detail)
 }
 
 // formatSectionDivider formats the divider line under subtotals (4-space indent, 32 chars + 14 dashes).
@@ -372,7 +367,7 @@ func printExtrapolatedResults(title string, days int, ext *cost.ExtrapolatedBrea
 	}
 	fmt.Print(formatSectionDivider())
 	pct := (avgAuthorTotalCost / avgTotalCost) * 100
-	fmt.Print(formatSubtotalLine("Subtotal", avgAuthorTotalCost, formatTimeUnit(avgAuthorTotalHours), fmt.Sprintf("(%.1f%%)", pct)))
+	fmt.Print(formatSubtotalLine(avgAuthorTotalCost, formatTimeUnit(avgAuthorTotalHours), fmt.Sprintf("(%.1f%%)", pct)))
 	fmt.Println()
 
 	// Participants section (if any participants)
@@ -393,7 +388,7 @@ func printExtrapolatedResults(title string, days int, ext *cost.ExtrapolatedBrea
 		fmt.Print(formatItemLine("Context Switching", avgParticipantContextCost, formatTimeUnit(avgParticipantContextHours), fmt.Sprintf("(%.1f sessions)", avgParticipantSessions)))
 		fmt.Print(formatSectionDivider())
 		participantPct := (avgParticipantTotalCost / avgTotalCost) * 100
-		fmt.Print(formatSubtotalLine("Subtotal", avgParticipantTotalCost, formatTimeUnit(avgParticipantTotalHours), fmt.Sprintf("(%.1f%%)", participantPct)))
+		fmt.Print(formatSubtotalLine(avgParticipantTotalCost, formatTimeUnit(avgParticipantTotalHours), fmt.Sprintf("(%.1f%%)", participantPct)))
 		fmt.Println()
 	}
 
@@ -420,7 +415,7 @@ func printExtrapolatedResults(title string, days int, ext *cost.ExtrapolatedBrea
 	avgMergeDelayHours := avgDeliveryDelayHours + avgAutomatedUpdatesHours + avgPRTrackingHours
 	fmt.Print(formatSectionDivider())
 	pct = (avgMergeDelayCost / avgTotalCost) * 100
-	fmt.Print(formatSubtotalLine("Subtotal", avgMergeDelayCost, formatTimeUnit(avgMergeDelayHours), fmt.Sprintf("(%.1f%%)", pct)))
+	fmt.Print(formatSubtotalLine(avgMergeDelayCost, formatTimeUnit(avgMergeDelayHours), fmt.Sprintf("(%.1f%%)", pct)))
 	fmt.Println()
 
 	// Future Costs section
@@ -454,7 +449,7 @@ func printExtrapolatedResults(title string, days int, ext *cost.ExtrapolatedBrea
 		avgFutureHours := avgCodeChurnHours + avgFutureReviewHours + avgFutureMergeHours + avgFutureContextHours
 		fmt.Print(formatSectionDivider())
 		pct = (avgFutureCost / avgTotalCost) * 100
-		fmt.Print(formatSubtotalLine("Subtotal", avgFutureCost, formatTimeUnit(avgFutureHours), fmt.Sprintf("(%.1f%%)", pct)))
+		fmt.Print(formatSubtotalLine(avgFutureCost, formatTimeUnit(avgFutureHours), fmt.Sprintf("(%.1f%%)", pct)))
 		fmt.Println()
 	}
 
@@ -510,7 +505,7 @@ func printExtrapolatedResults(title string, days int, ext *cost.ExtrapolatedBrea
 	}
 	fmt.Print(formatSectionDivider())
 	pct = (ext.AuthorTotalCost / ext.TotalCost) * 100
-	fmt.Print(formatSubtotalLine("Subtotal", ext.AuthorTotalCost, formatTimeUnit(ext.AuthorTotalHours), fmt.Sprintf("(%.1f%%)", pct)))
+	fmt.Print(formatSubtotalLine(ext.AuthorTotalCost, formatTimeUnit(ext.AuthorTotalHours), fmt.Sprintf("(%.1f%%)", pct)))
 	fmt.Println()
 
 	// Participants section (extrapolated, if any participants)
@@ -526,7 +521,7 @@ func printExtrapolatedResults(title string, days int, ext *cost.ExtrapolatedBrea
 		fmt.Print(formatItemLine("Context Switching", ext.ParticipantContextCost, formatTimeUnit(ext.ParticipantContextHours), fmt.Sprintf("(%d sessions)", ext.ParticipantSessions)))
 		fmt.Print(formatSectionDivider())
 		pct = (ext.ParticipantTotalCost / ext.TotalCost) * 100
-		fmt.Print(formatSubtotalLine("Subtotal", ext.ParticipantTotalCost, formatTimeUnit(ext.ParticipantTotalHours), fmt.Sprintf("(%.1f%%)", pct)))
+		fmt.Print(formatSubtotalLine(ext.ParticipantTotalCost, formatTimeUnit(ext.ParticipantTotalHours), fmt.Sprintf("(%.1f%%)", pct)))
 		fmt.Println()
 	}
 
@@ -554,7 +549,7 @@ func printExtrapolatedResults(title string, days int, ext *cost.ExtrapolatedBrea
 	extMergeDelayHours := ext.DeliveryDelayHours + ext.CodeChurnHours + ext.AutomatedUpdatesHours + ext.PRTrackingHours
 	fmt.Print(formatSectionDivider())
 	pct = (extMergeDelayCost / ext.TotalCost) * 100
-	fmt.Print(formatSubtotalLine("Subtotal", extMergeDelayCost, formatTimeUnit(extMergeDelayHours), fmt.Sprintf("(%.1f%%)", pct)))
+	fmt.Print(formatSubtotalLine(extMergeDelayCost, formatTimeUnit(extMergeDelayHours), fmt.Sprintf("(%.1f%%)", pct)))
 	fmt.Println()
 
 	// Future Costs section (extrapolated)
@@ -582,7 +577,7 @@ func printExtrapolatedResults(title string, days int, ext *cost.ExtrapolatedBrea
 		extFutureHours := ext.CodeChurnHours + ext.FutureReviewHours + ext.FutureMergeHours + ext.FutureContextHours
 		fmt.Print(formatSectionDivider())
 		pct = (extFutureCost / ext.TotalCost) * 100
-		fmt.Print(formatSubtotalLine("Subtotal", extFutureCost, formatTimeUnit(extFutureHours), fmt.Sprintf("(%.1f%%)", pct)))
+		fmt.Print(formatSubtotalLine(extFutureCost, formatTimeUnit(extFutureHours), fmt.Sprintf("(%.1f%%)", pct)))
 		fmt.Println()
 	}
 

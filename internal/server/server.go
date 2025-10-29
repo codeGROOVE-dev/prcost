@@ -78,6 +78,15 @@ type prQueryCacheEntity struct {
 	QueryKey  string    `datastore:"query_key"`    // Full query key for debugging
 }
 
+// calcResultCacheEntity represents a cached calculation result in DataStore with TTL.
+type calcResultCacheEntity struct {
+	Data      string    `datastore:"data,noindex"` // JSON-encoded cost.Breakdown
+	CachedAt  time.Time `datastore:"cached_at"`    // When this was cached
+	ExpiresAt time.Time `datastore:"expires_at"`   // When this expires
+	URL       string    `datastore:"url"`          // PR URL for debugging
+	ConfigKey string    `datastore:"config_key"`   // Config hash for debugging
+}
+
 // Server handles HTTP requests for the PR Cost API.
 //
 //nolint:govet // fieldalignment: struct field ordering optimized for readability over memory
@@ -101,10 +110,12 @@ type Server struct {
 	validateTokens   bool
 	r2rCallout       bool
 	// In-memory caching for PR queries and data.
-	prQueryCache   map[string]*cacheEntry
-	prDataCache    map[string]*cacheEntry
-	prQueryCacheMu sync.RWMutex
-	prDataCacheMu  sync.RWMutex
+	prQueryCache      map[string]*cacheEntry
+	prDataCache       map[string]*cacheEntry
+	calcResultCache   map[string]*cacheEntry
+	prQueryCacheMu    sync.RWMutex
+	prDataCacheMu     sync.RWMutex
+	calcResultCacheMu sync.RWMutex
 	// DataStore client for persistent caching (nil if not enabled).
 	dsClient *ds9.Client
 }
@@ -195,16 +206,17 @@ func New() *Server {
 	logger.InfoContext(ctx, "Server initialized with CSRF protection enabled")
 
 	server := &Server{
-		logger:         logger,
-		serverCommit:   "", // Will be set via build flags
-		dataSource:     "turnserver",
-		httpClient:     httpClient,
-		csrfProtection: csrfProtection,
-		ipLimiters:     make(map[string]*rate.Limiter),
-		rateLimit:      DefaultRateLimit,
-		rateBurst:      DefaultRateBurst,
-		prQueryCache:   make(map[string]*cacheEntry),
-		prDataCache:    make(map[string]*cacheEntry),
+		logger:          logger,
+		serverCommit:    "", // Will be set via build flags
+		dataSource:      "turnserver",
+		httpClient:      httpClient,
+		csrfProtection:  csrfProtection,
+		ipLimiters:      make(map[string]*rate.Limiter),
+		rateLimit:       DefaultRateLimit,
+		rateBurst:       DefaultRateBurst,
+		prQueryCache:    make(map[string]*cacheEntry),
+		prDataCache:     make(map[string]*cacheEntry),
+		calcResultCache: make(map[string]*cacheEntry),
 	}
 
 	// Load GitHub token at startup and cache in memory for performance and billing.
@@ -421,14 +433,14 @@ func (s *Server) cachePRQuery(ctx context.Context, key string, prs []github.PRSu
 	switch {
 	case strings.HasPrefix(key, "repo:"):
 		queryType = "repo"
-		ttl = 72 * time.Hour // 72 hours for repo queries
+		ttl = 60 * time.Hour // 60 hours for repo queries
 	case strings.HasPrefix(key, "org:"):
 		queryType = "org"
-		ttl = 72 * time.Hour // 72 hours for org queries
+		ttl = 60 * time.Hour // 60 hours for org queries
 	default:
 		s.logger.WarnContext(ctx, "Unknown query type for key, using default TTL", "key", key)
 		queryType = "unknown"
-		ttl = 72 * time.Hour // Default to 72 hours
+		ttl = 60 * time.Hour // Default to 60 hours
 	}
 
 	now := time.Now()
@@ -537,6 +549,110 @@ func (s *Server) cachePRData(ctx context.Context, key string, prData cost.PRData
 	}
 
 	s.logger.DebugContext(ctx, "PR data cached to DataStore", "key", key, "expires_at", entity.ExpiresAt)
+}
+
+// configHash creates a deterministic hash key for a cost.Config.
+// Returns a short hash string suitable for use in cache keys.
+func configHash(cfg cost.Config) string {
+	// Create a deterministic string representation of the config
+	// Use %.2f for floats to avoid floating point precision issues
+	return fmt.Sprintf("s%.0f_e%.0f_ci%.0f_co%.0f_g%.0f_d%.2f",
+		cfg.AnnualSalary,
+		cfg.EventDuration.Minutes(),
+		cfg.ContextSwitchInDuration.Minutes(),
+		cfg.ContextSwitchOutDuration.Minutes(),
+		cfg.SessionGapThreshold.Minutes(),
+		cfg.DeliveryDelayFactor)
+}
+
+// cachedCalcResult retrieves cached calculation result from memory first, then DataStore as fallback.
+func (s *Server) cachedCalcResult(ctx context.Context, prURL string, cfg cost.Config) (cost.Breakdown, bool) {
+	key := fmt.Sprintf("calc:%s:%s", prURL, configHash(cfg))
+
+	// Check in-memory cache first (fast path).
+	s.calcResultCacheMu.RLock()
+	entry, exists := s.calcResultCache[key]
+	s.calcResultCacheMu.RUnlock()
+
+	if exists {
+		breakdown, ok := entry.data.(cost.Breakdown)
+		if ok {
+			return breakdown, true
+		}
+	}
+
+	// Memory miss - try DataStore if available.
+	if s.dsClient == nil {
+		return cost.Breakdown{}, false
+	}
+
+	dsKey := ds9.NameKey("CalcResultCache", key, nil)
+	var entity calcResultCacheEntity
+	err := s.dsClient.Get(ctx, dsKey, &entity)
+	if err != nil {
+		if !errors.Is(err, ds9.ErrNoSuchEntity) {
+			s.logger.WarnContext(ctx, "DataStore calc cache read failed", "key", key, "error", err)
+		}
+		return cost.Breakdown{}, false
+	}
+
+	// Check if expired.
+	if time.Now().After(entity.ExpiresAt) {
+		return cost.Breakdown{}, false
+	}
+
+	// Deserialize the cached data.
+	var breakdown cost.Breakdown
+	if err := json.Unmarshal([]byte(entity.Data), &breakdown); err != nil {
+		s.logger.WarnContext(ctx, "Failed to deserialize cached calc result", "key", key, "error", err)
+		return cost.Breakdown{}, false
+	}
+
+	// Populate in-memory cache for faster subsequent access.
+	s.calcResultCacheMu.Lock()
+	s.calcResultCache[key] = &cacheEntry{data: breakdown}
+	s.calcResultCacheMu.Unlock()
+
+	return breakdown, true
+}
+
+// cacheCalcResult stores calculation result in both memory and DataStore caches.
+func (s *Server) cacheCalcResult(ctx context.Context, prURL string, cfg cost.Config, b *cost.Breakdown, ttl time.Duration) {
+	key := fmt.Sprintf("calc:%s:%s", prURL, configHash(cfg))
+
+	// Write to in-memory cache first (fast path).
+	s.calcResultCacheMu.Lock()
+	s.calcResultCache[key] = &cacheEntry{data: *b}
+	s.calcResultCacheMu.Unlock()
+
+	// Write to DataStore if available (persistent cache).
+	if s.dsClient == nil {
+		return
+	}
+
+	// Serialize the calculation result.
+	dataJSON, err := json.Marshal(b)
+	if err != nil {
+		s.logger.WarnContext(ctx, "Failed to serialize calc result for DataStore", "key", key, "error", err)
+		return
+	}
+
+	now := time.Now()
+	entity := calcResultCacheEntity{
+		Data:      string(dataJSON),
+		CachedAt:  now,
+		ExpiresAt: now.Add(ttl),
+		URL:       prURL,
+		ConfigKey: configHash(cfg),
+	}
+
+	dsKey := ds9.NameKey("CalcResultCache", key, nil)
+	if _, err := s.dsClient.Put(ctx, dsKey, &entity); err != nil {
+		s.logger.WarnContext(ctx, "Failed to write calc result to DataStore", "key", key, "error", err)
+		return
+	}
+
+	s.logger.DebugContext(ctx, "Calc result cached to DataStore", "key", key, "ttl", ttl, "expires_at", entity.ExpiresAt)
 }
 
 // SetTokenValidation configures GitHub token validation.
@@ -917,12 +1033,20 @@ func (s *Server) processRequest(ctx context.Context, req *CalculateRequest, toke
 		cfg = s.mergeConfig(cfg, req.Config)
 	}
 
-	// Try cache first
+	// Try calculation result cache first (includes both PR data + calculation)
+	breakdown, calcCached := s.cachedCalcResult(ctx, req.URL, cfg)
+	if calcCached {
+		return &CalculateResponse{
+			Breakdown: breakdown,
+			Timestamp: time.Now(),
+			Commit:    s.serverCommit,
+		}, nil
+	}
+
+	// Cache miss - need to fetch PR data and calculate
 	cacheKey := fmt.Sprintf("pr:%s", req.URL)
-	prData, cached := s.cachedPRData(ctx, cacheKey)
-	if cached {
-		s.logger.InfoContext(ctx, "[processRequest] Using cached PR data", "url", req.URL)
-	} else {
+	prData, prCached := s.cachedPRData(ctx, cacheKey)
+	if !prCached {
 		// Fetch PR data using configured data source
 		var err error
 		// For single PR requests, use 1 hour ago as reference time to enable reasonable caching
@@ -944,12 +1068,16 @@ func (s *Server) processRequest(ctx context.Context, req *CalculateRequest, toke
 			return nil, fmt.Errorf("failed to fetch PR data: %w", err)
 		}
 
-		// Cache PR data
+		s.logger.InfoContext(ctx, "[processRequest] PR data cache miss - fetched from GitHub", "url", req.URL)
+		// Cache PR data with 1 hour TTL for direct PR requests
 		s.cachePRData(ctx, cacheKey, prData)
 	}
 
 	// Calculate costs.
-	breakdown := cost.Calculate(prData, cfg)
+	breakdown = cost.Calculate(prData, cfg)
+
+	// Cache the calculation result with 1 hour TTL for direct PR requests
+	s.cacheCalcResult(ctx, req.URL, cfg, &breakdown, 1*time.Hour)
 
 	return &CalculateResponse{
 		Breakdown: breakdown,
@@ -1616,6 +1744,9 @@ func (s *Server) processOrgSample(ctx context.Context, req *OrgSampleRequest, to
 
 // mergeConfig merges a provided config with defaults.
 func (*Server) mergeConfig(base cost.Config, override *cost.Config) cost.Config {
+	if override == nil {
+		return base
+	}
 	if override.AnnualSalary > 0 {
 		base.AnnualSalary = override.AnnualSalary
 	}
@@ -2195,7 +2326,28 @@ func (s *Server) processPRsInParallel(workCtx, reqCtx context.Context, samples [
 
 			prURL := fmt.Sprintf("https://github.com/%s/%s/pull/%d", owner, repo, prSummary.Number)
 
-			// Try cache first
+			// Try calculation result cache first (includes both PR data + calculation)
+			breakdown, calcCached := s.cachedCalcResult(workCtx, prURL, cfg)
+			if calcCached {
+				// Already have the full calculation result
+				mu.Lock()
+				breakdowns = append(breakdowns, breakdown)
+				mu.Unlock()
+
+				// Send "complete" update using request context for SSE
+				sseMu.Lock()
+				logSSEError(reqCtx, s.logger, sendSSE(writer, ProgressUpdate{
+					Type:     "complete",
+					PR:       prSummary.Number,
+					Owner:    owner,
+					Repo:     repo,
+					Progress: progress,
+				}))
+				sseMu.Unlock()
+				return
+			}
+
+			// Cache miss - need to fetch PR data and calculate
 			prCacheKey := fmt.Sprintf("pr:%s", prURL)
 			prData, prCached := s.cachedPRData(workCtx, prCacheKey)
 			if !prCached {
@@ -2222,6 +2374,8 @@ func (s *Server) processPRsInParallel(workCtx, reqCtx context.Context, samples [
 					return
 				}
 
+				s.logger.InfoContext(reqCtx, "PR data cache miss - fetched from GitHub",
+					"pr_number", prSummary.Number, "owner", owner, "repo", repo)
 				// Cache the PR data
 				s.cachePRData(workCtx, prCacheKey, prData)
 			}
@@ -2237,7 +2391,10 @@ func (s *Server) processPRsInParallel(workCtx, reqCtx context.Context, samples [
 			}))
 			sseMu.Unlock()
 
-			breakdown := cost.Calculate(prData, cfg)
+			breakdown = cost.Calculate(prData, cfg)
+
+			// Cache the calculation result with 1 week TTL for PRs from queries
+			s.cacheCalcResult(workCtx, prURL, cfg, &breakdown, 7*24*time.Hour)
 
 			// Add to results
 			mu.Lock()

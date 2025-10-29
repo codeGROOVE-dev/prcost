@@ -3,6 +3,7 @@ package github
 import (
 	"encoding/json"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -274,4 +275,236 @@ func TestPRDataFromPRXWithRealData(t *testing.T) {
 	}
 
 	t.Logf("PR 1891: %d human events out of %d total events", len(costData.Events), len(prxData.Events))
+}
+
+func TestGetCacheDir(t *testing.T) {
+	dir, err := getCacheDir()
+	if err != nil {
+		t.Fatalf("getCacheDir() error = %v", err)
+	}
+	if dir == "" {
+		t.Error("getCacheDir() returned empty string")
+	}
+
+	// Should contain prcost in the path
+	if !strings.Contains(dir, "prcost") {
+		t.Errorf("getCacheDir() = %q, expected to contain 'prcost'", dir)
+	}
+}
+
+func TestIsCommonBot(t *testing.T) {
+	tests := []struct {
+		name     string
+		username string
+		want     bool
+	}{
+		{"dependabot", "dependabot[bot]", true},
+		{"renovate", "renovate-bot", true},
+		{"github-actions", "github-actions", true},
+		{"codecov", "codecov-commenter", true},
+		{"greenkeeper", "greenkeeper[bot]", true},
+		{"snyk", "snyk-bot", true},
+		{"allcontributors", "allcontributors[bot]", true},
+		{"imgbot", "ImgBot", true}, // Case insensitive
+		{"stalebot", "stalebot", true},
+		{"mergify", "mergify[bot]", true},
+		{"netlify", "netlify[bot]", true},
+		{"vercel", "vercel[bot]", true},
+		{"codefactor", "codefactor-io", true},
+		{"deepsource", "deepsource-autofix[bot]", true},
+		{"pre-commit", "pre-commit-ci[bot]", true},
+		{"regular user", "john-doe", false},
+		{"bot in middle", "robot-person", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := isCommonBot(tt.username)
+			if got != tt.want {
+				t.Errorf("isCommonBot(%q) = %v, want %v", tt.username, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestIsCommonBotCaseSensitivity(t *testing.T) {
+	tests := []struct {
+		name     string
+		username string
+		want     bool
+	}{
+		{"uppercase BOT", "DEPENDABOT[bot]", true},
+		{"mixed case", "DePeNdAbOt[bot]", true},
+		{"lowercase all", "dependabot[bot]", true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := isCommonBot(tt.username)
+			if got != tt.want {
+				t.Errorf("isCommonBot(%q) = %v, want %v", tt.username, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestExtractParticipantEventsEdgeCases(t *testing.T) {
+	now := time.Now()
+
+	tests := []struct {
+		name          string
+		events        []prx.Event
+		expectedCount int
+		expectedFirst string
+	}{
+		{
+			name: "single event",
+			events: []prx.Event{
+				{Timestamp: now, Actor: "alice", Bot: false},
+			},
+			expectedCount: 1,
+			expectedFirst: "alice",
+		},
+		{
+			name: "github user filtered out",
+			events: []prx.Event{
+				{Timestamp: now, Actor: "github", Bot: false},
+			},
+			expectedCount: 0,
+		},
+		{
+			name: "mix of valid and invalid",
+			events: []prx.Event{
+				{Timestamp: now, Actor: "alice", Bot: false},
+				{Timestamp: now, Actor: "github", Bot: false},
+				{Timestamp: now, Actor: "bot[bot]", Bot: true},
+			},
+			expectedCount: 1,
+			expectedFirst: "alice",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := extractParticipantEvents(tt.events)
+
+			if len(result) != tt.expectedCount {
+				t.Errorf("Expected %d events, got %d", tt.expectedCount, len(result))
+			}
+
+			if tt.expectedCount > 0 && result[0].Actor != tt.expectedFirst {
+				t.Errorf("Expected first actor %s, got %s", tt.expectedFirst, result[0].Actor)
+			}
+		})
+	}
+}
+
+func TestPRDataFromPRXWithRealSprinklerData(t *testing.T) {
+	// Load real prx output from sprinkler PR #37
+	data, err := os.ReadFile("../../testdata/sprinkler_pr_37_clean.json")
+	if err != nil {
+		t.Skipf("Skipping real data test: %v", err)
+	}
+
+	var prxData prx.PullRequestData
+	if err := json.Unmarshal(data, &prxData); err != nil {
+		t.Fatalf("Failed to parse PR data: %v", err)
+	}
+
+	costData := PRDataFromPRX(&prxData)
+
+	// Validate sprinkler PR #37 specific data
+	if costData.Author != "tstromberg" {
+		t.Errorf("Expected author 'tstromberg', got '%s'", costData.Author)
+	}
+
+	if costData.LinesAdded != 324 {
+		t.Errorf("Expected 324 lines added, got %d", costData.LinesAdded)
+	}
+
+	// Should have filtered out bot events (github check_run)
+	for _, event := range costData.Events {
+		if event.Actor == "github" {
+			t.Error("Should have filtered out github automation events")
+		}
+	}
+
+	// PR #37 had 6 events total: commit, pr_opened, merged, closed, pr_merged, check_run
+	// Bot event (check_run) should be filtered, github actor events filtered
+	// So we should have: commit (Thomas Stromberg), pr_opened (tstromberg), merged, closed, pr_merged
+	if len(costData.Events) != 5 {
+		t.Errorf("Expected 5 human events, got %d", len(costData.Events))
+	}
+
+	t.Logf("Sprinkler PR 37: %d human events out of %d total events", len(costData.Events), len(prxData.Events))
+}
+
+func TestGetCacheDirCreatesDirectory(t *testing.T) {
+	// This test actually calls getCacheDir to improve coverage
+	dir, err := getCacheDir()
+	if err != nil {
+		t.Fatalf("getCacheDir() error = %v", err)
+	}
+	if dir == "" {
+		t.Error("getCacheDir() returned empty string")
+	}
+
+	// Verify directory was created
+	info, err := os.Stat(dir)
+	if err != nil {
+		t.Errorf("Cache directory was not created: %v", err)
+	}
+	if !info.IsDir() {
+		t.Error("Cache path is not a directory")
+	}
+}
+
+func TestIsCommonBotVariations(t *testing.T) {
+	tests := []struct {
+		username string
+		want     bool
+	}{
+		{"dependabot", true},
+		{"dependabot[bot]", true},
+		{"renovate", true},
+		{"renovate-bot", true},
+		{"github-actions", true},
+		{"github-actions[bot]", true},
+		{"codecov", true},
+		{"codecov-commenter", true},
+		{"greenkeeper", true},
+		{"greenkeeper[bot]", true},
+		{"snyk-bot", true},
+		{"allcontributors", true},
+		{"allcontributors[bot]", true},
+		{"imgbot", true},
+		{"ImgBot", true}, // case insensitive
+		{"stalebot", true},
+		{"mergify", true},
+		{"mergify[bot]", true},
+		{"netlify", true},
+		{"netlify[bot]", true},
+		{"vercel", true},
+		{"vercel[bot]", true},
+		{"codefactor-io", true},
+		{"deepsource-autofix", true},
+		{"deepsource-autofix[bot]", true},
+		{"pre-commit-ci", true},
+		{"pre-commit-ci[bot]", true},
+		{"ready-to-review", true},
+		{"ready-to-review[bot]", true},
+		{"regular-user", false},
+		{"robot", false},
+		{"botman", false},
+		{"john-doe", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.username, func(t *testing.T) {
+			got := isCommonBot(tt.username)
+			if got != tt.want {
+				t.Errorf("isCommonBot(%q) = %v, want %v", tt.username, got, tt.want)
+			}
+		})
+	}
 }

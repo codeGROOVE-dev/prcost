@@ -1,3 +1,6 @@
+.PHONY: test
+test:
+	go test -race -cover ./...
 
 # BEGIN: lint-install .
 # http://github.com/codeGROOVE-dev/lint-install
