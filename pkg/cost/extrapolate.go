@@ -114,6 +114,8 @@ type ExtrapolatedBreakdown struct {
 //
 // The function computes the average cost per PR from the samples, then multiplies
 // by the total PR count to estimate population-wide costs.
+//
+//nolint:revive,maintidx // Complex calculation function benefits from cohesion
 func ExtrapolateFromSamples(breakdowns []Breakdown, totalPRs, totalAuthors, actualOpenPRs int, daysInPeriod int, cfg Config) ExtrapolatedBreakdown {
 	if len(breakdowns) == 0 {
 		return ExtrapolatedBreakdown{
@@ -380,7 +382,8 @@ func ExtrapolateFromSamples(breakdowns []Breakdown, totalPRs, totalAuthors, actu
 	// Formula: baseline annual waste - (re-modeled waste with 40min PRs) - (R2R subscription cost)
 	// Baseline annual waste: preventable cost extrapolated to 52 weeks
 	// uniqueUserCount already defined above for PR tracking calculation
-	baselineAnnualWaste := (extCodeChurnCost + extDeliveryDelayCost + extAutomatedUpdatesCost + extPRTrackingCost) * (52.0 / (float64(daysInPeriod) / 7.0))
+	preventableCost := extCodeChurnCost + extDeliveryDelayCost + extAutomatedUpdatesCost + extPRTrackingCost
+	baselineAnnualWaste := preventableCost * (52.0 / (float64(daysInPeriod) / 7.0))
 
 	// Re-model with 40-minute PR merge times
 	// We need to recalculate delivery delay and future costs assuming all PRs take 40 minutes (2/3 hour)

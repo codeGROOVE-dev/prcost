@@ -1616,6 +1616,9 @@ func (s *Server) processOrgSample(ctx context.Context, req *OrgSampleRequest, to
 
 // mergeConfig merges a provided config with defaults.
 func (*Server) mergeConfig(base cost.Config, override *cost.Config) cost.Config {
+	if override == nil {
+		return base
+	}
 	if override.AnnualSalary > 0 {
 		base.AnnualSalary = override.AnnualSalary
 	}

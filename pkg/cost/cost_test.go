@@ -843,7 +843,6 @@ func TestAnalyzePRsSequentialSuccess(t *testing.T) {
 	}
 
 	result, err := AnalyzePRs(ctx, req)
-
 	if err != nil {
 		t.Fatalf("Expected no error, got: %v", err)
 	}
@@ -897,7 +896,6 @@ func TestAnalyzePRsSequentialPartialFailure(t *testing.T) {
 	}
 
 	result, err := AnalyzePRs(ctx, req)
-
 	if err != nil {
 		t.Fatalf("Expected no error, got: %v", err)
 	}
@@ -1001,7 +999,6 @@ func TestAnalyzePRsParallelSuccess(t *testing.T) {
 	}
 
 	result, err := AnalyzePRs(ctx, req)
-
 	if err != nil {
 		t.Fatalf("Expected no error, got: %v", err)
 	}
@@ -1055,7 +1052,6 @@ func TestAnalyzePRsParallelPartialFailure(t *testing.T) {
 	}
 
 	result, err := AnalyzePRs(ctx, req)
-
 	if err != nil {
 		t.Fatalf("Expected no error, got: %v", err)
 	}
@@ -1149,7 +1145,6 @@ func TestAnalyzePRsWithLogger(t *testing.T) {
 	}
 
 	result, err := AnalyzePRs(ctx, req)
-
 	if err != nil {
 		t.Fatalf("Expected no error, got: %v", err)
 	}
@@ -1196,7 +1191,6 @@ func TestAnalyzePRsConcurrencyDefault(t *testing.T) {
 	}
 
 	result, err := AnalyzePRs(ctx, req)
-
 	if err != nil {
 		t.Fatalf("Expected no error, got: %v", err)
 	}
