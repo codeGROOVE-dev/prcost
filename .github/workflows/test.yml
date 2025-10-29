@@ -10,10 +10,14 @@ jobs:
   test:
     name: Run tests
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
 
     steps:
     - name: Check out code
       uses: actions/checkout@v4
+      with:
+        persist-credentials: false
 
     - name: Set up Go
       uses: actions/setup-go@v5
