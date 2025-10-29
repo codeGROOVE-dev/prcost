@@ -11,6 +11,12 @@ import (
 	"github.com/codeGROOVE-dev/turnclient/pkg/turn"
 )
 
+// PRDataWithAnalysis combines PR data with turnserver analysis.
+type PRDataWithAnalysis struct {
+	PRData   cost.PRData
+	Analysis turn.Analysis
+}
+
 // FetchPRDataViaTurnserver retrieves pull request information from the turnserver
 // and converts it to the format needed for cost calculation.
 //
@@ -73,4 +79,65 @@ func FetchPRDataViaTurnserver(ctx context.Context, prURL string, token string, u
 	result := PRDataFromPRX(prData)
 	slog.Debug("Converted PR data", "human_events", len(result.Events))
 	return result, nil
+}
+
+// FetchPRDataWithAnalysisViaTurnserver retrieves pull request information and analysis
+// from the turnserver. This includes both the PR data needed for cost calculation and
+// the workflow analysis (seconds_in_state, workflow_state, etc.).
+//
+// Parameters:
+//   - ctx: Context for the API call
+//   - prURL: Full GitHub PR URL (e.g., "https://github.com/owner/repo/pull/123")
+//   - token: GitHub authentication token
+//   - updatedAt: PR's last update timestamp (for caching) or time.Now() to bypass cache
+//
+// Returns:
+//   - PRDataWithAnalysis containing both cost.PRData and turn.Analysis
+func FetchPRDataWithAnalysisViaTurnserver(ctx context.Context, prURL string, token string, updatedAt time.Time) (PRDataWithAnalysis, error) {
+	slog.Debug("Creating turnserver client", "url", prURL, "updated_at", updatedAt.Format(time.RFC3339))
+
+	// Create turnserver client using default endpoint
+	client, err := turn.NewDefaultClient()
+	if err != nil {
+		slog.Error("Failed to create turnserver client", "error", err)
+		return PRDataWithAnalysis{}, fmt.Errorf("create turnserver client: %w", err)
+	}
+
+	// Set authentication token
+	client.SetAuthToken(token)
+
+	// Enable event data in response - critical for cost calculation
+	client.IncludeEvents()
+
+	slog.Debug("Calling turnserver API", "url", prURL, "updated_at", updatedAt.Format(time.RFC3339))
+
+	// Fetch PR data from turnserver
+	response, err := client.Check(ctx, prURL, "codeGROOVE-prcost", updatedAt)
+	if err != nil {
+		slog.Error("Turnserver API call failed", "url", prURL, "error", err)
+		return PRDataWithAnalysis{}, fmt.Errorf("turnserver API call failed: %w", err)
+	}
+
+	slog.Debug("Turnserver API call successful",
+		"additions", response.PullRequest.Additions,
+		"deletions", response.PullRequest.Deletions,
+		"author", response.PullRequest.Author,
+		"total_events", len(response.Events),
+		"workflow_state", response.Analysis.WorkflowState,
+		"seconds_in_state", len(response.Analysis.SecondsInState))
+
+	// Convert turnserver response to prx.PullRequestData format
+	prData := &prx.PullRequestData{
+		PullRequest: response.PullRequest,
+		Events:      response.Events,
+	}
+
+	// Convert to cost.PRData using existing conversion function
+	result := PRDataFromPRX(prData)
+	slog.Debug("Converted PR data", "human_events", len(result.Events))
+
+	return PRDataWithAnalysis{
+		PRData:   result,
+		Analysis: response.Analysis,
+	}, nil
 }

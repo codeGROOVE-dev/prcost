@@ -1610,6 +1610,109 @@
             return output;
         }
 
+        function formatWorkflowTimeline(secondsInState) {
+            if (!secondsInState || Object.keys(secondsInState).length === 0) {
+                return '';
+            }
+
+            // Define states in order (left to right in the timeline)
+            const stateOrder = [
+                'NEWLY_PUBLISHED',
+                'IN_DRAFT',
+                'PUBLISHED_WAITING_FOR_TESTS',
+                'TESTED_WAITING_FOR_ASSIGNMENT',
+                'ASSIGNED_WAITING_FOR_REVIEW',
+                'REVIEWED_NEEDS_REFINEMENT',
+                'REFINED_WAITING_FOR_APPROVAL',
+                'APPROVED_WAITING_FOR_MERGE'
+            ];
+
+            // State labels for display (full names with spaces for better readability)
+            const stateLabels = {
+                'NEWLY_PUBLISHED': 'Newly Published',
+                'IN_DRAFT': 'In Draft',
+                'PUBLISHED_WAITING_FOR_TESTS': 'Published Waiting For Tests',
+                'TESTED_WAITING_FOR_ASSIGNMENT': 'Tested Waiting For Assignment',
+                'ASSIGNED_WAITING_FOR_REVIEW': 'Assigned Waiting For Review',
+                'REVIEWED_NEEDS_REFINEMENT': 'Reviewed Needs Refinement',
+                'REFINED_WAITING_FOR_APPROVAL': 'Refined Waiting For Approval',
+                'APPROVED_WAITING_FOR_MERGE': 'Approved Waiting For Merge'
+            };
+
+            // Colors for each state (bold, vibrant palette)
+            const stateColors = {
+                'NEWLY_PUBLISHED': '#42a5f5',        // Bright blue
+                'IN_DRAFT': '#ab47bc',               // Purple
+                'PUBLISHED_WAITING_FOR_TESTS': '#ff9800',  // Orange
+                'TESTED_WAITING_FOR_ASSIGNMENT': '#66bb6a',  // Green
+                'ASSIGNED_WAITING_FOR_REVIEW': '#ffeb3b',    // Yellow
+                'REVIEWED_NEEDS_REFINEMENT': '#ef5350',      // Red
+                'REFINED_WAITING_FOR_APPROVAL': '#26a69a',   // Teal
+                'APPROVED_WAITING_FOR_MERGE': '#9ccc65'      // Light green
+            };
+
+            // Calculate total seconds and filter to only states with time
+            let totalSeconds = 0;
+            const activeStates = stateOrder.filter(state => {
+                const seconds = secondsInState[state] || 0;
+                if (seconds > 0) {
+                    totalSeconds += seconds;
+                    return true;
+                }
+                return false;
+            });
+
+            if (totalSeconds === 0 || activeStates.length === 0) {
+                return '';
+            }
+
+            // Build the HTML for the timeline
+            let html = '<div class="workflow-timeline" style="margin-top: 32px;">';
+            html += '<h3 style="font-size: 18px; font-weight: 600; margin-bottom: 16px; color: #1d1d1f;">Workflow State Timeline</h3>';
+
+            // Stacked bar
+            html += '<div style="display: flex; width: 100%; height: 40px; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">';
+
+            activeStates.forEach(state => {
+                const seconds = secondsInState[state];
+                const percentage = (seconds / totalSeconds) * 100;
+                const hours = seconds / 3600;
+                const timeFormatted = formatTimeUnit(hours);
+                const label = stateLabels[state];
+                const color = stateColors[state];
+
+                html += `<div style="flex: ${percentage}; background: ${color}; display: flex; align-items: center; justify-content: center; border-right: 1px solid #fff; position: relative; min-width: 60px;" title="${label}: ${timeFormatted} (${percentage.toFixed(1)}%)">`;
+                if (percentage > 8) {
+                    html += `<span style="font-size: 12px; font-weight: 500; color: #1d1d1f; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding: 0 4px;">${label}</span>`;
+                }
+                html += '</div>';
+            });
+
+            html += '</div>';
+
+            // Legend below
+            html += '<div style="margin-top: 16px; display: flex; flex-wrap: wrap; gap: 12px; font-size: 13px;">';
+
+            activeStates.forEach(state => {
+                const seconds = secondsInState[state];
+                const hours = seconds / 3600;
+                const timeFormatted = formatTimeUnit(hours);
+                const label = stateLabels[state];
+                const color = stateColors[state];
+                const percentage = (seconds / totalSeconds) * 100;
+
+                html += `<div style="display: flex; align-items: center; gap: 6px;">`;
+                html += `<div style="width: 12px; height: 12px; background: ${color}; border-radius: 2px; border: 1px solid rgba(0,0,0,0.1);"></div>`;
+                html += `<span style="color: #6e6e73;">${label}: <strong>${timeFormatted}</strong> (${percentage.toFixed(1)}%)</span>`;
+                html += `</div>`;
+            });
+
+            html += '</div>';
+            html += '</div>';
+
+            return html;
+        }
+
         function formatAveragePR(e) {
             // Calculate averages per PR
             const totalPRs = e.total_prs;
@@ -1992,6 +2095,11 @@
                     html += '<pre><code>' + formatBreakdown(data) + '</code></pre>';
                     html += '</div>';
 
+                    // Add workflow timeline if available (only when using turnserver)
+                    if (data.seconds_in_state) {
+                        html += formatWorkflowTimeline(data.seconds_in_state);
+                    }
+
                     resultDiv.innerHTML = html;
                 }
 
@@ -2133,6 +2241,17 @@
                                         html += `<h2>Average PR (sampled over ${days} day period)</h2>`;
                                         html += '<pre><code>' + formatAveragePR(e) + '</code></pre>';
                                         html += '</div>';
+
+                                        // Add workflow timeline if available (only when using turnserver)
+                                        if (data.seconds_in_state) {
+                                            // Calculate average seconds per PR
+                                            const avgSecondsInState = {};
+                                            const sampleCount = e.successful_samples || 1;
+                                            for (const [state, totalSeconds] of Object.entries(data.seconds_in_state)) {
+                                                avgSecondsInState[state] = Math.round(totalSeconds / sampleCount);
+                                            }
+                                            html += formatWorkflowTimeline(avgSecondsInState);
+                                        }
 
                                         resultDiv.innerHTML = html;
                                         resolve();
