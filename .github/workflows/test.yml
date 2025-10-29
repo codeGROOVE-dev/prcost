@@ -14,21 +14,21 @@ jobs:
       contents: read
 
     steps:
-    - name: Check out code
-      uses: actions/checkout@v4
-      with:
-        persist-credentials: false
+      - name: Check out code
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
-    - name: Set up Go
-      uses: actions/setup-go@v5
-      with:
-        go-version-file: 'go.mod'
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: 'go.mod'
 
-    - name: Run tests
-      run: make test
+      - name: Run tests
+        run: make test
 
-    - name: Upload coverage
-      uses: codecov/codecov-action@v4
-      if: success()
-      with:
-        fail_ci_if_error: false
+      - name: Upload coverage
+        uses: codecov/codecov-action@v4
+        if: success()
+        with:
+          fail_ci_if_error: false

@@ -20,7 +20,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/codeGROOVE-dev/ds9"
+	"github.com/codeGROOVE-dev/ds9/pkg/datastore"
 	"github.com/codeGROOVE-dev/gsm"
 	"github.com/codeGROOVE-dev/prcost/pkg/cost"
 	"github.com/codeGROOVE-dev/prcost/pkg/github"
@@ -117,7 +117,7 @@ type Server struct {
 	prDataCacheMu     sync.RWMutex
 	calcResultCacheMu sync.RWMutex
 	// DataStore client for persistent caching (nil if not enabled).
-	dsClient *ds9.Client
+	dsClient *datastore.Client
 }
 
 // CalculateRequest represents a request to calculate PR costs.
@@ -236,7 +236,7 @@ func New() *Server {
 
 	// Initialize DataStore client if DATASTORE_DB is set (persistent caching across restarts).
 	if dbID := os.Getenv("DATASTORE_DB"); dbID != "" {
-		dsClient, err := ds9.NewClientWithDatabase(ctx, "", dbID)
+		dsClient, err := datastore.NewClientWithDatabase(ctx, "", dbID)
 		if err != nil {
 			logger.WarnContext(ctx, "Failed to initialize DataStore client - persistent caching disabled",
 				"database_id", dbID, "error", err)
@@ -374,11 +374,11 @@ func (s *Server) cachedPRQuery(ctx context.Context, key string) ([]github.PRSumm
 		return nil, false
 	}
 
-	dsKey := ds9.NameKey("PRQueryCache", key, nil)
+	dsKey := datastore.NameKey("PRQueryCache", key, nil)
 	var entity prQueryCacheEntity
 	err := s.dsClient.Get(ctx, dsKey, &entity)
 	if err != nil {
-		if !errors.Is(err, ds9.ErrNoSuchEntity) {
+		if !errors.Is(err, datastore.ErrNoSuchEntity) {
 			s.logger.WarnContext(ctx, "DataStore cache read failed", "key", key, "error", err)
 		}
 		return nil, false
@@ -452,7 +452,7 @@ func (s *Server) cachePRQuery(ctx context.Context, key string, prs []github.PRSu
 		QueryKey:  key,
 	}
 
-	dsKey := ds9.NameKey("PRQueryCache", key, nil)
+	dsKey := datastore.NameKey("PRQueryCache", key, nil)
 	if _, err := s.dsClient.Put(ctx, dsKey, &entity); err != nil {
 		s.logger.WarnContext(ctx, "Failed to write PR query to DataStore", "key", key, "error", err)
 		return
@@ -482,11 +482,11 @@ func (s *Server) cachedPRData(ctx context.Context, key string) (cost.PRData, boo
 		return cost.PRData{}, false
 	}
 
-	dsKey := ds9.NameKey("PRDataCache", key, nil)
+	dsKey := datastore.NameKey("PRDataCache", key, nil)
 	var entity prDataCacheEntity
 	err := s.dsClient.Get(ctx, dsKey, &entity)
 	if err != nil {
-		if !errors.Is(err, ds9.ErrNoSuchEntity) {
+		if !errors.Is(err, datastore.ErrNoSuchEntity) {
 			s.logger.WarnContext(ctx, "DataStore cache read failed", "key", key, "error", err)
 		}
 		return cost.PRData{}, false
@@ -542,7 +542,7 @@ func (s *Server) cachePRData(ctx context.Context, key string, prData cost.PRData
 		URL:       key,
 	}
 
-	dsKey := ds9.NameKey("PRDataCache", key, nil)
+	dsKey := datastore.NameKey("PRDataCache", key, nil)
 	if _, err := s.dsClient.Put(ctx, dsKey, &entity); err != nil {
 		s.logger.WarnContext(ctx, "Failed to write PR data to DataStore", "key", key, "error", err)
 		return
@@ -586,11 +586,11 @@ func (s *Server) cachedCalcResult(ctx context.Context, prURL string, cfg cost.Co
 		return cost.Breakdown{}, false
 	}
 
-	dsKey := ds9.NameKey("CalcResultCache", key, nil)
+	dsKey := datastore.NameKey("CalcResultCache", key, nil)
 	var entity calcResultCacheEntity
 	err := s.dsClient.Get(ctx, dsKey, &entity)
 	if err != nil {
-		if !errors.Is(err, ds9.ErrNoSuchEntity) {
+		if !errors.Is(err, datastore.ErrNoSuchEntity) {
 			s.logger.WarnContext(ctx, "DataStore calc cache read failed", "key", key, "error", err)
 		}
 		return cost.Breakdown{}, false
@@ -646,7 +646,7 @@ func (s *Server) cacheCalcResult(ctx context.Context, prURL string, cfg cost.Con
 		ConfigKey: configHash(cfg),
 	}
 
-	dsKey := ds9.NameKey("CalcResultCache", key, nil)
+	dsKey := datastore.NameKey("CalcResultCache", key, nil)
 	if _, err := s.dsClient.Put(ctx, dsKey, &entity); err != nil {
 		s.logger.WarnContext(ctx, "Failed to write calc result to DataStore", "key", key, "error", err)
 		return

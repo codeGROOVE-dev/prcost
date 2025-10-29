@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"os"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
@@ -702,6 +703,7 @@ func TestCalculateFastTurnaroundNoDelay(t *testing.T) {
 
 // Mock PRFetcher for testing AnalyzePRs
 type mockPRFetcher struct {
+	mu         sync.Mutex
 	data       map[string]PRData
 	failURLs   map[string]error
 	callCount  int
@@ -710,10 +712,14 @@ type mockPRFetcher struct {
 }
 
 func (m *mockPRFetcher) FetchPRData(ctx context.Context, prURL string, updatedAt time.Time) (PRData, error) {
+	m.mu.Lock()
 	m.callCount++
+	callCount := m.callCount
+	maxCalls := m.maxCalls
+	m.mu.Unlock()
 
 	// Fail after max calls if set
-	if m.maxCalls > 0 && m.callCount > m.maxCalls {
+	if maxCalls > 0 && callCount > maxCalls {
 		return PRData{}, errors.New("max calls exceeded")
 	}
 
