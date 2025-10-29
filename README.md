@@ -1,92 +1,136 @@
 # prcost
 
-Calculate the real-world cost of GitHub pull requests using empirically-validated software engineering research. Provides detailed breakdowns of development effort, review costs, coordination overhead, and delay impacts.
-
-## Hosted Web Interface
-
-Try https://cost.github.codegroove.app/ - it only has access to public repositories, so if you need to take that account for accuracy, run prcost locally.
-
-## CLI Example
-
-```
-$ prcost https://github.com/chainguard-dev/apko/pull/1860
-
-  https://github.com/chainguard-dev/apko/pull/1860
-  Rate: $155.71/hr  •  Salary: $249,000.00  •  Benefits: 1.3x
-
-  Author
-  ──────
-    Development Effort           $7,531.93    132 LOC • 2.0 days
-    GitHub Activity                $156.25    2 sessions • 1.0 hrs
-    GitHub Context Switching       $208.33    1.3 hrs
-                              ────────────
-    Subtotal                     $7,896.51    2.1 days
-
-  Participants
-  ────────────
-    philroche
-      Review Activity               $75.00    1 sessions • 29 min
-      Context Switching            $104.17    40 min
-    justinvreeland
-      Review Activity               $75.00    1 sessions • 29 min
-      Context Switching            $104.17    40 min
-                              ────────────
-    Subtotal                       $358.33    2.3 hrs
-
-  Merge Delay
-  ───────────
-    Delivery                  $9,481.36    2.5 days (capped)
-    Coordination              $3,160.45    20.2 hrs (capped)
-                              ────────────
-    Subtotal                  $12,641.81    3.4 days
-
-  Future Costs
-  ────────────
-    Code Churn (18% drift)    $1,155.39    7.4 hrs
-    Review                        $75.00    29 min
-    Merge                         $52.08    20 min
-    Context Switching            $208.33    1.3 hrs
-                              ────────────
-    Subtotal                   $1,490.81    9.5 hrs
-
-  ═══════════════════════════════════════════════════════════════
-  Total                         $22,387.47    6.0 days
-
-```
+Calculate the real-world cost of GitHub pull requests using empirically-validated software engineering research. Measures at a PR, repo, or organization level.
 
 ## Installation
 
-```bash
+Local installation, which authenticates using the GitHub command-line (`gh`) or GITHUB_TOKEN:
+
+```
 go install github.com/codeGROOVE-dev/prcost/cmd/prcost@latest
 ```
 
+Alternatively, you can use our hosted version: https://cost.github.codegroove.app/ - but it only has access to public repositories.
+
 ## Usage
 
-```bash
-# Single PR analysis
-prcost https://github.com/owner/repo/pull/123
-prcost --salary 300000 https://github.com/owner/repo/pull/123
+CLI
 
-# Repository analysis (samples 30 PRs from last 90 days)
-prcost --org kubernetes --repo kubernetes
-prcost --org myorg --repo myrepo --samples 50 --days 30
+```
+% prcost --org exera-dev
 
-# Organization-wide analysis
-prcost --org chainguard-dev --samples 50 --days 60
+Analyzing 30 sampled PRs from 91 total PRs (50 human, 41 bot) across exera-dev (last 60 days)...
+
+  exera-dev (organization)
+  Period: Last 60 days  •  Total PRs: 91 (33 human, 57 bot)  •  Authors: 10  •  Sampled: 30
+  Avg Open Time: 2.4w (human: 8.7h, bot: 3.7w)
+
+  ┌─────────────────────────────────────────────────────────────┐
+  │ Average PR (sampled over 60 day period)                     │
+  └─────────────────────────────────────────────────────────────┘
+
+  Development Costs (33 PRs, 13 LOC)
+  ────────────────────────────────────────
+    New Development                $        344.58    2.2h    (7 LOC)
+    Adaptation                     $         20.34    7.8m    (5 LOC)
+    GitHub Activity                $         66.57    25.7m   (2.6 events)
+    Context Switching              $         27.04    10.4m   (0.5 sessions)
+    Automated Updates                            —    0.0m    (57 PRs, 5 LOC)
+                                ──────────────
+    Subtotal                       $        458.54    2.9h    (56.8%)
+
+  Participant Costs
+  ─────────────────
+    Review Activity                $          5.02    1.9m    (0.7 reviews)
+    GitHub Activity                $         37.18    14.3m   (2.4 events)
+    Context Switching              $         38.88    15.0m   (0.8 sessions)
+                                ──────────────
+    Subtotal                       $         81.07    31.3m   (10.0%)
+
+  Delay Costs (human PRs avg 8.7h open, bot PRs avg 3.7w)
+  ───────────────────────────────────────────────────────
+    Workstream blockage            $         98.09    37.8m   (33 PRs)
+    Automated Updates              $        126.77    48.9m   (57 PRs)
+    PR Tracking                    $         35.63    13.7m   (25 open PRs)
+                                ──────────────
+    Subtotal                       $        260.49    1.7h    (32.2%)
+
+  Future Costs
+  ────────────
+    Review                         $          3.64    1.4m    (24 PRs)
+    Merge                          $          6.92    2.7m    (24 PRs)
+    Context Switching              $         27.04    10.4m   (0.8 sessions)
+                                ──────────────
+    Subtotal                       $         37.60    14.5m   (4.7%)
+
+  Preventable Loss Total         $        260.49    1.7h    (32.2%)
+  ════════════════════════════════════════════════════
+  Average Total                $        807.86    5.2h
+
+
+  ┌─────────────────────────────────────────────────────────────┐
+  │ Estimated costs within a 60 day period (extrapolated)       │
+  └─────────────────────────────────────────────────────────────┘
+
+  Development Costs (33 PRs, 1.2k LOC)
+  ────────────────────────────────────────
+    New Development                $     31,356.75    8.4d    (712 LOC)
+    Adaptation                     $      1,850.92    11.9h   (473 LOC)
+    GitHub Activity                $      6,058.14    38.9h   (233 events)
+    Context Switching              $      2,461.02    15.8h   (48 sessions)
+    Automated Updates                            —    0.0m    (57 PRs, 485 LOC)
+                                ──────────────
+    Subtotal                       $     41,726.82    11.2d   (56.8%)
+
+  Participant Costs
+  ─────────────────
+    Review Activity                $        456.61    2.9h    (60 reviews)
+    GitHub Activity                $      3,383.11    21.7h   (215 events)
+    Context Switching              $      3,537.72    22.7h   (69 sessions)
+                                ──────────────
+    Subtotal                       $      7,377.44    47.4h   (10.0%)
+
+  Delay Costs (human PRs avg 8.7h open, bot PRs avg 3.7w)
+  ───────────────────────────────────────────────────────
+    Workstream blockage            $      8,926.47    2.4d    (33 PRs)
+    Automated Updates              $     11,536.14    3.1d    (57 PRs)
+    PR Tracking                    $      3,242.19    20.8h   (25 open PRs)
+                                ──────────────
+    Subtotal                       $     23,704.80    6.3d    (32.2%)
+
+  Future Costs
+  ────────────
+    Review                         $        331.30    2.1h    (24 PRs)
+    Merge                          $        629.42    4.0h    (24 PRs)
+    Context Switching              $      2,461.02    15.8h   (72 sessions)
+                                ──────────────
+    Subtotal                       $      3,421.74    22.0h   (4.7%)
+
+  Preventable Loss Total         $     23,704.80    6.3d    (32.2%)
+  ════════════════════════════════════════════════════
+  Total                        $     73,515.44    2.8w
+
+  ┌─────────────────────────────────────────────────────────────┐
+  │ DEVELOPMENT EFFICIENCY: D (67.8%) - Not good my friend.     │
+  └─────────────────────────────────────────────────────────────┘
+  ┌─────────────────────────────────────────────────────────────┐
+  │ MERGE VELOCITY: F (2.4w) - Failing                          │
+  └─────────────────────────────────────────────────────────────┘
+  Weekly waste per PR author:     $        276.56    1.8h  (10 authors)
+  If Sustained for 1 Year:        $    144,204.17    0.4 headcount
+
+  ┌─────────────────────────────────────────────────────────────┐
+  │ MERGE TIME MODELING                                         │
+  └─────────────────────────────────────────────────────────────┘
+  If you lowered your average merge time to 1.0h, you would save
+  ~$126,616.08/yr in engineering overhead (+28.4% throughput).
 ```
 
-### Web Interface
+Web interface:
 
 ```bash
 go run ./cmd/server
 ```
-
-### Sampling Strategy
-
-Repository and organization modes use time-bucket sampling to ensure even distribution across the time period, avoiding temporal clustering that would bias estimates.
-
-- **30 samples** (default): Fast analysis with ±18% confidence interval
-- **50 samples**: More accurate with ±14% confidence interval (1.3× better precision)
 
 ## Cost Model: Scientific Foundations
 
