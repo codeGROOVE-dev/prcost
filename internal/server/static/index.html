@@ -1059,11 +1059,11 @@
                         <input
                             type="number"
                             id="repoSampleSize"
-                            value="30"
+                            value="50"
                             min="1"
                             max="50"
                         >
-                        <div class="help-text">30 (fast, ±18% accuracy) or 50 (slower, ±14% accuracy)</div>
+                        <div class="help-text">50 (recommended, ±14% accuracy) or 30 (faster, ±18% accuracy)</div>
                     </div>
                     <div class="form-group">
                         <label for="repoDays">Days Back</label>
@@ -1099,11 +1099,11 @@
                         <input
                             type="number"
                             id="orgSampleSize"
-                            value="30"
+                            value="50"
                             min="1"
                             max="50"
                         >
-                        <div class="help-text">30 (fast, ±18% accuracy) or 50 (slower, ±14% accuracy)</div>
+                        <div class="help-text">50 (recommended, ±14% accuracy) or 30 (faster, ±18% accuracy)</div>
                     </div>
                     <div class="form-group">
                         <label for="orgDays">Days Back</label>
@@ -2276,7 +2276,6 @@
                                         }
 
                                         // Calculate average PR efficiency
-                                        const totalPRs = e.total_prs;
                                         const avgCodeChurnCost = e.code_churn_cost / totalPRs;
                                         const avgDeliveryDelayCost = e.delivery_delay_cost / totalPRs;
                                         const avgCodeChurnHours = e.code_churn_hours / totalPRs;

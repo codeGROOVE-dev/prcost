@@ -144,8 +144,8 @@ type CalculateResponse struct {
 type RepoSampleRequest struct {
 	Owner      string       `json:"owner"`
 	Repo       string       `json:"repo"`
-	SampleSize int          `json:"sample_size,omitempty"` // Default: 30
-	Days       int          `json:"days,omitempty"`        // Default: 90
+	SampleSize int          `json:"sample_size,omitempty"` // Default: 50
+	Days       int          `json:"days,omitempty"`        // Default: 60
 	Config     *cost.Config `json:"config,omitempty"`
 }
 
@@ -154,8 +154,8 @@ type RepoSampleRequest struct {
 //nolint:govet // fieldalignment: API struct field order optimized for readability
 type OrgSampleRequest struct {
 	Org        string       `json:"org"`
-	SampleSize int          `json:"sample_size,omitempty"` // Default: 30
-	Days       int          `json:"days,omitempty"`        // Default: 90
+	SampleSize int          `json:"sample_size,omitempty"` // Default: 50
+	Days       int          `json:"days,omitempty"`        // Default: 60
 	Config     *cost.Config `json:"config,omitempty"`
 }
 
@@ -1478,10 +1478,10 @@ func (s *Server) parseRepoSampleRequest(ctx context.Context, r *http.Request) (*
 
 	// Set defaults
 	if req.SampleSize == 0 {
-		req.SampleSize = 30
+		req.SampleSize = 50
 	}
 	if req.Days == 0 {
-		req.Days = 90
+		req.Days = 60
 	}
 
 	// Validate reasonable limits (silently cap at 50)
@@ -1536,10 +1536,10 @@ func (s *Server) parseOrgSampleRequest(ctx context.Context, r *http.Request) (*O
 
 	// Set defaults
 	if req.SampleSize == 0 {
-		req.SampleSize = 30
+		req.SampleSize = 50
 	}
 	if req.Days == 0 {
-		req.Days = 90
+		req.Days = 60
 	}
 
 	// Validate reasonable limits (silently cap at 50)

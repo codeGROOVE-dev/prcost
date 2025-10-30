@@ -33,8 +33,8 @@ func TestOrgSampleStreamIntegration(t *testing.T) {
 	// Create request
 	reqBody := OrgSampleRequest{
 		Org:        "codeGROOVE-dev",
-		SampleSize: 30,
-		Days:       90,
+		SampleSize: 50,
+		Days:       60,
 	}
 	body, err := json.Marshal(reqBody)
 	if err != nil {
@@ -195,8 +195,8 @@ func TestOrgSampleStreamNoTimeout(t *testing.T) {
 	// Create request with larger sample size to ensure longer operation
 	reqBody := OrgSampleRequest{
 		Org:        "codeGROOVE-dev",
-		SampleSize: 30,
-		Days:       90,
+		SampleSize: 50,
+		Days:       60,
 	}
 	body, err := json.Marshal(reqBody)
 	if err != nil {

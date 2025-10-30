@@ -31,7 +31,7 @@ func main() {
 	// Org/Repo sampling flags
 	org := flag.String("org", "", "GitHub organization to analyze (optionally with --repo for single repo)")
 	repo := flag.String("repo", "", "GitHub repository to analyze (requires --org)")
-	samples := flag.Int("samples", 30, "Number of PRs to sample for extrapolation (30=fast/±18%, 50=slower/±14%)")
+	samples := flag.Int("samples", 50, "Number of PRs to sample for extrapolation (30=fast/±18%, 50=slower/±14%)")
 	days := flag.Int("days", 60, "Number of days to look back for PR modifications")
 
 	// Modeling flags
