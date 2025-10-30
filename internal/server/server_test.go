@@ -1483,8 +1483,8 @@ func TestParseRepoSampleRequest(t *testing.T) {
 			wantErr:        false,
 			wantOwner:      "testowner",
 			wantRepo:       "testrepo",
-			wantDays:       90,
-			wantSampleSize: 30,
+			wantDays:       60,
+			wantSampleSize: 50,
 		},
 		{
 			name:    "missing owner",
@@ -1570,8 +1570,8 @@ func TestParseOrgSampleRequest(t *testing.T) {
 			body:           `{"org":"testorg"}`,
 			wantErr:        false,
 			wantOrg:        "testorg",
-			wantDays:       90,
-			wantSampleSize: 30,
+			wantDays:       60,
+			wantSampleSize: 50,
 		},
 		{
 			name:    "missing org",
