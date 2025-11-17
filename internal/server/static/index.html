@@ -1592,16 +1592,26 @@
                 output += '  ───────────\n';
                 const cappedLabel = b.delay_capped ? ' (capped)' : '';
                 output += `    Workstream blockage       ${formatCurrency(b.delay_cost_detail.delivery_delay_cost).padStart(12)}    ${formatTimeUnit(b.delay_cost_detail.delivery_delay_hours)}${cappedLabel}\n`;
-                const mergeDelayCost = b.delay_cost_detail.delivery_delay_cost + b.delay_cost_detail.code_churn_cost + b.delay_cost_detail.automated_updates_cost + b.delay_cost_detail.pr_tracking_cost;
-                const mergeDelayHours = b.delay_cost_detail.delivery_delay_hours + b.delay_cost_detail.code_churn_hours + b.delay_cost_detail.automated_updates_hours + b.delay_cost_detail.pr_tracking_hours;
+                const mergeDelayCost = b.delay_cost_detail.delivery_delay_cost + b.delay_cost_detail.automated_updates_cost + b.delay_cost_detail.pr_tracking_cost;
+                const mergeDelayHours = b.delay_cost_detail.delivery_delay_hours + b.delay_cost_detail.automated_updates_hours + b.delay_cost_detail.pr_tracking_hours;
                 output += '                              ────────────\n';
                 pct = (mergeDelayCost / b.total_cost) * 100;
                 output += formatSubtotalLine("Subtotal", mergeDelayCost, formatTimeUnit(mergeDelayHours), `(${pct.toFixed(1)}%)`);
                 output += '\n';
 
+                // Preventable Future Costs
+                if (b.delay_cost_detail.rework_percentage > 0) {
+                    output += '  Preventable Future Costs\n';
+                    output += '  ────────────────────────\n';
+                    output += `    Rework due to churn (${Math.round(b.delay_cost_detail.rework_percentage)}% drift)   ${formatCurrency(b.delay_cost_detail.code_churn_cost).padStart(12)}    ${formatTimeUnit(b.delay_cost_detail.code_churn_hours)}\n`;
+                    output += '                              ────────────\n';
+                    pct = (b.delay_cost_detail.code_churn_cost / b.total_cost) * 100;
+                    output += formatSubtotalLine("Subtotal", b.delay_cost_detail.code_churn_cost, formatTimeUnit(b.delay_cost_detail.code_churn_hours), `(${pct.toFixed(1)}%)`);
+                    output += '\n';
+                }
+
                 // Future Costs
-                const hasFuture = b.delay_cost_detail.rework_percentage > 0 ||
-                                 b.delay_cost_detail.future_review_cost > 0 ||
+                const hasFuture = b.delay_cost_detail.future_review_cost > 0 ||
                                  b.delay_cost_detail.future_merge_cost > 0 ||
                                  b.delay_cost_detail.future_context_cost > 0;
 
@@ -1609,9 +1619,6 @@
                     output += '  Future Costs\n';
                     output += '  ────────────\n';
 
-                    if (b.delay_cost_detail.rework_percentage > 0) {
-                        output += `    Code Churn (${Math.round(b.delay_cost_detail.rework_percentage)}% drift)   ${formatCurrency(b.delay_cost_detail.code_churn_cost).padStart(12)}    ${formatTimeUnit(b.delay_cost_detail.code_churn_hours)}\n`;
-                    }
                     if (b.delay_cost_detail.future_review_cost > 0) {
                         output += `    Review                    ${formatCurrency(b.delay_cost_detail.future_review_cost).padStart(12)}    ${formatTimeUnit(b.delay_cost_detail.future_review_hours)}\n`;
                     }
@@ -1622,9 +1629,9 @@
                         output += `    Context Switching         ${formatCurrency(b.delay_cost_detail.future_context_cost).padStart(12)}    ${formatTimeUnit(b.delay_cost_detail.future_context_hours)}\n`;
                     }
 
-                    const futureCost = b.delay_cost_detail.code_churn_cost + b.delay_cost_detail.future_review_cost +
+                    const futureCost = b.delay_cost_detail.future_review_cost +
                                       b.delay_cost_detail.future_merge_cost + b.delay_cost_detail.future_context_cost;
-                    const futureHours = b.delay_cost_detail.code_churn_hours + b.delay_cost_detail.future_review_hours +
+                    const futureHours = b.delay_cost_detail.future_review_hours +
                                        b.delay_cost_detail.future_merge_hours + b.delay_cost_detail.future_context_hours;
                     output += '                              ────────────\n';
                     pct = (futureCost / b.total_cost) * 100;
@@ -1840,23 +1847,31 @@
             if (avgPRTrackingCost > 0.01) {
                 output += formatItemLine("PR Tracking", avgPRTrackingCost, formatTimeUnit(avgPRTrackingHours), `(${e.open_prs} open PRs)`);
             }
-            const avgMergeDelayCost = avgDeliveryDelayCost + avgCodeChurnCost + avgAutomatedUpdatesCost + avgPRTrackingCost;
-            const avgMergeDelayHours = avgDeliveryDelayHours + avgCodeChurnHours + avgAutomatedUpdatesHours + avgPRTrackingHours;
+            const avgMergeDelayCost = avgDeliveryDelayCost + avgAutomatedUpdatesCost + avgPRTrackingCost;
+            const avgMergeDelayHours = avgDeliveryDelayHours + avgAutomatedUpdatesHours + avgPRTrackingHours;
             output += '                                ──────────\n';
             pct = (avgMergeDelayCost / avgTotalCost) * 100;
             output += formatSubtotalLine("Subtotal", avgMergeDelayCost, formatTimeUnit(avgMergeDelayHours), `(${pct.toFixed(1)}%)`);
             output += '\n';
 
+            // Preventable Future Costs
+            if (e.code_churn_cost > 0.01) {
+                output += '  Preventable Future Costs\n';
+                output += '  ────────────────────────\n';
+                const avgReworkPct = e.avg_rework_percentage || 0;
+                const label = avgReworkPct > 0 ? `Rework due to churn (${avgReworkPct.toFixed(0)}% drift)` : 'Rework due to churn';
+                output += formatItemLine(label, avgCodeChurnCost, formatTimeUnit(avgCodeChurnHours), `(${e.code_churn_pr_count} PRs)`);
+                output += '                                ──────────\n';
+                pct = (avgCodeChurnCost / avgTotalCost) * 100;
+                output += formatSubtotalLine("Subtotal", avgCodeChurnCost, formatTimeUnit(avgCodeChurnHours), `(${pct.toFixed(1)}%)`);
+                output += '\n';
+            }
+
             // Future Costs
-            const hasFuture = e.code_churn_cost > 0.01 || e.future_review_cost > 0.01 || e.future_merge_cost > 0.01 || e.future_context_cost > 0.01;
+            const hasFuture = e.future_review_cost > 0.01 || e.future_merge_cost > 0.01 || e.future_context_cost > 0.01;
             if (hasFuture) {
                 output += '  Future Costs\n';
                 output += '  ────────────\n';
-                if (e.code_churn_cost > 0.01) {
-                    const avgReworkPct = e.avg_rework_percentage || 0;
-                    const label = avgReworkPct > 0 ? `Code Churn (${avgReworkPct.toFixed(0)}% drift)` : 'Code Churn';
-                    output += formatItemLine(label, avgCodeChurnCost, formatTimeUnit(avgCodeChurnHours), `(${e.code_churn_pr_count} PRs)`);
-                }
                 if (e.future_review_cost > 0.01) {
                     output += formatItemLine("Review", avgFutureReviewCost, formatTimeUnit(avgFutureReviewHours), `(${e.future_review_pr_count} PRs)`);
                 }
@@ -1867,8 +1882,8 @@
                     const avgFutureContextSessions = e.future_context_sessions / totalPRs;
                     output += formatItemLine("Context Switching", avgFutureContextCost, formatTimeUnit(avgFutureContextHours), `(${avgFutureContextSessions.toFixed(1)} sessions)`);
                 }
-                const avgFutureCost = avgCodeChurnCost + avgFutureReviewCost + avgFutureMergeCost + avgFutureContextCost;
-                const avgFutureHours = avgCodeChurnHours + avgFutureReviewHours + avgFutureMergeHours + avgFutureContextHours;
+                const avgFutureCost = avgFutureReviewCost + avgFutureMergeCost + avgFutureContextCost;
+                const avgFutureHours = avgFutureReviewHours + avgFutureMergeHours + avgFutureContextHours;
                 output += '                                ──────────\n';
                 pct = (avgFutureCost / avgTotalCost) * 100;
                 output += formatSubtotalLine("Subtotal", avgFutureCost, formatTimeUnit(avgFutureHours), `(${pct.toFixed(1)}%)`);
@@ -1951,21 +1966,29 @@
                 output += formatItemLine("PR Tracking", e.pr_tracking_cost, formatTimeUnit(e.pr_tracking_hours), `(${e.open_prs || 0} open PRs)`);
             }
 
-            const mergeDelayCost = (e.delivery_delay_cost || 0) + (e.code_churn_cost || 0) + (e.automated_updates_cost || 0) + (e.pr_tracking_cost || 0);
-            const mergeDelayHours = (e.delivery_delay_hours || 0) + (e.code_churn_hours || 0) + (e.automated_updates_hours || 0) + (e.pr_tracking_hours || 0);
+            const mergeDelayCost = (e.delivery_delay_cost || 0) + (e.automated_updates_cost || 0) + (e.pr_tracking_cost || 0);
+            const mergeDelayHours = (e.delivery_delay_hours || 0) + (e.automated_updates_hours || 0) + (e.pr_tracking_hours || 0);
             output += '                                ──────────\n';
             pct = (mergeDelayCost / e.total_cost) * 100;
             output += formatSubtotalLine("Subtotal", mergeDelayCost, formatTimeUnit(mergeDelayHours), `(${pct.toFixed(1)}%)`);
             output += '\n';
 
+            // Preventable Future Costs
+            if ((e.code_churn_cost || 0) > 0.01) {
+                output += '  Preventable Future Costs\n';
+                output += '  ────────────────────────\n';
+                output += formatItemLine("Rework due to churn", e.code_churn_cost, formatTimeUnit(e.code_churn_hours), `(${e.code_churn_pr_count || 0} PRs)`);
+                output += '                                ──────────\n';
+                pct = (e.code_churn_cost / e.total_cost) * 100;
+                output += formatSubtotalLine("Subtotal", e.code_churn_cost, formatTimeUnit(e.code_churn_hours), `(${pct.toFixed(1)}%)`);
+                output += '\n';
+            }
+
             // Future Costs
-            const hasFuture = (e.code_churn_cost || 0) > 0.01 || (e.future_review_cost || 0) > 0.01 || (e.future_merge_cost || 0) > 0.01 || (e.future_context_cost || 0) > 0.01;
+            const hasFuture = (e.future_review_cost || 0) > 0.01 || (e.future_merge_cost || 0) > 0.01 || (e.future_context_cost || 0) > 0.01;
             if (hasFuture) {
                 output += '  Future Costs\n';
                 output += '  ────────────\n';
-                if ((e.code_churn_cost || 0) > 0.01) {
-                    output += formatItemLine("Code Churn", e.code_churn_cost, formatTimeUnit(e.code_churn_hours), "");
-                }
                 if ((e.future_review_cost || 0) > 0.01) {
                     const openPRs = e.open_prs || 0;
                     output += formatItemLine("Review", e.future_review_cost, formatTimeUnit(e.future_review_hours), `(${openPRs} PRs)`);
@@ -1977,8 +2000,8 @@
                 if ((e.future_context_cost || 0) > 0.01) {
                     output += formatItemLine("Context Switching", e.future_context_cost, formatTimeUnit(e.future_context_hours), `(${e.future_context_sessions || 0} sessions)`);
                 }
-                const futureCost = (e.code_churn_cost || 0) + (e.future_review_cost || 0) + (e.future_merge_cost || 0) + (e.future_context_cost || 0);
-                const futureHours = (e.code_churn_hours || 0) + (e.future_review_hours || 0) + (e.future_merge_hours || 0) + (e.future_context_hours || 0);
+                const futureCost = (e.future_review_cost || 0) + (e.future_merge_cost || 0) + (e.future_context_cost || 0);
+                const futureHours = (e.future_review_hours || 0) + (e.future_merge_hours || 0) + (e.future_context_hours || 0);
                 output += '                                ──────────\n';
                 pct = (futureCost / e.total_cost) * 100;
                 output += formatSubtotalLine("Subtotal", futureCost, formatTimeUnit(futureHours), `(${pct.toFixed(1)}%)`);

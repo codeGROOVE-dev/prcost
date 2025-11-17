@@ -324,7 +324,11 @@ func ExtrapolateFromSamples(breakdowns []Breakdown, totalPRs, totalAuthors, actu
 		avgReworkPercentage = sumReworkPercentage / float64(countCodeChurn)
 	}
 
-	extTotalCost := sumTotalCost / samples * multiplier
+	// Calculate total cost by summing components
+	// Note: We recalculate this instead of using sumTotalCost because PR tracking cost
+	// is computed org-wide (actualOpenPRs × uniqueUsers) rather than extrapolated from samples
+	extTotalCost := extAuthorTotal + extParticipantCost + extDeliveryDelayCost + extCodeChurnCost +
+		extAutomatedUpdatesCost + extPRTrackingCost + extFutureReviewCost + extFutureMergeCost + extFutureContextCost
 	extTotalHours := extAuthorHours + extParticipantHours + extDelayHours
 
 	// Calculate waste per week metrics

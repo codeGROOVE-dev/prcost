@@ -396,7 +396,7 @@ func printExtrapolatedResults(title string, days int, ext *cost.ExtrapolatedBrea
 		fmt.Println()
 	}
 
-	// Merge Delay section
+	// Delay Costs section
 	avgHumanOpenTime := formatTimeUnit(ext.AvgHumanPRDurationHours)
 	avgBotOpenTime := formatTimeUnit(ext.AvgBotPRDurationHours)
 	delayCostsHeader := fmt.Sprintf("  Delay Costs (human PRs avg %s open", avgHumanOpenTime)
@@ -422,6 +422,17 @@ func printExtrapolatedResults(title string, days int, ext *cost.ExtrapolatedBrea
 	fmt.Print(formatSubtotalLine(avgMergeDelayCost, formatTimeUnit(avgMergeDelayHours), fmt.Sprintf("(%.1f%%)", pct)))
 	fmt.Println()
 
+	// Preventable Future Costs section
+	if avgCodeChurnCost > 0 {
+		fmt.Println("  Preventable Future Costs")
+		fmt.Println("  ────────────────────────")
+		fmt.Print(formatItemLine("Rework due to churn", avgCodeChurnCost, formatTimeUnit(avgCodeChurnHours), fmt.Sprintf("(%d PRs)", ext.CodeChurnPRCount)))
+		fmt.Print(formatSectionDivider())
+		pct = (avgCodeChurnCost / avgTotalCost) * 100
+		fmt.Print(formatSubtotalLine(avgCodeChurnCost, formatTimeUnit(avgCodeChurnHours), fmt.Sprintf("(%.1f%%)", pct)))
+		fmt.Println()
+	}
+
 	// Future Costs section
 	avgFutureReviewCost := ext.FutureReviewCost / float64(ext.TotalPRs)
 	avgFutureMergeCost := ext.FutureMergeCost / float64(ext.TotalPRs)
@@ -430,15 +441,12 @@ func printExtrapolatedResults(title string, days int, ext *cost.ExtrapolatedBrea
 	avgFutureMergeHours := ext.FutureMergeHours / float64(ext.TotalPRs)
 	avgFutureContextHours := ext.FutureContextHours / float64(ext.TotalPRs)
 
-	hasFutureCosts := ext.CodeChurnCost > 0.01 || ext.FutureReviewCost > 0.01 ||
+	hasFutureCosts := ext.FutureReviewCost > 0.01 ||
 		ext.FutureMergeCost > 0.01 || ext.FutureContextCost > 0.01
 
 	if hasFutureCosts {
 		fmt.Println("  Future Costs")
 		fmt.Println("  ────────────")
-		if ext.CodeChurnCost > 0.01 {
-			fmt.Print(formatItemLine("Code Churn", avgCodeChurnCost, formatTimeUnit(avgCodeChurnHours), fmt.Sprintf("(%d PRs)", ext.CodeChurnPRCount)))
-		}
 		if ext.FutureReviewCost > 0.01 {
 			fmt.Print(formatItemLine("Review", avgFutureReviewCost, formatTimeUnit(avgFutureReviewHours), fmt.Sprintf("(%d PRs)", ext.FutureReviewPRCount)))
 		}
@@ -449,8 +457,8 @@ func printExtrapolatedResults(title string, days int, ext *cost.ExtrapolatedBrea
 			avgFutureContextSessions := float64(ext.FutureContextSessions) / float64(ext.TotalPRs)
 			fmt.Print(formatItemLine("Context Switching", avgFutureContextCost, formatTimeUnit(avgFutureContextHours), fmt.Sprintf("(%.1f sessions)", avgFutureContextSessions)))
 		}
-		avgFutureCost := avgCodeChurnCost + avgFutureReviewCost + avgFutureMergeCost + avgFutureContextCost
-		avgFutureHours := avgCodeChurnHours + avgFutureReviewHours + avgFutureMergeHours + avgFutureContextHours
+		avgFutureCost := avgFutureReviewCost + avgFutureMergeCost + avgFutureContextCost
+		avgFutureHours := avgFutureReviewHours + avgFutureMergeHours + avgFutureContextHours
 		fmt.Print(formatSectionDivider())
 		pct = (avgFutureCost / avgTotalCost) * 100
 		fmt.Print(formatSubtotalLine(avgFutureCost, formatTimeUnit(avgFutureHours), fmt.Sprintf("(%.1f%%)", pct)))
@@ -529,7 +537,7 @@ func printExtrapolatedResults(title string, days int, ext *cost.ExtrapolatedBrea
 		fmt.Println()
 	}
 
-	// Merge Delay section (extrapolated)
+	// Delay Costs section (extrapolated)
 	extAvgHumanOpenTime := formatTimeUnit(ext.AvgHumanPRDurationHours)
 	extAvgBotOpenTime := formatTimeUnit(ext.AvgBotPRDurationHours)
 	extDelayCostsHeader := fmt.Sprintf("  Delay Costs (human PRs avg %s open", extAvgHumanOpenTime)
@@ -549,25 +557,33 @@ func printExtrapolatedResults(title string, days int, ext *cost.ExtrapolatedBrea
 	if ext.PRTrackingCost > 0 {
 		fmt.Print(formatItemLine("PR Tracking", ext.PRTrackingCost, formatTimeUnit(ext.PRTrackingHours), fmt.Sprintf("(%d open PRs)", ext.OpenPRs)))
 	}
-	extMergeDelayCost := ext.DeliveryDelayCost + ext.CodeChurnCost + ext.AutomatedUpdatesCost + ext.PRTrackingCost
-	extMergeDelayHours := ext.DeliveryDelayHours + ext.CodeChurnHours + ext.AutomatedUpdatesHours + ext.PRTrackingHours
+	extMergeDelayCost := ext.DeliveryDelayCost + ext.AutomatedUpdatesCost + ext.PRTrackingCost
+	extMergeDelayHours := ext.DeliveryDelayHours + ext.AutomatedUpdatesHours + ext.PRTrackingHours
 	fmt.Print(formatSectionDivider())
 	pct = (extMergeDelayCost / ext.TotalCost) * 100
 	fmt.Print(formatSubtotalLine(extMergeDelayCost, formatTimeUnit(extMergeDelayHours), fmt.Sprintf("(%.1f%%)", pct)))
 	fmt.Println()
 
+	// Preventable Future Costs section (extrapolated)
+	if ext.CodeChurnCost > 0 {
+		fmt.Println("  Preventable Future Costs")
+		fmt.Println("  ────────────────────────")
+		totalKLOC := float64(ext.TotalNewLines+ext.TotalModifiedLines) / 1000.0
+		churnLOCStr := formatLOC(totalKLOC)
+		fmt.Print(formatItemLine("Rework due to churn", ext.CodeChurnCost, formatTimeUnit(ext.CodeChurnHours), fmt.Sprintf("(%d PRs, ~%s)", ext.CodeChurnPRCount, churnLOCStr)))
+		fmt.Print(formatSectionDivider())
+		pct = (ext.CodeChurnCost / ext.TotalCost) * 100
+		fmt.Print(formatSubtotalLine(ext.CodeChurnCost, formatTimeUnit(ext.CodeChurnHours), fmt.Sprintf("(%.1f%%)", pct)))
+		fmt.Println()
+	}
+
 	// Future Costs section (extrapolated)
-	extHasFutureCosts := ext.CodeChurnCost > 0.01 || ext.FutureReviewCost > 0.01 ||
+	extHasFutureCosts := ext.FutureReviewCost > 0.01 ||
 		ext.FutureMergeCost > 0.01 || ext.FutureContextCost > 0.01
 
 	if extHasFutureCosts {
 		fmt.Println("  Future Costs")
 		fmt.Println("  ────────────")
-		if ext.CodeChurnCost > 0.01 {
-			totalKLOC := float64(ext.TotalNewLines+ext.TotalModifiedLines) / 1000.0
-			churnLOCStr := formatLOC(totalKLOC)
-			fmt.Print(formatItemLine("Code Churn", ext.CodeChurnCost, formatTimeUnit(ext.CodeChurnHours), fmt.Sprintf("(%d PRs, ~%s)", ext.CodeChurnPRCount, churnLOCStr)))
-		}
 		if ext.FutureReviewCost > 0.01 {
 			fmt.Print(formatItemLine("Review", ext.FutureReviewCost, formatTimeUnit(ext.FutureReviewHours), fmt.Sprintf("(%d PRs)", ext.FutureReviewPRCount)))
 		}
@@ -577,8 +593,8 @@ func printExtrapolatedResults(title string, days int, ext *cost.ExtrapolatedBrea
 		if ext.FutureContextCost > 0.01 {
 			fmt.Print(formatItemLine("Context Switching", ext.FutureContextCost, formatTimeUnit(ext.FutureContextHours), fmt.Sprintf("(%d sessions)", ext.FutureContextSessions)))
 		}
-		extFutureCost := ext.CodeChurnCost + ext.FutureReviewCost + ext.FutureMergeCost + ext.FutureContextCost
-		extFutureHours := ext.CodeChurnHours + ext.FutureReviewHours + ext.FutureMergeHours + ext.FutureContextHours
+		extFutureCost := ext.FutureReviewCost + ext.FutureMergeCost + ext.FutureContextCost
+		extFutureHours := ext.FutureReviewHours + ext.FutureMergeHours + ext.FutureContextHours
 		fmt.Print(formatSectionDivider())
 		pct = (extFutureCost / ext.TotalCost) * 100
 		fmt.Print(formatSubtotalLine(extFutureCost, formatTimeUnit(extFutureHours), fmt.Sprintf("(%.1f%%)", pct)))
