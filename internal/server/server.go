@@ -2348,9 +2348,8 @@ func (s *Server) processOrgSampleWithProgress(ctx context.Context, req *OrgSampl
 // processPRsInParallel processes PRs in parallel and sends progress updates via SSE.
 //
 //nolint:revive // line-length/use-waitgroup-go: long function signature acceptable, standard wg pattern
-func (s *Server) processPRsInParallel(workCtx, reqCtx context.Context, samples []github.PRSummary, defaultOwner, defaultRepo, token string, cfg cost.Config, writer http.ResponseWriter) ([]cost.Breakdown, map[string]int) {
-	var breakdowns []cost.Breakdown
-	aggregatedSeconds := make(map[string]int)
+func (s *Server) processPRsInParallel(workCtx, reqCtx context.Context, samples []github.PRSummary, defaultOwner, defaultRepo, token string, cfg cost.Config, writer http.ResponseWriter) (breakdowns []cost.Breakdown, aggregatedSeconds map[string]int) {
+	aggregatedSeconds = make(map[string]int)
 	var mu sync.Mutex
 	var sseMu sync.Mutex // Protects SSE writes to prevent corrupted chunked encoding
 

@@ -187,6 +187,8 @@ func TestCalculateWithRealPRData(t *testing.T) {
 		} `json:"events"`
 		PullRequest struct {
 			CreatedAt         string `json:"created_at"`
+			ClosedAt          string `json:"closed_at"`
+			MergedAt          string `json:"merged_at"`
 			Author            string `json:"author"`
 			Additions         int    `json:"additions"`
 			AuthorWriteAccess int    `json:"author_write_access"`
@@ -219,11 +221,20 @@ func TestCalculateWithRealPRData(t *testing.T) {
 		t.Fatalf("Failed to parse created_at: %v", err)
 	}
 
+	var closedAt time.Time
+	if prxData.PullRequest.ClosedAt != "" {
+		closedAt, err = time.Parse(time.RFC3339, prxData.PullRequest.ClosedAt)
+		if err != nil {
+			t.Fatalf("Failed to parse closed_at: %v", err)
+		}
+	}
+
 	prData := PRData{
 		LinesAdded: prxData.PullRequest.Additions,
 		Author:     prxData.PullRequest.Author,
 		Events:     events,
 		CreatedAt:  createdAt,
+		ClosedAt:   closedAt,
 	}
 
 	cfg := DefaultConfig()
