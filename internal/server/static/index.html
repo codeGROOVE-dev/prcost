@@ -1396,23 +1396,17 @@
 
         function mergeVelocityGrade(avgOpenHours) {
             if (avgOpenHours <= 4) {
-                return { grade: 'A+', message: 'Impeccable' };
-            } else if (avgOpenHours <= 8) {
-                return { grade: 'A', message: 'Excellent' };
-            } else if (avgOpenHours <= 12) {
-                return { grade: 'A-', message: 'Nearly excellent' };
-            } else if (avgOpenHours <= 18) {
-                return { grade: 'B+', message: 'Acceptable+' };
-            } else if (avgOpenHours <= 24) {
-                return { grade: 'B', message: 'Acceptable' };
-            } else if (avgOpenHours <= 36) {
-                return { grade: 'B-', message: 'Nearly acceptable' };
-            } else if (avgOpenHours <= 100) {
-                return { grade: 'C', message: 'Average' };
-            } else if (avgOpenHours <= 120) {
-                return { grade: 'D', message: 'Not good my friend.' };
+                return { grade: 'A+', message: 'World-class velocity' };
+            } else if (avgOpenHours <= 24) {  // 1 day
+                return { grade: 'A', message: 'High-performing team' };
+            } else if (avgOpenHours <= 84) {  // 3.5 days
+                return { grade: 'B', message: 'Room for improvement' };
+            } else if (avgOpenHours <= 132) {  // 5.5 days
+                return { grade: 'C', message: 'Significant delays present' };
+            } else if (avgOpenHours <= 192) {  // 8 days
+                return { grade: 'D', message: 'Needs attention' };
             } else {
-                return { grade: 'F', message: 'Failing' };
+                return { grade: 'F', message: 'Critical bottleneck' };
             }
         }
 
@@ -1427,6 +1421,7 @@
             html += `<span style="font-size: 28px; font-weight: 700; color: #1d1d1f;">${efficiencyPct.toFixed(1)}%</span>`;
             html += '</div>';
             html += `<div class="efficiency-message">${message}</div>`;
+            html += '<div style="font-size: 11px; color: #86868b; margin-top: 4px;">Expected costs minus delay costs</div>';
             html += '</div>'; // Close efficiency-box
 
             // Merge Velocity box
@@ -1449,7 +1444,7 @@
                 html += `<div style="font-size: 28px; font-weight: 700; color: #1d1d1f; margin-bottom: 4px;">${annualWasteFormatted}</div>`;
                 const annualCostPerHead = salary * benefitsMultiplier;
                 const headcount = annualWasteCost / annualCostPerHead;
-                html += `<div class="efficiency-message">${headcount.toFixed(1)} headcount</div>`;
+                html += `<div class="efficiency-message">Equal to ${headcount.toFixed(1)} engineers</div>`;
                 html += '</div>'; // Close efficiency-box
             }
 
