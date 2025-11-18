@@ -2021,6 +2021,35 @@
             return output;
         }
 
+        // Track form state to grey out button after successful calculation
+        let formModifiedSinceLastCalculation = true;
+        let lastCalculationSuccessful = false;
+
+        function markFormAsModified() {
+            formModifiedSinceLastCalculation = true;
+            const submitBtn = document.getElementById('submitBtn');
+            if (lastCalculationSuccessful) {
+                submitBtn.disabled = false;
+                submitBtn.textContent = 'Calculate Cost';
+            }
+        }
+
+        function markCalculationComplete(success) {
+            lastCalculationSuccessful = success;
+            formModifiedSinceLastCalculation = false;
+            const submitBtn = document.getElementById('submitBtn');
+            if (success) {
+                submitBtn.disabled = true;
+                submitBtn.textContent = 'Costs calculated, scroll down...';
+            }
+        }
+
+        // Add change listeners to all form inputs
+        document.querySelectorAll('#costForm input, #costForm select').forEach(input => {
+            input.addEventListener('change', markFormAsModified);
+            input.addEventListener('input', markFormAsModified);
+        });
+
         document.getElementById('costForm').addEventListener('submit', async (e) => {
             e.preventDefault();
 
@@ -2160,14 +2189,23 @@
                     html += '</div>';
 
                     resultDiv.innerHTML = html;
+                    markCalculationComplete(true);
                 }
 
             } catch (error) {
                 resultDiv.innerHTML = `<div class="error">Error: ${error.message}</div>`;
+                markCalculationComplete(false);
             } finally {
                 submitBtn.classList.remove('calculating');
-                submitBtn.disabled = false;
-                submitBtn.textContent = 'Calculate Cost';
+                // Only re-enable button if form was modified or calculation failed
+                if (!lastCalculationSuccessful || formModifiedSinceLastCalculation) {
+                    submitBtn.disabled = false;
+                    submitBtn.textContent = 'Calculate Cost';
+                } else {
+                    // Calculation succeeded and form unchanged - keep button disabled
+                    submitBtn.disabled = true;
+                    submitBtn.textContent = 'Costs calculated, scroll down...';
+                }
             }
         });
 
@@ -2404,6 +2442,7 @@
                                         html += '</div>';
 
                                         resultDiv.innerHTML = html;
+                                        markCalculationComplete(true);
                                         resolve();
                                         return;
                                     }
