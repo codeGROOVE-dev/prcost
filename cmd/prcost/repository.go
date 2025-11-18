@@ -14,8 +14,6 @@ import (
 // analyzeRepository performs repository-wide cost analysis by sampling PRs.
 // Uses library functions from pkg/github and pkg/cost for fetching, sampling,
 // and extrapolation - all functionality is available to external clients.
-//
-//nolint:revive // argument-limit: acceptable for entry point function
 func analyzeRepository(ctx context.Context, owner, repo string, sampleSize, days int, cfg cost.Config, token, dataSource string) error {
 	// Calculate since date
 	since := time.Now().AddDate(0, 0, -days)
@@ -113,8 +111,6 @@ func analyzeRepository(ctx context.Context, owner, repo string, sampleSize, days
 // analyzeOrganization performs organization-wide cost analysis by sampling PRs across all repos.
 // Uses library functions from pkg/github and pkg/cost for fetching, sampling,
 // and extrapolation - all functionality is available to external clients.
-//
-//nolint:revive // argument-limit: acceptable for entry point function
 func analyzeOrganization(ctx context.Context, org string, sampleSize, days int, cfg cost.Config, token, dataSource string) error {
 	slog.Info("Fetching PR list from organization")
 

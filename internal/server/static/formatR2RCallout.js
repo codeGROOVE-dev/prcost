@@ -26,8 +26,8 @@ function formatR2RCallout(avgOpenHours, r2rSavings, currentEfficiency, modeledEf
 
     let html = '<div style="margin: 24px 0; padding: 12px 20px; background: linear-gradient(135deg, #e6f9f0 0%, #ffffff 100%); border: 1px solid #00c853; border-radius: 8px; font-size: 14px; color: #1d1d1f; line-height: 1.6;">';
     html += 'Pro-Tip: Save <strong>' + savingsText + '/yr</strong> in lost development effort by reducing merge times to &lt;' + targetText + ' with ';
-    html += '<a href="https://codegroove.dev/" target="_blank" rel="noopener" style="color: #00c853; font-weight: 600; text-decoration: none;">Ready-to-Review</a>. ';
-    html += 'Free for OSS, cheap for everyone else.';
+    html += '<a href="https://codegroove.dev/products/ready-to-review/" target="_blank" rel="noopener" style="color: #00c853; font-weight: 600; text-decoration: none;">Ready to Review</a>. ';
+    html += 'Free for open-source repositories, $6/user/org for private repos.';
     html += '</div>';
     return html;
 }

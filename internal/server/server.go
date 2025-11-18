@@ -313,7 +313,7 @@ func (s *Server) SetDataSource(source string) {
 	s.logger.InfoContext(ctx, "Data source configured", "source", source)
 }
 
-// SetR2RCallout enables or disables the Ready-to-Review promotional callout.
+// SetR2RCallout enables or disables the Ready to Review promotional callout.
 func (s *Server) SetR2RCallout(enabled bool) {
 	s.r2rCallout = enabled
 }

@@ -35,7 +35,8 @@ func main() {
 	days := flag.Int("days", 60, "Number of days to look back for PR modifications")
 
 	// Modeling flags
-	targetMergeTime := flag.Duration("target-merge-time", 90*time.Minute, "Target merge time for efficiency modeling (default: 90 minutes / 1.5 hours)")
+	targetMergeTime := flag.Duration("target-merge-time", 90*time.Minute,
+		"Target merge time for efficiency modeling (default: 90 minutes / 1.5 hours)")
 
 	flag.Usage = func() {
 		fmt.Fprintf(os.Stderr, "Usage: %s [options] <PR_URL>\n", os.Args[0])
