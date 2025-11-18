@@ -595,12 +595,12 @@ func printMergeTimeModelingCallout(breakdown *cost.Breakdown, cfg cost.Config) {
 		fmt.Println("  ┌─────────────────────────────────────────────────────────────┐")
 		fmt.Printf("  │ %-60s│\n", "MERGE TIME MODELING")
 		fmt.Println("  └─────────────────────────────────────────────────────────────┘")
-		fmt.Printf("  If you lowered your average merge time to %s, you would save\n", formatTimeUnit(targetHours))
-		fmt.Printf("  ~$%s/yr in engineering overhead", formatWithCommas(annualSavings))
 		if efficiencyDelta > 0 {
-			fmt.Printf(" (+%.1f%% throughput).\n", efficiencyDelta)
+			fmt.Printf("  Reduce merge time to %s to boost team throughput by %.1f%%\n", formatTimeUnit(targetHours), efficiencyDelta)
+			fmt.Printf("  and save ~$%s/yr in engineering overhead.\n", formatWithCommas(annualSavings))
 		} else {
-			fmt.Println(".")
+			fmt.Printf("  If you lowered your average merge time to %s, you would save\n", formatTimeUnit(targetHours))
+			fmt.Printf("  ~$%s/yr in engineering overhead.\n", formatWithCommas(annualSavings))
 		}
 		fmt.Println()
 	}
