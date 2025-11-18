@@ -2,6 +2,12 @@ package cost
 
 import "log/slog"
 
+// PRMergeStatus represents merge status information for a PR (for calculating merge rate).
+type PRMergeStatus struct {
+	State  string // "OPEN", "CLOSED", "MERGED"
+	Merged bool
+}
+
 // ExtrapolatedBreakdown represents cost estimates extrapolated from a sample
 // of PRs to estimate total costs across a larger population.
 type ExtrapolatedBreakdown struct {
@@ -94,6 +100,12 @@ type ExtrapolatedBreakdown struct {
 	TotalCost  float64 `json:"total_cost"`
 	TotalHours float64 `json:"total_hours"`
 
+	// Merge rate statistics
+	MergedPRs     int     `json:"merged_prs"`      // Number of successfully merged PRs
+	UnmergedPRs   int     `json:"unmerged_prs"`    // Number of PRs not merged (closed or still open)
+	MergeRate     float64 `json:"merge_rate"`      // Percentage of PRs successfully merged (0-100)
+	MergeRateNote string  `json:"merge_rate_note"` // Explanation of what counts as merged/unmerged
+
 	// R2R cost savings calculation
 	UniqueNonBotUsers int     `json:"unique_non_bot_users"` // Count of unique non-bot users (authors + participants)
 	R2RSavings        float64 `json:"r2r_savings"`          // Annual savings if R2R cuts PR time to target merge time
@@ -106,8 +118,10 @@ type ExtrapolatedBreakdown struct {
 //   - breakdowns: Slice of Breakdown structs from successfully processed samples
 //   - totalPRs: Total number of PRs in the population
 //   - totalAuthors: Total number of unique authors across all PRs (not just samples)
+//   - actualOpenPRs: Count of actually open PRs (for tracking overhead)
 //   - daysInPeriod: Number of days the sample covers (for per-week calculations)
 //   - cfg: Configuration for hourly rate and hours per week calculation
+//   - prStatuses: Merge status for all PRs (for merge rate calculation)
 //
 // Returns:
 //   - ExtrapolatedBreakdown with averaged costs scaled to total population
@@ -116,12 +130,28 @@ type ExtrapolatedBreakdown struct {
 // by the total PR count to estimate population-wide costs.
 //
 //nolint:revive,maintidx // Complex calculation function benefits from cohesion
-func ExtrapolateFromSamples(breakdowns []Breakdown, totalPRs, totalAuthors, actualOpenPRs int, daysInPeriod int, cfg Config) ExtrapolatedBreakdown {
+func ExtrapolateFromSamples(breakdowns []Breakdown, totalPRs, totalAuthors, actualOpenPRs int, daysInPeriod int, cfg Config, prStatuses []PRMergeStatus) ExtrapolatedBreakdown {
 	if len(breakdowns) == 0 {
+		// Calculate merge rate even with no successful samples
+		mergedCount := 0
+		for _, status := range prStatuses {
+			if status.Merged {
+				mergedCount++
+			}
+		}
+		mergeRate := 0.0
+		if len(prStatuses) > 0 {
+			mergeRate = 100.0 * float64(mergedCount) / float64(len(prStatuses))
+		}
+
 		return ExtrapolatedBreakdown{
 			TotalPRs:          totalPRs,
 			SampledPRs:        0,
 			SuccessfulSamples: 0,
+			MergedPRs:         mergedCount,
+			UnmergedPRs:       len(prStatuses) - mergedCount,
+			MergeRate:         mergeRate,
+			MergeRateNote:     "Recently modified PRs successfully merged",
 		}
 	}
 
@@ -439,6 +469,28 @@ func ExtrapolateFromSamples(breakdowns []Breakdown, totalPRs, totalAuthors, actu
 		r2rSavings = 0 // Don't show negative savings
 	}
 
+	// Calculate merge rate from all PRs (not just samples)
+	mergedCount := 0
+	unmergedCount := 0
+	for _, status := range prStatuses {
+		if status.Merged {
+			mergedCount++
+		} else {
+			unmergedCount++
+		}
+	}
+
+	mergeRate := 0.0
+	if len(prStatuses) > 0 {
+		mergeRate = 100.0 * float64(mergedCount) / float64(len(prStatuses))
+	}
+
+	slog.Info("Calculated merge rate from all PRs",
+		"total_prs", len(prStatuses),
+		"merged", mergedCount,
+		"unmerged", unmergedCount,
+		"merge_rate_pct", mergeRate)
+
 	return ExtrapolatedBreakdown{
 		TotalPRs:                   totalPRs,
 		HumanPRs:                   extHumanPRs,
@@ -516,6 +568,11 @@ func ExtrapolateFromSamples(breakdowns []Breakdown, totalPRs, totalAuthors, actu
 
 		TotalCost:  extTotalCost,
 		TotalHours: extTotalHours,
+
+		MergedPRs:     mergedCount,
+		UnmergedPRs:   unmergedCount,
+		MergeRate:     mergeRate,
+		MergeRateNote: "Recently modified PRs successfully merged",
 
 		UniqueNonBotUsers: uniqueUserCount,
 		R2RSavings:        r2rSavings,

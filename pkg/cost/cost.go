@@ -158,6 +158,8 @@ type PRData struct {
 	LinesAdded   int
 	LinesDeleted int
 	AuthorBot    bool
+	Merged       bool   // Whether the PR was merged
+	State        string // PR state: "open", "closed"
 }
 
 // AuthorCostDetail breaks down the author's costs.

@@ -530,6 +530,23 @@ func mergeVelocityGrade(avgOpenDays float64) (grade, message string) {
 	}
 }
 
+// mergeRateGrade returns a grade based on merge success rate percentage.
+// A: >90%, B: >80%, C: >70%, D: >60%, F: ≤60%.
+func mergeRateGrade(mergeRatePct float64) (grade, message string) {
+	switch {
+	case mergeRatePct > 90:
+		return "A", "Excellent"
+	case mergeRatePct > 80:
+		return "B", "Good"
+	case mergeRatePct > 70:
+		return "C", "Acceptable"
+	case mergeRatePct > 60:
+		return "D", "Low"
+	default:
+		return "F", "Poor"
+	}
+}
+
 // printMergeTimeModelingCallout prints a callout showing potential savings from reduced merge time.
 func printMergeTimeModelingCallout(breakdown *cost.Breakdown, cfg cost.Config) {
 	targetHours := cfg.TargetMergeTimeHours

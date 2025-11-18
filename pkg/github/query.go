@@ -18,7 +18,9 @@ type PRSummary struct {
 	Owner     string
 	Repo      string
 	Author    string
+	State     string // "OPEN", "CLOSED", "MERGED"
 	Number    int
+	Merged    bool // Whether the PR was merged
 }
 
 // ProgressCallback is called during PR fetching to report progress.
@@ -143,6 +145,8 @@ func fetchPRsFromRepoWithSort(ctx context.Context, params repoSortParams) ([]PRS
 				nodes {
 					number
 					updatedAt
+					state
+					merged
 					author {
 						login
 					}
@@ -214,6 +218,8 @@ func fetchPRsFromRepoWithSort(ctx context.Context, params repoSortParams) ([]PRS
 						Nodes []struct {
 							Number    int
 							UpdatedAt time.Time
+							State     string
+							Merged    bool
 							Author    struct{ Login string }
 						}
 						TotalCount int
@@ -266,6 +272,8 @@ func fetchPRsFromRepoWithSort(ctx context.Context, params repoSortParams) ([]PRS
 				Number:    node.Number,
 				Author:    node.Author.Login,
 				UpdatedAt: node.UpdatedAt,
+				State:     node.State,
+				Merged:    node.Merged,
 			})
 
 			// Check if we've hit the maxPRs limit
@@ -440,6 +448,8 @@ func fetchPRsFromOrgWithSort(ctx context.Context, params orgSortParams) ([]PRSum
 				... on PullRequest {
 					number
 					updatedAt
+					state
+					merged
 					author {
 						login
 					}
@@ -515,6 +525,8 @@ func fetchPRsFromOrgWithSort(ctx context.Context, params orgSortParams) ([]PRSum
 					Nodes []struct {
 						Number     int
 						UpdatedAt  time.Time
+						State      string
+						Merged     bool
 						Author     struct{ Login string }
 						Repository struct {
 							Owner struct{ Login string }
@@ -557,6 +569,8 @@ func fetchPRsFromOrgWithSort(ctx context.Context, params orgSortParams) ([]PRSum
 				Number:    node.Number,
 				Author:    node.Author.Login,
 				UpdatedAt: node.UpdatedAt,
+				State:     node.State,
+				Merged:    node.Merged,
 			})
 
 			// Check if we've hit the maxPRs limit

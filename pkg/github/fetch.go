@@ -55,6 +55,8 @@ func PRDataFromPRX(prData *prx.PullRequestData) cost.PRData {
 		Events:       events,
 		CreatedAt:    pr.CreatedAt,
 		ClosedAt:     closedAt,
+		Merged:       pr.Merged,
+		State:        pr.State,
 	}
 
 	slog.Debug("Converted PRX data to cost.PRData",
@@ -62,7 +64,9 @@ func PRDataFromPRX(prData *prx.PullRequestData) cost.PRData {
 		"author_bot", authorBot,
 		"prx_author_bot", pr.AuthorBot,
 		"additions", pr.Additions,
-		"deletions", pr.Deletions)
+		"deletions", pr.Deletions,
+		"merged", pr.Merged,
+		"state", pr.State)
 
 	return data
 }

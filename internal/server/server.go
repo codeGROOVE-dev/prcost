@@ -1659,8 +1659,17 @@ func (s *Server) processRepoSample(ctx context.Context, req *RepoSampleRequest, 
 		openPRCount = 0
 	}
 
+	// Convert PRSummary to PRMergeStatus for merge rate calculation
+	prStatuses := make([]cost.PRMergeStatus, len(prs))
+	for i, pr := range prs {
+		prStatuses[i] = cost.PRMergeStatus{
+			Merged: pr.Merged,
+			State:  pr.State,
+		}
+	}
+
 	// Extrapolate costs from samples
-	extrapolated := cost.ExtrapolateFromSamples(breakdowns, len(prs), totalAuthors, openPRCount, actualDays, cfg)
+	extrapolated := cost.ExtrapolateFromSamples(breakdowns, len(prs), totalAuthors, openPRCount, actualDays, cfg, prStatuses)
 
 	// Only include seconds_in_state if we have data (turnserver only)
 	var secondsInState map[string]int
@@ -1779,8 +1788,17 @@ func (s *Server) processOrgSample(ctx context.Context, req *OrgSampleRequest, to
 	}
 	s.logger.InfoContext(ctx, "Counted total open PRs across organization", "org", req.Org, "open_prs", totalOpenPRs)
 
+	// Convert PRSummary to PRMergeStatus for merge rate calculation
+	prStatuses := make([]cost.PRMergeStatus, len(prs))
+	for i, pr := range prs {
+		prStatuses[i] = cost.PRMergeStatus{
+			Merged: pr.Merged,
+			State:  pr.State,
+		}
+	}
+
 	// Extrapolate costs from samples
-	extrapolated := cost.ExtrapolateFromSamples(breakdowns, len(prs), totalAuthors, totalOpenPRs, actualDays, cfg)
+	extrapolated := cost.ExtrapolateFromSamples(breakdowns, len(prs), totalAuthors, totalOpenPRs, actualDays, cfg, prStatuses)
 
 	// Only include seconds_in_state if we have data (turnserver only)
 	var secondsInState map[string]int
@@ -2176,8 +2194,17 @@ func (s *Server) processRepoSampleWithProgress(ctx context.Context, req *RepoSam
 		openPRCount = 0
 	}
 
+	// Convert PRSummary to PRMergeStatus for merge rate calculation
+	prStatuses := make([]cost.PRMergeStatus, len(prs))
+	for i, pr := range prs {
+		prStatuses[i] = cost.PRMergeStatus{
+			Merged: pr.Merged,
+			State:  pr.State,
+		}
+	}
+
 	// Extrapolate costs from samples
-	extrapolated := cost.ExtrapolateFromSamples(breakdowns, len(prs), totalAuthors, openPRCount, actualDays, cfg)
+	extrapolated := cost.ExtrapolateFromSamples(breakdowns, len(prs), totalAuthors, openPRCount, actualDays, cfg, prStatuses)
 
 	// Only include seconds_in_state if we have data (turnserver only)
 	var secondsInState map[string]int
@@ -2326,8 +2353,17 @@ func (s *Server) processOrgSampleWithProgress(ctx context.Context, req *OrgSampl
 	}
 	s.logger.InfoContext(ctx, "Counted total open PRs across organization", "open_prs", totalOpenPRs, "org", req.Org)
 
+	// Convert PRSummary to PRMergeStatus for merge rate calculation
+	prStatuses := make([]cost.PRMergeStatus, len(prs))
+	for i, pr := range prs {
+		prStatuses[i] = cost.PRMergeStatus{
+			Merged: pr.Merged,
+			State:  pr.State,
+		}
+	}
+
 	// Extrapolate costs from samples
-	extrapolated := cost.ExtrapolateFromSamples(breakdowns, len(prs), totalAuthors, totalOpenPRs, actualDays, cfg)
+	extrapolated := cost.ExtrapolateFromSamples(breakdowns, len(prs), totalAuthors, totalOpenPRs, actualDays, cfg, prStatuses)
 
 	// Only include seconds_in_state if we have data (turnserver only)
 	var secondsInState map[string]int
