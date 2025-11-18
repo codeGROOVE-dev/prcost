@@ -627,27 +627,35 @@ func deduplicatePRsByOwnerRepoNumber(prs []PRSummary) []PRSummary {
 
 // IsBot returns true if the author name indicates a bot account.
 func IsBot(author string) bool {
-	// Check for common bot name patterns
-	if strings.HasSuffix(author, "[bot]") || strings.Contains(author, "-bot-") {
+	lowerAuthor := strings.ToLower(author)
+
+	// Check for [bot] suffix
+	if strings.HasSuffix(lowerAuthor, "[bot]") {
 		return true
 	}
 
-	// Check for specific known bot usernames (case-insensitive)
-	lowerAuthor := strings.ToLower(author)
-	knownBots := []string{
-		"renovate",
+	// Common bot account name patterns
+	botPatterns := []string{
 		"dependabot",
+		"renovate",
 		"github-actions",
 		"codecov",
-		"snyk",
 		"greenkeeper",
+		"snyk",
+		"allcontributors",
 		"imgbot",
-		"renovate-bot",
-		"dependabot-preview",
+		"stalebot",
+		"mergify",
+		"netlify",
+		"vercel",
+		"codefactor-io",
+		"deepsource-autofix",
+		"pre-commit-ci",
+		"ready-to-review",
 	}
 
-	for _, botName := range knownBots {
-		if lowerAuthor == botName {
+	for _, pattern := range botPatterns {
+		if strings.Contains(lowerAuthor, pattern) {
 			return true
 		}
 	}

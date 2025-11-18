@@ -39,7 +39,7 @@ func PRDataFromPRX(prData *prx.PullRequestData) cost.PRData {
 	// Fallback bot detection: if prx didn't mark it as a bot, check common bot names
 	authorBot := pr.AuthorBot
 	if !authorBot {
-		authorBot = isCommonBot(pr.Author)
+		authorBot = IsBot(pr.Author)
 		if authorBot {
 			slog.Info("Bot detected by name pattern (prx missed it)",
 				"author", pr.Author,
@@ -71,45 +71,6 @@ func PRDataFromPRX(prData *prx.PullRequestData) cost.PRData {
 	return data
 }
 
-// isCommonBot checks if a username matches common bot patterns.
-// This is a fallback in case prx doesn't correctly mark the AuthorBot field.
-func isCommonBot(username string) bool {
-	lowerName := strings.ToLower(username)
-
-	// Common bot account names
-	botPatterns := []string{
-		"dependabot",
-		"renovate",
-		"github-actions",
-		"codecov",
-		"greenkeeper",
-		"snyk-bot",
-		"allcontributors",
-		"imgbot",
-		"stalebot",
-		"mergify",
-		"netlify",
-		"vercel",
-		"codefactor-io",
-		"deepsource-autofix",
-		"pre-commit-ci",
-		"ready-to-review",
-	}
-
-	for _, pattern := range botPatterns {
-		if strings.Contains(lowerName, pattern) {
-			return true
-		}
-	}
-
-	// Check for [bot] suffix
-	if strings.HasSuffix(lowerName, "[bot]") {
-		return true
-	}
-
-	return false
-}
-
 // FetchPRData retrieves pull request information from GitHub and converts it
 // to the format needed for cost calculation.
 //
@@ -137,9 +98,23 @@ func FetchPRData(ctx context.Context, prURL string, token string, updatedAt time
 	slog.Debug("Parsed PR URL", "owner", owner, "repo", repo, "number", number)
 
 	// Get cache directory from user's cache directory
-	cacheDir, err := getCacheDir()
+	userCacheDir, err := os.UserCacheDir()
 	if err != nil {
 		slog.Warn("Failed to get cache directory, using non-cached client", "error", err)
+		// Fallback to non-cached client
+		client := prx.NewClient(token)
+		prData, err := client.PullRequest(ctx, owner, repo, number)
+		if err != nil {
+			slog.Error("GitHub API call failed", "owner", owner, "repo", repo, "pr", number, "error", err)
+			return cost.PRData{}, fmt.Errorf("failed to fetch PR data: %w", err)
+		}
+		result := PRDataFromPRX(prData)
+		return result, nil
+	}
+
+	cacheDir := filepath.Join(userCacheDir, "prcost")
+	if err := os.MkdirAll(cacheDir, 0o700); err != nil {
+		slog.Warn("Failed to create cache directory, using non-cached client", "error", err)
 		// Fallback to non-cached client
 		client := prx.NewClient(token)
 		prData, err := client.PullRequest(ctx, owner, repo, number)
@@ -229,9 +204,9 @@ func extractParticipantEvents(events []prx.Event) []cost.ParticipantEvent {
 		}
 
 		// Skip bots: check both prx's Bot field and common bot patterns
-		isBot := event.Bot || event.Actor == "github" || isCommonBot(event.Actor)
-		if isBot {
-			if !event.Bot && isCommonBot(event.Actor) {
+		isBotEvent := event.Bot || event.Actor == "github" || IsBot(event.Actor)
+		if isBotEvent {
+			if !event.Bot && IsBot(event.Actor) {
 				slog.Debug("Bot event detected by name pattern (prx missed it)",
 					"actor", event.Actor,
 					"kind", event.Kind,
@@ -249,22 +224,4 @@ func extractParticipantEvents(events []prx.Event) []cost.ParticipantEvent {
 	}
 
 	return participantEvents
-}
-
-// getCacheDir returns the cache directory for prx client.
-// Uses OS-specific user cache directory with prcost subdirectory.
-func getCacheDir() (string, error) {
-	userCacheDir, err := os.UserCacheDir()
-	if err != nil {
-		return "", fmt.Errorf("get user cache dir: %w", err)
-	}
-
-	cacheDir := filepath.Join(userCacheDir, "prcost")
-
-	// Ensure cache directory exists
-	if err := os.MkdirAll(cacheDir, 0o700); err != nil {
-		return "", fmt.Errorf("create cache dir: %w", err)
-	}
-
-	return cacheDir, nil
 }

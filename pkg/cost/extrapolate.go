@@ -1,6 +1,9 @@
 package cost
 
-import "log/slog"
+import (
+	"log/slog"
+	"math"
+)
 
 // PRMergeStatus represents merge status information for a PR (for calculating merge rate).
 type PRMergeStatus struct {
@@ -322,11 +325,21 @@ func ExtrapolateFromSamples(breakdowns []Breakdown, totalPRs, totalAuthors, actu
 	extCodeChurnCost := sumCodeChurnCost / samples * multiplier
 	extAutomatedUpdatesCost := sumAutomatedUpdatesCost / samples * multiplier
 	// Calculate Open PR Tracking cost based on actual open PRs (not from samples)
-	// Formula: actualOpenPRs × uniqueUsers × (tracking_minutes_per_day_per_person / 60) × daysInPeriod × hourlyRate
-	// This scales with team size: larger teams spend more total time tracking open PRs
+	// Formula: openPRs × log2(activeContributors + 1) × 0.005 × daysInPeriod × hourlyRate
+	// This represents planning/coordination overhead ONLY (excludes actual code review)
+	// - Linear with PR count: more PRs = more planning/triage overhead
+	// - Logarithmic with team size: larger teams have specialization/better processes
+	// - Constant 0.005: calibrated to ~20 seconds per PR per week of planning/coordination time
+	//   (excludes actual review time, which is counted separately in FutureReviewCost)
 	hourlyRate := cfg.AnnualSalary * cfg.BenefitsMultiplier / cfg.HoursPerYear
 	uniqueUserCount := len(uniqueNonBotUsers)
-	extPRTrackingHours := float64(actualOpenPRs) * float64(uniqueUserCount) * (cfg.PRTrackingMinutesPerDay / 60.0) * float64(daysInPeriod)
+	var extPRTrackingHours float64
+	if uniqueUserCount > 0 && actualOpenPRs > 0 {
+		// log2(n+1) to handle log(0) and provide smooth scaling
+		teamScaleFactor := math.Log2(float64(uniqueUserCount) + 1)
+		// 0.005 hours = 0.30 minutes per PR per day (organizational average for planning/coordination only)
+		extPRTrackingHours = float64(actualOpenPRs) * teamScaleFactor * 0.005 * float64(daysInPeriod)
+	}
 	extPRTrackingCost := extPRTrackingHours * hourlyRate
 	extFutureReviewCost := sumFutureReviewCost / samples * multiplier
 	extFutureMergeCost := sumFutureMergeCost / samples * multiplier
