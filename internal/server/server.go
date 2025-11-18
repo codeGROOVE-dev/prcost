@@ -144,7 +144,7 @@ type CalculateResponse struct {
 type RepoSampleRequest struct {
 	Owner      string       `json:"owner"`
 	Repo       string       `json:"repo"`
-	SampleSize int          `json:"sample_size,omitempty"` // Default: 50
+	SampleSize int          `json:"sample_size,omitempty"` // Default: 100
 	Days       int          `json:"days,omitempty"`        // Default: 60
 	Config     *cost.Config `json:"config,omitempty"`
 }
@@ -154,7 +154,7 @@ type RepoSampleRequest struct {
 //nolint:govet // fieldalignment: API struct field order optimized for readability
 type OrgSampleRequest struct {
 	Org        string       `json:"org"`
-	SampleSize int          `json:"sample_size,omitempty"` // Default: 50
+	SampleSize int          `json:"sample_size,omitempty"` // Default: 100
 	Days       int          `json:"days,omitempty"`        // Default: 60
 	Config     *cost.Config `json:"config,omitempty"`
 }
@@ -1478,18 +1478,18 @@ func (s *Server) parseRepoSampleRequest(ctx context.Context, r *http.Request) (*
 
 	// Set defaults
 	if req.SampleSize == 0 {
-		req.SampleSize = 50
+		req.SampleSize = 100
 	}
 	if req.Days == 0 {
 		req.Days = 60
 	}
 
-	// Validate reasonable limits (silently cap at 50)
+	// Validate reasonable limits (silently cap at 100)
 	if req.SampleSize < 1 {
 		return nil, errors.New("sample_size must be at least 1")
 	}
-	if req.SampleSize > 50 {
-		req.SampleSize = 50
+	if req.SampleSize > 100 {
+		req.SampleSize = 100
 	}
 	if req.Days < 1 || req.Days > 365 {
 		return nil, errors.New("days must be between 1 and 365")
@@ -1536,18 +1536,18 @@ func (s *Server) parseOrgSampleRequest(ctx context.Context, r *http.Request) (*O
 
 	// Set defaults
 	if req.SampleSize == 0 {
-		req.SampleSize = 50
+		req.SampleSize = 100
 	}
 	if req.Days == 0 {
 		req.Days = 60
 	}
 
-	// Validate reasonable limits (silently cap at 50)
+	// Validate reasonable limits (silently cap at 100)
 	if req.SampleSize < 1 {
 		return nil, errors.New("sample_size must be at least 1")
 	}
-	if req.SampleSize > 50 {
-		req.SampleSize = 50
+	if req.SampleSize > 100 {
+		req.SampleSize = 100
 	}
 	if req.Days < 1 || req.Days > 365 {
 		return nil, errors.New("days must be between 1 and 365")
