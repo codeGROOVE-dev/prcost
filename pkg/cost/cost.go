@@ -154,12 +154,12 @@ type PRData struct {
 	CreatedAt    time.Time
 	ClosedAt     time.Time
 	Author       string
+	State        string
 	Events       []ParticipantEvent
 	LinesAdded   int
 	LinesDeleted int
 	AuthorBot    bool
-	Merged       bool   // Whether the PR was merged
-	State        string // PR state: "open", "closed"
+	Merged       bool
 }
 
 // AuthorCostDetail breaks down the author's costs.

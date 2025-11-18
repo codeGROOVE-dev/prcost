@@ -1261,7 +1261,7 @@ func TestAnalyzePRsContextCancellation(t *testing.T) {
 
 func TestExtrapolateFromSamplesEmpty(t *testing.T) {
 	cfg := DefaultConfig()
-	result := ExtrapolateFromSamples([]Breakdown{}, 100, 10, 5, 30, cfg, []PRMergeStatus{})
+	result := ExtrapolateFromSamples([]Breakdown{}, 100, 10, 5, 30, cfg, []PRSummaryInfo{}, nil)
 
 	if result.TotalPRs != 100 {
 		t.Errorf("Expected TotalPRs=100, got %d", result.TotalPRs)
@@ -1298,12 +1298,12 @@ func TestExtrapolateFromSamplesSingle(t *testing.T) {
 
 	// Extrapolate from 1 sample to 10 total PRs
 	// Create merge status for 10 PRs: 9 merged, 1 open
-	prStatuses := make([]PRMergeStatus, 10)
-	for i := 0; i < 9; i++ {
-		prStatuses[i] = PRMergeStatus{Merged: true, State: "MERGED"}
+	prStatuses := make([]PRSummaryInfo, 10)
+	for i := range 9 {
+		prStatuses[i] = PRSummaryInfo{Owner: "test", Repo: "test", Merged: true, State: "MERGED"}
 	}
-	prStatuses[9] = PRMergeStatus{Merged: false, State: "OPEN"}
-	result := ExtrapolateFromSamples([]Breakdown{breakdown}, 10, 2, 0, 7, cfg, prStatuses)
+	prStatuses[9] = PRSummaryInfo{Owner: "test", Repo: "test", Merged: false, State: "OPEN"}
+	result := ExtrapolateFromSamples([]Breakdown{breakdown}, 10, 2, 0, 7, cfg, prStatuses, nil)
 
 	if result.TotalPRs != 10 {
 		t.Errorf("Expected TotalPRs=10, got %d", result.TotalPRs)
@@ -1368,14 +1368,14 @@ func TestExtrapolateFromSamplesMultiple(t *testing.T) {
 
 	// Extrapolate from 2 samples to 20 total PRs over 14 days
 	// Create merge status for 20 PRs: 17 merged, 3 open
-	prStatuses := make([]PRMergeStatus, 20)
-	for i := 0; i < 17; i++ {
-		prStatuses[i] = PRMergeStatus{Merged: true, State: "MERGED"}
+	prStatuses := make([]PRSummaryInfo, 20)
+	for i := range 17 {
+		prStatuses[i] = PRSummaryInfo{Owner: "test", Repo: "test", Merged: true, State: "MERGED"}
 	}
 	for i := 17; i < 20; i++ {
-		prStatuses[i] = PRMergeStatus{Merged: false, State: "OPEN"}
+		prStatuses[i] = PRSummaryInfo{Owner: "test", Repo: "test", Merged: false, State: "OPEN"}
 	}
-	result := ExtrapolateFromSamples(breakdowns, 20, 5, 3, 14, cfg, prStatuses)
+	result := ExtrapolateFromSamples(breakdowns, 20, 5, 3, 14, cfg, prStatuses, nil)
 
 	if result.TotalPRs != 20 {
 		t.Errorf("Expected TotalPRs=20, got %d", result.TotalPRs)
@@ -1446,11 +1446,11 @@ func TestExtrapolateFromSamplesBotVsHuman(t *testing.T) {
 	}
 
 	// Create merge status for 10 PRs: all merged
-	prStatuses := make([]PRMergeStatus, 10)
-	for i := 0; i < 10; i++ {
-		prStatuses[i] = PRMergeStatus{Merged: true, State: "MERGED"}
+	prStatuses := make([]PRSummaryInfo, 10)
+	for i := range 10 {
+		prStatuses[i] = PRSummaryInfo{Owner: "test", Repo: "test", Merged: true, State: "MERGED"}
 	}
-	result := ExtrapolateFromSamples(breakdowns, 10, 5, 0, 7, cfg, prStatuses)
+	result := ExtrapolateFromSamples(breakdowns, 10, 5, 0, 7, cfg, prStatuses, nil)
 
 	// Should have both human and bot PR counts
 	if result.HumanPRs <= 0 {
@@ -1502,11 +1502,11 @@ func TestExtrapolateFromSamplesWasteCalculation(t *testing.T) {
 
 	// Extrapolate over 7 days
 	// Create merge status for 10 PRs: all merged
-	prStatuses := make([]PRMergeStatus, 10)
-	for i := 0; i < 10; i++ {
-		prStatuses[i] = PRMergeStatus{Merged: true, State: "MERGED"}
+	prStatuses := make([]PRSummaryInfo, 10)
+	for i := range 10 {
+		prStatuses[i] = PRSummaryInfo{Owner: "test", Repo: "test", Merged: true, State: "MERGED"}
 	}
-	result := ExtrapolateFromSamples([]Breakdown{breakdown}, 10, 3, 0, 7, cfg, prStatuses)
+	result := ExtrapolateFromSamples([]Breakdown{breakdown}, 10, 3, 0, 7, cfg, prStatuses, nil)
 
 	// Waste per week should be calculated
 	if result.WasteHoursPerWeek <= 0 {
@@ -1552,14 +1552,14 @@ func TestExtrapolateFromSamplesR2RSavings(t *testing.T) {
 	}
 
 	// Create merge status for 100 PRs: 95 merged, 5 open
-	prStatuses := make([]PRMergeStatus, 100)
-	for i := 0; i < 95; i++ {
-		prStatuses[i] = PRMergeStatus{Merged: true, State: "MERGED"}
+	prStatuses := make([]PRSummaryInfo, 100)
+	for i := range 95 {
+		prStatuses[i] = PRSummaryInfo{Owner: "test", Repo: "test", Merged: true, State: "MERGED"}
 	}
 	for i := 95; i < 100; i++ {
-		prStatuses[i] = PRMergeStatus{Merged: false, State: "OPEN"}
+		prStatuses[i] = PRSummaryInfo{Owner: "test", Repo: "test", Merged: false, State: "OPEN"}
 	}
-	result := ExtrapolateFromSamples(breakdowns, 100, 10, 5, 30, cfg, prStatuses)
+	result := ExtrapolateFromSamples(breakdowns, 100, 10, 5, 30, cfg, prStatuses, nil)
 
 	// R2R savings should be calculated
 	// Savings formula: baseline waste - remodeled waste - subscription cost
@@ -1597,14 +1597,14 @@ func TestExtrapolateFromSamplesOpenPRTracking(t *testing.T) {
 	// Test with actual open PRs
 	actualOpenPRs := 15
 	// Create merge status for 100 PRs: 85 merged, 15 open
-	prStatuses := make([]PRMergeStatus, 100)
-	for i := 0; i < 85; i++ {
-		prStatuses[i] = PRMergeStatus{Merged: true, State: "MERGED"}
+	prStatuses := make([]PRSummaryInfo, 100)
+	for i := range 85 {
+		prStatuses[i] = PRSummaryInfo{Owner: "test", Repo: "test", Merged: true, State: "MERGED"}
 	}
 	for i := 85; i < 100; i++ {
-		prStatuses[i] = PRMergeStatus{Merged: false, State: "OPEN"}
+		prStatuses[i] = PRSummaryInfo{Owner: "test", Repo: "test", Merged: false, State: "OPEN"}
 	}
-	result := ExtrapolateFromSamples([]Breakdown{breakdown}, 100, 5, actualOpenPRs, 30, cfg, prStatuses)
+	result := ExtrapolateFromSamples([]Breakdown{breakdown}, 100, 5, actualOpenPRs, 30, cfg, prStatuses, nil)
 
 	// Open PRs should match actual count (not extrapolated)
 	if result.OpenPRs != actualOpenPRs {
@@ -1641,11 +1641,11 @@ func TestExtrapolateFromSamplesParticipants(t *testing.T) {
 	}, cfg)
 
 	// Create merge status for 10 PRs: all merged
-	prStatuses := make([]PRMergeStatus, 10)
-	for i := 0; i < 10; i++ {
-		prStatuses[i] = PRMergeStatus{Merged: true, State: "MERGED"}
+	prStatuses := make([]PRSummaryInfo, 10)
+	for i := range 10 {
+		prStatuses[i] = PRSummaryInfo{Owner: "test", Repo: "test", Merged: true, State: "MERGED"}
 	}
-	result := ExtrapolateFromSamples([]Breakdown{breakdown}, 10, 5, 0, 7, cfg, prStatuses)
+	result := ExtrapolateFromSamples([]Breakdown{breakdown}, 10, 5, 0, 7, cfg, prStatuses, nil)
 
 	// Participant costs should be extrapolated
 	if result.ParticipantReviewCost <= 0 {

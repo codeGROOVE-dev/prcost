@@ -993,3 +993,145 @@ func CountOpenPRsInOrg(ctx context.Context, org, token string) (int, error) {
 
 	return count, nil
 }
+
+// RepoVisibility contains repository name and privacy status.
+type RepoVisibility struct {
+	Name      string
+	IsPrivate bool
+}
+
+// FetchOrgRepositoriesWithActivity fetches all repositories in an organization
+// that had activity (pushes) in the specified time period, along with their privacy status.
+// This is useful for determining which repositories were analyzed and whether they're public or private.
+//
+// Parameters:
+//   - ctx: Context for the API call
+//   - org: GitHub organization name
+//   - since: Only include repos with activity after this time
+//   - token: GitHub authentication token
+//
+// Returns:
+//   - Map of repository name to RepoVisibility struct
+func FetchOrgRepositoriesWithActivity(ctx context.Context, org string, since time.Time, token string) (map[string]RepoVisibility, error) {
+	query := `
+		query($org: String!, $cursor: String) {
+			organization(login: $org) {
+				repositories(first: 100, after: $cursor, orderBy: {field: PUSHED_AT, direction: DESC}) {
+					pageInfo {
+						hasNextPage
+						endCursor
+					}
+					nodes {
+						name
+						isPrivate
+						pushedAt
+					}
+				}
+			}
+		}
+	`
+
+	repos := make(map[string]RepoVisibility)
+	var cursor *string
+
+	for {
+		variables := map[string]any{
+			"org":    org,
+			"cursor": cursor,
+		}
+
+		payload := map[string]any{
+			"query":     query,
+			"variables": variables,
+		}
+
+		bodyBytes, err := json.Marshal(payload)
+		if err != nil {
+			return nil, fmt.Errorf("failed to marshal request: %w", err)
+		}
+
+		req, err := http.NewRequestWithContext(ctx, http.MethodPost, "https://api.github.com/graphql", bytes.NewReader(bodyBytes))
+		if err != nil {
+			return nil, fmt.Errorf("failed to create request: %w", err)
+		}
+
+		req.Header.Set("Authorization", "Bearer "+token)
+		req.Header.Set("Content-Type", "application/json")
+
+		client := &http.Client{Timeout: 30 * time.Second}
+		resp, err := client.Do(req)
+		if err != nil {
+			return nil, fmt.Errorf("failed to make request: %w", err)
+		}
+
+		if resp.StatusCode != http.StatusOK {
+			_ = resp.Body.Close() //nolint:errcheck // best effort close on error path
+			return nil, fmt.Errorf("GraphQL request failed with status %d", resp.StatusCode)
+		}
+
+		var result struct {
+			Data struct {
+				Organization struct {
+					Repositories struct {
+						PageInfo struct {
+							EndCursor   string
+							HasNextPage bool
+						}
+						Nodes []struct {
+							PushedAt  time.Time
+							Name      string
+							IsPrivate bool
+						}
+					}
+				}
+			}
+			Errors []struct {
+				Message string
+			}
+		}
+
+		if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+			_ = resp.Body.Close() //nolint:errcheck // best effort close on error path
+			return nil, fmt.Errorf("failed to decode response: %w", err)
+		}
+		_ = resp.Body.Close() //nolint:errcheck // best effort close after successful read
+
+		if len(result.Errors) > 0 {
+			return nil, fmt.Errorf("GraphQL error: %s", result.Errors[0].Message)
+		}
+
+		// Process repositories and filter by activity date
+		foundRecentActivity := false
+		for _, node := range result.Data.Organization.Repositories.Nodes {
+			if node.PushedAt.Before(since) {
+				// Since repos are ordered by PUSHED_AT DESC, once we hit one before 'since',
+				// all remaining repos will also be before 'since'
+				break
+			}
+			foundRecentActivity = true
+			repos[node.Name] = RepoVisibility{
+				Name:      node.Name,
+				IsPrivate: node.IsPrivate,
+			}
+		}
+
+		// If we found no recent activity on this page, we can stop
+		if !foundRecentActivity {
+			break
+		}
+
+		// Continue to next page if there is one
+		if !result.Data.Organization.Repositories.PageInfo.HasNextPage {
+			break
+		}
+
+		cursor = &result.Data.Organization.Repositories.PageInfo.EndCursor
+	}
+
+	slog.Info("Fetched organization repositories with recent activity",
+		"org", org,
+		"since", since.Format(time.RFC3339),
+		"repo_count", len(repos))
+
+	return repos, nil
+}
