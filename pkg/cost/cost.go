@@ -109,6 +109,11 @@ type Config struct {
 	// - 0.080+ (8%+/week) → 99%+ annual churn - extremely fast-moving, younger companies
 	WeeklyChurnRate float64
 
+	// TargetMergeTimeHours is the target merge time in hours for efficiency modeling (default: 1.5 hours / 90 minutes)
+	// Used to calculate potential savings if merge times were reduced to this target.
+	// This represents a realistic goal for well-optimized PR workflows.
+	TargetMergeTimeHours float64
+
 	// COCOMO configuration for estimating code writing effort
 	COCOMO cocomo.Config
 }
@@ -132,6 +137,7 @@ func DefaultConfig() Config {
 		ReviewInspectionRate:     275.0,                           // 275 LOC/hour (average of optimal 150-400 range)
 		ModificationCostFactor:   0.4,                             // Modified code costs 40% of new code
 		WeeklyChurnRate:          0.0229,                          // 2.29% per week (70% annual, 60th percentile empirical)
+		TargetMergeTimeHours:     1.5,                             // 1.5 hours (90 minutes) target for efficiency modeling
 		COCOMO:                   cocomo.DefaultConfig(),
 	}
 }

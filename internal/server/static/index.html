@@ -1510,7 +1510,7 @@
             }
 
             let html = '<div style="margin: 24px 0; padding: 12px 20px; background: linear-gradient(135deg, #f0f4f9 0%, #ffffff 100%); border: 1px solid #0066cc; border-radius: 8px; font-size: 14px; color: #1d1d1f; line-height: 1.6;">';
-            html += '<strong>💡 Merge Time Modeling:</strong> If you lowered your average merge time to 1h, you would save <strong>~' + savingsText + '/yr</strong> in engineering overhead' + throughputText + '.';
+            html += '<strong>💡 Merge Time Modeling:</strong> If you lowered your average merge time to 1.5h, you would save <strong>~' + savingsText + '/yr</strong> in engineering overhead' + throughputText + '.';
             html += '</div>';
             return html;
         }
@@ -2271,8 +2271,8 @@
                                         html += formatEfficiencyHTML(extEfficiencyPct, extEfficiency.grade, extEfficiency.message, extPreventableCost, extPreventableHours, e.total_cost, e.total_hours, avgPRDurationHours, true, annualWasteCost, annualWasteHours, wasteHoursPerWeek, wasteCostPerWeek, wasteHoursPerAuthorPerWeek, wasteCostPerAuthorPerWeek, totalAuthors, salary, benefitsMultiplier, analysisType, sourceName);
 
                                         // Add R2R callout if enabled, otherwise generic merge time callout
-                                        // Calculate modeled efficiency (with 40min/1h merge time)
-                                        const targetMergeHours = 40 / 60; // 40 minutes in hours
+                                        // Calculate modeled efficiency (with 1.5h merge time)
+                                        const targetMergeHours = 1.5; // 1.5 hours (90 minutes)
                                         const hourlyRate = (salary * benefitsMultiplier) / 2080;
 
                                         // Remodel preventable costs with target merge time
@@ -2280,7 +2280,7 @@
                                         const remodelDeliveryDelayPerPR = hourlyRate * deliveryDelayFactor * targetMergeHours;
                                         const remodelCodeChurnPerPR = 0; // < 1 day, no churn
                                         const remodelAutomatedUpdatesPerPR = 0; // < 1 day, no automated updates
-                                        const remodelPRTrackingPerPR = 0; // < 1 hour, no tracking
+                                        const remodelPRTrackingPerPR = 0; // < 2 hours, minimal tracking
 
                                         const totalPRs = e.total_prs;
                                         const remodelPreventableCost = (remodelDeliveryDelayPerPR + remodelCodeChurnPerPR +

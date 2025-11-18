@@ -16,7 +16,7 @@ import (
 // and extrapolation - all functionality is available to external clients.
 //
 //nolint:revive // argument-limit: acceptable for entry point function
-func analyzeRepository(ctx context.Context, owner, repo string, sampleSize, days int, cfg cost.Config, token, dataSource string, modelMergeTime *time.Duration) error {
+func analyzeRepository(ctx context.Context, owner, repo string, sampleSize, days int, cfg cost.Config, token, dataSource string) error {
 	// Calculate since date
 	since := time.Now().AddDate(0, 0, -days)
 
@@ -105,7 +105,7 @@ func analyzeRepository(ctx context.Context, owner, repo string, sampleSize, days
 	extrapolated := cost.ExtrapolateFromSamples(breakdowns, len(prs), totalAuthors, openPRCount, actualDays, cfg)
 
 	// Display results in itemized format
-	printExtrapolatedResults(fmt.Sprintf("%s/%s", owner, repo), actualDays, &extrapolated, cfg, *modelMergeTime)
+	printExtrapolatedResults(fmt.Sprintf("%s/%s", owner, repo), actualDays, &extrapolated, cfg)
 
 	return nil
 }
@@ -115,7 +115,7 @@ func analyzeRepository(ctx context.Context, owner, repo string, sampleSize, days
 // and extrapolation - all functionality is available to external clients.
 //
 //nolint:revive // argument-limit: acceptable for entry point function
-func analyzeOrganization(ctx context.Context, org string, sampleSize, days int, cfg cost.Config, token, dataSource string, modelMergeTime *time.Duration) error {
+func analyzeOrganization(ctx context.Context, org string, sampleSize, days int, cfg cost.Config, token, dataSource string) error {
 	slog.Info("Fetching PR list from organization")
 
 	// Calculate since date
@@ -207,7 +207,7 @@ func analyzeOrganization(ctx context.Context, org string, sampleSize, days int, 
 	extrapolated := cost.ExtrapolateFromSamples(breakdowns, len(prs), totalAuthors, totalOpenPRs, actualDays, cfg)
 
 	// Display results in itemized format
-	printExtrapolatedResults(fmt.Sprintf("%s (organization)", org), actualDays, &extrapolated, cfg, *modelMergeTime)
+	printExtrapolatedResults(fmt.Sprintf("%s (organization)", org), actualDays, &extrapolated, cfg)
 
 	return nil
 }
@@ -278,7 +278,7 @@ func formatTimeUnit(hours float64) string {
 // printExtrapolatedResults displays extrapolated cost breakdown in itemized format.
 //
 //nolint:maintidx,revive // acceptable complexity/length for comprehensive display function
-func printExtrapolatedResults(title string, days int, ext *cost.ExtrapolatedBreakdown, cfg cost.Config, modelMergeTime time.Duration) {
+func printExtrapolatedResults(title string, days int, ext *cost.ExtrapolatedBreakdown, cfg cost.Config) {
 	fmt.Println()
 	fmt.Printf("  %s\n", title)
 	avgOpenTime := formatTimeUnit(ext.AvgPRDurationHours)
@@ -614,11 +614,11 @@ func printExtrapolatedResults(title string, days int, ext *cost.ExtrapolatedBrea
 	fmt.Println()
 
 	// Print extrapolated efficiency score + annual waste
-	printExtrapolatedEfficiency(ext, days, cfg, modelMergeTime)
+	printExtrapolatedEfficiency(ext, days, cfg)
 }
 
 // printExtrapolatedEfficiency prints the workflow efficiency + annual waste section for extrapolated totals.
-func printExtrapolatedEfficiency(ext *cost.ExtrapolatedBreakdown, days int, cfg cost.Config, modelMergeTime time.Duration) {
+func printExtrapolatedEfficiency(ext *cost.ExtrapolatedBreakdown, days int, cfg cost.Config) {
 	// Calculate preventable waste: Code Churn + All Delay Costs + Automated Updates + PR Tracking
 	preventableHours := ext.CodeChurnHours + ext.DeliveryDelayHours + ext.AutomatedUpdatesHours + ext.PRTrackingHours
 	preventableCost := ext.CodeChurnCost + ext.DeliveryDelayCost + ext.AutomatedUpdatesCost + ext.PRTrackingCost
@@ -676,14 +676,14 @@ func printExtrapolatedEfficiency(ext *cost.ExtrapolatedBreakdown, days int, cfg 
 	fmt.Println()
 
 	// Print merge time modeling callout if average PR duration exceeds model merge time
-	if ext.AvgPRDurationHours > modelMergeTime.Hours() {
-		printExtrapolatedMergeTimeModelingCallout(ext, days, modelMergeTime, cfg)
+	if ext.AvgPRDurationHours > cfg.TargetMergeTimeHours {
+		printExtrapolatedMergeTimeModelingCallout(ext, days, cfg)
 	}
 }
 
 // printExtrapolatedMergeTimeModelingCallout prints a callout showing potential savings from reduced merge time.
-func printExtrapolatedMergeTimeModelingCallout(ext *cost.ExtrapolatedBreakdown, days int, targetMergeTime time.Duration, cfg cost.Config) {
-	targetHours := targetMergeTime.Hours()
+func printExtrapolatedMergeTimeModelingCallout(ext *cost.ExtrapolatedBreakdown, days int, cfg cost.Config) {
+	targetHours := cfg.TargetMergeTimeHours
 
 	// Calculate hourly rate
 	hourlyRate := (cfg.AnnualSalary * cfg.BenefitsMultiplier) / cfg.HoursPerYear
@@ -702,7 +702,7 @@ func printExtrapolatedMergeTimeModelingCallout(ext *cost.ExtrapolatedBreakdown, 
 
 	// PR tracking: scales with open time
 	remodelPRTrackingPerPR := 0.0
-	if targetHours >= 1.0 { // Only track PRs open >= 1 hour
+	if targetHours >= 1.0 { // Minimal tracking for PRs open >= 1 hour
 		daysOpen := targetHours / 24.0
 		remodelPRTrackingHours := (cfg.PRTrackingMinutesPerDay / 60.0) * daysOpen
 		remodelPRTrackingPerPR = remodelPRTrackingHours * hourlyRate

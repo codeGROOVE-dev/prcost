@@ -1537,7 +1537,7 @@ func TestExtrapolateFromSamplesR2RSavings(t *testing.T) {
 	}
 
 	// For a 3-day PR, there should be significant savings
-	// (R2R targets 40-minute PRs, which would eliminate most delay costs)
+	// (R2R targets 1.5-hour PRs, which would eliminate most delay costs)
 	if result.R2RSavings == 0 {
 		t.Error("Expected positive R2R savings for long-duration PRs")
 	}

@@ -35,7 +35,7 @@ func main() {
 	days := flag.Int("days", 60, "Number of days to look back for PR modifications")
 
 	// Modeling flags
-	modelMergeTime := flag.Duration("model-merge-time", 1*time.Hour, "Model savings if average merge time was reduced to this duration")
+	targetMergeTime := flag.Duration("target-merge-time", 90*time.Minute, "Target merge time for efficiency modeling (default: 90 minutes / 1.5 hours)")
 
 	flag.Usage = func() {
 		fmt.Fprintf(os.Stderr, "Usage: %s [options] <PR_URL>\n", os.Args[0])
@@ -100,11 +100,13 @@ func main() {
 	cfg.AnnualSalary = *salary
 	cfg.BenefitsMultiplier = *benefits
 	cfg.EventDuration = time.Duration(*eventMinutes) * time.Minute
+	cfg.TargetMergeTimeHours = targetMergeTime.Hours()
 
 	slog.Debug("Configuration",
 		"salary", cfg.AnnualSalary,
 		"benefits_multiplier", cfg.BenefitsMultiplier,
 		"event_minutes", *eventMinutes,
+		"target_merge_time_hours", cfg.TargetMergeTimeHours,
 		"delivery_delay_factor", cfg.DeliveryDelayFactor)
 
 	// Retrieve GitHub token from gh CLI
@@ -122,7 +124,7 @@ func main() {
 		if *repo != "" {
 			// Single repository mode
 
-			err := analyzeRepository(ctx, *org, *repo, *samples, *days, cfg, token, *dataSource, modelMergeTime)
+			err := analyzeRepository(ctx, *org, *repo, *samples, *days, cfg, token, *dataSource)
 			if err != nil {
 				log.Fatalf("Repository analysis failed: %v", err)
 			}
@@ -133,7 +135,7 @@ func main() {
 				"samples", *samples,
 				"days", *days)
 
-			err := analyzeOrganization(ctx, *org, *samples, *days, cfg, token, *dataSource, modelMergeTime)
+			err := analyzeOrganization(ctx, *org, *samples, *days, cfg, token, *dataSource)
 			if err != nil {
 				log.Fatalf("Organization analysis failed: %v", err)
 			}
@@ -177,7 +179,7 @@ func main() {
 		// Output in requested format
 		switch *format {
 		case "human":
-			printHumanReadable(&breakdown, prURL, *modelMergeTime, cfg)
+			printHumanReadable(&breakdown, prURL, cfg)
 		case "json":
 			encoder := json.NewEncoder(os.Stdout)
 			encoder.SetIndent("", "  ")
@@ -209,7 +211,7 @@ func authToken(ctx context.Context) (string, error) {
 }
 
 // printHumanReadable outputs a detailed itemized bill in human-readable format.
-func printHumanReadable(breakdown *cost.Breakdown, prURL string, modelMergeTime time.Duration, cfg cost.Config) {
+func printHumanReadable(breakdown *cost.Breakdown, prURL string, cfg cost.Config) {
 	// Helper to format currency with commas
 	formatCurrency := func(amount float64) string {
 		return fmt.Sprintf("$%s", formatWithCommas(amount))
@@ -313,9 +315,9 @@ func printHumanReadable(breakdown *cost.Breakdown, prURL string, modelMergeTime 
 	// Print efficiency score
 	printEfficiency(breakdown)
 
-	// Print modeling callout if PR duration exceeds model merge time
-	if breakdown.PRDuration > modelMergeTime.Hours() {
-		printMergeTimeModelingCallout(breakdown, modelMergeTime, cfg)
+	// Print modeling callout if PR duration exceeds target merge time
+	if breakdown.PRDuration > cfg.TargetMergeTimeHours {
+		printMergeTimeModelingCallout(breakdown, cfg)
 	}
 }
 
@@ -528,8 +530,8 @@ func mergeVelocityGrade(avgOpenDays float64) (grade, message string) {
 }
 
 // printMergeTimeModelingCallout prints a callout showing potential savings from reduced merge time.
-func printMergeTimeModelingCallout(breakdown *cost.Breakdown, targetMergeTime time.Duration, cfg cost.Config) {
-	targetHours := targetMergeTime.Hours()
+func printMergeTimeModelingCallout(breakdown *cost.Breakdown, cfg cost.Config) {
+	targetHours := cfg.TargetMergeTimeHours
 	currentHours := breakdown.PRDuration
 
 	// Calculate hourly rate
@@ -538,7 +540,7 @@ func printMergeTimeModelingCallout(breakdown *cost.Breakdown, targetMergeTime ti
 	// Recalculate delivery delay with target merge time
 	remodelDeliveryDelayCost := hourlyRate * cfg.DeliveryDelayFactor * targetHours
 
-	// Code churn: 40min-1h is too short for meaningful code churn (< 1 day)
+	// Code churn: target time is too short for meaningful code churn (< 1 day)
 	remodelCodeChurnCost := 0.0
 
 	// Automated updates: only applies to PRs open > 1 day
@@ -546,7 +548,7 @@ func printMergeTimeModelingCallout(breakdown *cost.Breakdown, targetMergeTime ti
 
 	// PR tracking: scales with open time (already minimal for short PRs)
 	remodelPRTrackingCost := 0.0
-	if targetHours >= 1.0 { // Only track PRs open >= 1 hour
+	if targetHours >= 1.0 { // Minimal tracking for PRs open >= 1 hour
 		daysOpen := targetHours / 24.0
 		remodelPRTrackingHours := (cfg.PRTrackingMinutesPerDay / 60.0) * daysOpen
 		remodelPRTrackingCost = remodelPRTrackingHours * hourlyRate
