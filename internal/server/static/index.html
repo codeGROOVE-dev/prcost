@@ -1396,23 +1396,17 @@
 
         function mergeVelocityGrade(avgOpenHours) {
             if (avgOpenHours <= 4) {
-                return { grade: 'A+', message: 'Impeccable' };
-            } else if (avgOpenHours <= 8) {
-                return { grade: 'A', message: 'Excellent' };
-            } else if (avgOpenHours <= 12) {
-                return { grade: 'A-', message: 'Nearly excellent' };
-            } else if (avgOpenHours <= 18) {
-                return { grade: 'B+', message: 'Acceptable+' };
-            } else if (avgOpenHours <= 24) {
-                return { grade: 'B', message: 'Acceptable' };
-            } else if (avgOpenHours <= 36) {
-                return { grade: 'B-', message: 'Nearly acceptable' };
-            } else if (avgOpenHours <= 100) {
-                return { grade: 'C', message: 'Average' };
-            } else if (avgOpenHours <= 120) {
-                return { grade: 'D', message: 'Not good my friend.' };
+                return { grade: 'A+', message: 'World-class velocity' };
+            } else if (avgOpenHours <= 24) {  // 1 day
+                return { grade: 'A', message: 'High-performing team' };
+            } else if (avgOpenHours <= 84) {  // 3.5 days
+                return { grade: 'B', message: 'Room for improvement' };
+            } else if (avgOpenHours <= 132) {  // 5.5 days
+                return { grade: 'C', message: 'Significant delays present' };
+            } else if (avgOpenHours <= 192) {  // 8 days
+                return { grade: 'D', message: 'Needs attention' };
             } else {
-                return { grade: 'F', message: 'Failing' };
+                return { grade: 'F', message: 'Critical bottleneck' };
             }
         }
 
@@ -1427,6 +1421,7 @@
             html += `<span style="font-size: 28px; font-weight: 700; color: #1d1d1f;">${efficiencyPct.toFixed(1)}%</span>`;
             html += '</div>';
             html += `<div class="efficiency-message">${message}</div>`;
+            html += '<div style="font-size: 11px; color: #86868b; margin-top: 4px;">Expected costs minus delay costs</div>';
             html += '</div>'; // Close efficiency-box
 
             // Merge Velocity box
@@ -1449,7 +1444,7 @@
                 html += `<div style="font-size: 28px; font-weight: 700; color: #1d1d1f; margin-bottom: 4px;">${annualWasteFormatted}</div>`;
                 const annualCostPerHead = salary * benefitsMultiplier;
                 const headcount = annualWasteCost / annualCostPerHead;
-                html += `<div class="efficiency-message">${headcount.toFixed(1)} headcount</div>`;
+                html += `<div class="efficiency-message">Equal to ${headcount.toFixed(1)} engineers</div>`;
                 html += '</div>'; // Close efficiency-box
             }
 
@@ -2021,6 +2016,35 @@
             return output;
         }
 
+        // Track form state to grey out button after successful calculation
+        let formModifiedSinceLastCalculation = true;
+        let lastCalculationSuccessful = false;
+
+        function markFormAsModified() {
+            formModifiedSinceLastCalculation = true;
+            const submitBtn = document.getElementById('submitBtn');
+            if (lastCalculationSuccessful) {
+                submitBtn.disabled = false;
+                submitBtn.textContent = 'Calculate Cost';
+            }
+        }
+
+        function markCalculationComplete(success) {
+            lastCalculationSuccessful = success;
+            formModifiedSinceLastCalculation = false;
+            const submitBtn = document.getElementById('submitBtn');
+            if (success) {
+                submitBtn.disabled = true;
+                submitBtn.textContent = 'Costs calculated, scroll down...';
+            }
+        }
+
+        // Add change listeners to all form inputs
+        document.querySelectorAll('#costForm input, #costForm select').forEach(input => {
+            input.addEventListener('change', markFormAsModified);
+            input.addEventListener('input', markFormAsModified);
+        });
+
         document.getElementById('costForm').addEventListener('submit', async (e) => {
             e.preventDefault();
 
@@ -2160,22 +2184,94 @@
                     html += '</div>';
 
                     resultDiv.innerHTML = html;
+                    markCalculationComplete(true);
                 }
 
             } catch (error) {
                 resultDiv.innerHTML = `<div class="error">Error: ${error.message}</div>`;
+                markCalculationComplete(false);
             } finally {
                 submitBtn.classList.remove('calculating');
-                submitBtn.disabled = false;
-                submitBtn.textContent = 'Calculate Cost';
+                // Only re-enable button if form was modified or calculation failed
+                if (!lastCalculationSuccessful || formModifiedSinceLastCalculation) {
+                    submitBtn.disabled = false;
+                    submitBtn.textContent = 'Calculate Cost';
+                } else {
+                    // Calculation succeeded and form unchanged - keep button disabled
+                    submitBtn.disabled = true;
+                    submitBtn.textContent = 'Costs calculated, scroll down...';
+                }
             }
         });
 
-        async function handleStreamingRequest(endpoint, request, resultDiv) {
+        async function handleStreamingRequest(endpoint, request, resultDiv, maxRetries = 8) {
+            // Wrap streaming with automatic retry logic using exponential backoff with jitter
+            // Max retries = 8 allows for backoff up to 120s: 1s, 2s, 4s, 8s, 16s, 32s, 64s, 120s
+            for (let attempt = 1; attempt <= maxRetries; attempt++) {
+                try {
+                    await attemptStreamingRequest(endpoint, request, resultDiv, attempt, maxRetries);
+                    if (attempt > 1) {
+                        console.log(`Stream request succeeded after ${attempt} attempts`);
+                    }
+                    return; // Success, exit
+                } catch (error) {
+                    // Check if error is retryable (network/timeout errors)
+                    const isRetryable = error.message.includes('Failed to fetch') ||
+                                      error.message.includes('network') ||
+                                      error.message.includes('timeout') ||
+                                      error.message.includes('aborted') ||
+                                      error.name === 'TypeError' ||
+                                      error.name === 'AbortError';
+
+                    if (isRetryable && attempt < maxRetries) {
+                        // Exponential backoff with jitter: 1s, 2s, 4s, 8s, 16s, 32s, 64s, up to 120s
+                        const baseDelay = Math.min(1000 * Math.pow(2, attempt - 1), 120000);
+                        // Add jitter: random value between 0% and 25% of base delay
+                        const jitter = Math.random() * 0.25 * baseDelay;
+                        const delay = Math.floor(baseDelay + jitter);
+
+                        console.log(`Stream connection lost (attempt ${attempt}/${maxRetries}): ${error.message}`);
+                        console.log(`Retrying in ${delay}ms with exponential backoff + jitter`);
+
+                        // Show retry message to user
+                        const submitBtn = document.querySelector('button[type="submit"]');
+                        submitBtn.textContent = `Connection lost, retrying in ${Math.ceil(delay/1000)}s...`;
+
+                        await new Promise(resolve => setTimeout(resolve, delay));
+                        continue;
+                    }
+
+                    // Non-retryable error or max retries exceeded
+                    console.error(`Stream request failed permanently: ${error.message}`);
+                    throw error;
+                }
+            }
+        }
+
+        async function attemptStreamingRequest(endpoint, request, resultDiv, attempt, maxRetries) {
             // EventSource doesn't support POST, so we need a different approach
             // We'll use fetch to initiate, but handle it as a proper SSE stream
             return new Promise((resolve, reject) => {
                 let progressContainer;
+                let lastActivityTime = Date.now();
+                let timeoutId;
+                let reader; // Declare reader in outer scope to prevent race condition
+
+                // Set up activity timeout (10 seconds of no data = connection lost)
+                // Server sends updates every ~5s, so 10s allows for network latency
+                const resetTimeout = () => {
+                    if (timeoutId) clearTimeout(timeoutId);
+                    lastActivityTime = Date.now();
+                    timeoutId = setTimeout(() => {
+                        const elapsed = Date.now() - lastActivityTime;
+                        if (elapsed >= 10000) {
+                            if (reader) {
+                                reader.cancel().catch(() => {}); // Ignore cancel errors
+                            }
+                            reject(new Error('Stream timeout: no data received for 10 seconds'));
+                        }
+                    }, 10000);
+                };
 
                 // Make the POST request with fetch
                 fetch(endpoint, {
@@ -2186,22 +2282,28 @@
                     body: JSON.stringify(request)
                 }).then(response => {
                     if (!response.ok) {
+                        if (timeoutId) clearTimeout(timeoutId);
                         return response.text().then(error => {
                             throw new Error(error || `HTTP ${response.status}`);
                         });
                     }
 
                     // Use the proper streaming API with ReadableStream
-                    const reader = response.body.getReader();
+                    reader = response.body.getReader();
                     const decoder = new TextDecoder();
                     let buffer = '';
+
+                    resetTimeout(); // Start timeout monitoring
 
                     function read() {
                         reader.read().then(({done, value}) => {
                             if (done) {
+                                if (timeoutId) clearTimeout(timeoutId);
                                 resolve();
                                 return;
                             }
+
+                            resetTimeout(); // Reset timeout on data received
 
                             buffer += decoder.decode(value, {stream: true});
                             const lines = buffer.split('\n');
@@ -2215,7 +2317,8 @@
 
                                     if (data.type === 'error' && !data.pr) {
                                         // Global error
-                                        reader.cancel();
+                                        if (timeoutId) clearTimeout(timeoutId);
+                                        reader.cancel().catch(() => {}); // Ignore cancel errors
                                         reject(new Error(data.error));
                                         return;
                                     }
@@ -2334,6 +2437,7 @@
                                         html += '</div>';
 
                                         resultDiv.innerHTML = html;
+                                        markCalculationComplete(true);
                                         resolve();
                                         return;
                                     }
@@ -2365,6 +2469,7 @@
                             // Continue reading
                             read();
                         }).catch(error => {
+                            if (timeoutId) clearTimeout(timeoutId);
                             reject(error);
                         });
                     }
@@ -2372,6 +2477,7 @@
                     // Start reading
                     read();
                 }).catch(error => {
+                    if (timeoutId) clearTimeout(timeoutId);
                     reject(error);
                 });
             });
