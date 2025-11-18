@@ -99,8 +99,17 @@ func analyzeRepository(ctx context.Context, owner, repo string, sampleSize, days
 		openPRCount = 0
 	}
 
+	// Convert PRSummary to PRMergeStatus for merge rate calculation
+	prStatuses := make([]cost.PRMergeStatus, len(prs))
+	for i, pr := range prs {
+		prStatuses[i] = cost.PRMergeStatus{
+			Merged: pr.Merged,
+			State:  pr.State,
+		}
+	}
+
 	// Extrapolate costs from samples using library function
-	extrapolated := cost.ExtrapolateFromSamples(breakdowns, len(prs), totalAuthors, openPRCount, actualDays, cfg)
+	extrapolated := cost.ExtrapolateFromSamples(breakdowns, len(prs), totalAuthors, openPRCount, actualDays, cfg, prStatuses)
 
 	// Display results in itemized format
 	printExtrapolatedResults(fmt.Sprintf("%s/%s", owner, repo), actualDays, &extrapolated, cfg)
@@ -199,8 +208,17 @@ func analyzeOrganization(ctx context.Context, org string, sampleSize, days int, 
 	}
 	slog.Info("Counted total open PRs across organization", "org", org, "open_prs", totalOpenPRs)
 
+	// Convert PRSummary to PRMergeStatus for merge rate calculation
+	prStatuses := make([]cost.PRMergeStatus, len(prs))
+	for i, pr := range prs {
+		prStatuses[i] = cost.PRMergeStatus{
+			Merged: pr.Merged,
+			State:  pr.State,
+		}
+	}
+
 	// Extrapolate costs from samples using library function
-	extrapolated := cost.ExtrapolateFromSamples(breakdowns, len(prs), totalAuthors, totalOpenPRs, actualDays, cfg)
+	extrapolated := cost.ExtrapolateFromSamples(breakdowns, len(prs), totalAuthors, totalOpenPRs, actualDays, cfg, prStatuses)
 
 	// Display results in itemized format
 	printExtrapolatedResults(fmt.Sprintf("%s (organization)", org), actualDays, &extrapolated, cfg)
@@ -656,6 +674,18 @@ func printExtrapolatedEfficiency(ext *cost.ExtrapolatedBreakdown, days int, cfg 
 	fmt.Printf("  │ %-60s│\n", velocityHeader)
 	fmt.Println("  └─────────────────────────────────────────────────────────────┘")
 
+	// Merge Rate box (if data available)
+	if ext.MergedPRs+ext.UnmergedPRs > 0 {
+		mergeRateGradeStr, mergeRateMessage := mergeRateGrade(ext.MergeRate)
+		fmt.Println("  ┌─────────────────────────────────────────────────────────────┐")
+		mergeRateHeader := fmt.Sprintf("MERGE RATE: %s (%.1f%%) - %s", mergeRateGradeStr, ext.MergeRate, mergeRateMessage)
+		if len(mergeRateHeader) > innerWidth {
+			mergeRateHeader = mergeRateHeader[:innerWidth]
+		}
+		fmt.Printf("  │ %-60s│\n", mergeRateHeader)
+		fmt.Println("  └─────────────────────────────────────────────────────────────┘")
+	}
+
 	// Weekly waste per PR author
 	if ext.WasteHoursPerAuthorPerWeek > 0 && ext.TotalAuthors > 0 {
 		fmt.Printf("  Weekly waste per PR author:     $%14s    %s  (%d authors)\n",
@@ -738,12 +768,12 @@ func printExtrapolatedMergeTimeModelingCallout(ext *cost.ExtrapolatedBreakdown, 
 		fmt.Println("  ┌─────────────────────────────────────────────────────────────┐")
 		fmt.Printf("  │ %-60s│\n", "MERGE TIME MODELING")
 		fmt.Println("  └─────────────────────────────────────────────────────────────┘")
-		fmt.Printf("  If you lowered your average merge time to %s, you would save\n", formatTimeUnit(targetHours))
-		fmt.Printf("  ~$%s/yr in engineering overhead", formatWithCommas(annualSavings))
 		if efficiencyDelta > 0 {
-			fmt.Printf(" (+%.1f%% throughput).\n", efficiencyDelta)
+			fmt.Printf("  Reduce merge time to %s to boost team throughput by %.1f%%\n", formatTimeUnit(targetHours), efficiencyDelta)
+			fmt.Printf("  and save ~$%s/yr in engineering overhead.\n", formatWithCommas(annualSavings))
 		} else {
-			fmt.Println(".")
+			fmt.Printf("  If you lowered your average merge time to %s, you would save\n", formatTimeUnit(targetHours))
+			fmt.Printf("  ~$%s/yr in engineering overhead.\n", formatWithCommas(annualSavings))
 		}
 		fmt.Println()
 	}

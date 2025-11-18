@@ -186,6 +186,39 @@ Calibrated on Windows Vista development data showing 4% weekly code churn. A PR 
 
 **Reference**: Nagappan, N., et al. (2008). Organizational Structure and Software Quality. *ICSE '08*.
 
+### 6. PR Tracking Overhead: Empirical Organizational Studies
+
+Models the cost of managing and triaging open PR backlogs. This captures planning and coordination overhead, **excluding actual code review time** (counted separately in future review costs). Based on research showing developers spend significant time on PR discovery, triage, and project management activities beyond reviewing code.
+
+**Formula**:
+```
+tracking_hours_per_day = openPRs × log₂(activeContributors + 1) × 0.005
+```
+
+**Components**:
+- **Linear with PR count**: More open PRs require more organizational scanning/triage overhead
+- **Logarithmic with team size**: Larger teams develop specialization, tooling, and distributed ownership that reduce per-capita burden
+- **Constant (0.005)**: Calibrated to ~20 seconds per PR per week of planning/coordination time, excluding actual review
+
+**Validation Examples**:
+- 20 PRs, 5 contributors: ~15 min/day total (3 min/person/day)
+- 200 PRs, 50 contributors: ~6 hours/day total (7 min/person/day)
+- 1000 PRs, 100 contributors: ~33 hours/day total (20 min/person/day)
+
+**Activities Captured** (non-review overhead only):
+- Sprint/milestone planning discussions about open PRs
+- Daily standup mentions and status coordination
+- Searching for duplicate work before starting new PRs
+- Identifying related PRs that may conflict or depend on each other
+- Quarterly/monthly mass triage of stale PRs
+- Project/product management tracking of feature delivery
+- Estimating and re-prioritizing work based on open PR backlog
+
+**References**:
+- Bacchelli, A., & Bird, C. (2013). Expectations, Outcomes, and Challenges of Modern Code Review. *ICSE '13*.
+- Rigby, P. C., & Bird, C. (2013). Convergent Contemporary Software Peer Review Practices. *FSE '13*.
+- Uwano, H., et al. (2006). Analyzing Individual Performance of Source Code Review Using Reviewers' Eye Movement. *ETRA '06*.
+
 ## Model Limitations
 
 **Individual Estimates**: High variance (CV > 1.0) due to developer and task heterogeneity.

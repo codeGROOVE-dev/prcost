@@ -32,10 +32,13 @@ test('Renders callout for PRs with avgOpenHours > 1.5 (default)', () => {
     assert(result.length > 0, 'Should return non-empty HTML');
 });
 
-// Test 3: Should contain "Pro-Tip:" text
-test('Contains "Pro-Tip:" text', () => {
+// Test 3: Should contain "Pro-Tip:" text and throughput boost
+test('Contains "Pro-Tip:" text and throughput boost', () => {
     const result = formatR2RCallout(10, 50000, 60, 70);
+    assert(result.includes('💡'), 'Should contain lightbulb emoji');
     assert(result.includes('Pro-Tip:'), 'Should contain "Pro-Tip:"');
+    assert(result.includes('Boost team throughput by'), 'Should contain throughput boost message');
+    assert(result.includes('10.0%'), 'Should show efficiency delta of 10% (70 - 60)');
 });
 
 // Test 4: Should contain "Ready to Review" link

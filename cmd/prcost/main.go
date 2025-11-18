@@ -530,6 +530,23 @@ func mergeVelocityGrade(avgOpenDays float64) (grade, message string) {
 	}
 }
 
+// mergeRateGrade returns a grade based on merge success rate percentage.
+// A: >90%, B: >80%, C: >70%, D: >60%, F: ≤60%.
+func mergeRateGrade(mergeRatePct float64) (grade, message string) {
+	switch {
+	case mergeRatePct > 90:
+		return "A", "Excellent"
+	case mergeRatePct > 80:
+		return "B", "Good"
+	case mergeRatePct > 70:
+		return "C", "Acceptable"
+	case mergeRatePct > 60:
+		return "D", "Low"
+	default:
+		return "F", "Poor"
+	}
+}
+
 // printMergeTimeModelingCallout prints a callout showing potential savings from reduced merge time.
 func printMergeTimeModelingCallout(breakdown *cost.Breakdown, cfg cost.Config) {
 	targetHours := cfg.TargetMergeTimeHours
@@ -595,12 +612,12 @@ func printMergeTimeModelingCallout(breakdown *cost.Breakdown, cfg cost.Config) {
 		fmt.Println("  ┌─────────────────────────────────────────────────────────────┐")
 		fmt.Printf("  │ %-60s│\n", "MERGE TIME MODELING")
 		fmt.Println("  └─────────────────────────────────────────────────────────────┘")
-		fmt.Printf("  If you lowered your average merge time to %s, you would save\n", formatTimeUnit(targetHours))
-		fmt.Printf("  ~$%s/yr in engineering overhead", formatWithCommas(annualSavings))
 		if efficiencyDelta > 0 {
-			fmt.Printf(" (+%.1f%% throughput).\n", efficiencyDelta)
+			fmt.Printf("  Reduce merge time to %s to boost team throughput by %.1f%%\n", formatTimeUnit(targetHours), efficiencyDelta)
+			fmt.Printf("  and save ~$%s/yr in engineering overhead.\n", formatWithCommas(annualSavings))
 		} else {
-			fmt.Println(".")
+			fmt.Printf("  If you lowered your average merge time to %s, you would save\n", formatTimeUnit(targetHours))
+			fmt.Printf("  ~$%s/yr in engineering overhead.\n", formatWithCommas(annualSavings))
 		}
 		fmt.Println()
 	}

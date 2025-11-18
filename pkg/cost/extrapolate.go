@@ -1,6 +1,15 @@
 package cost
 
-import "log/slog"
+import (
+	"log/slog"
+	"math"
+)
+
+// PRMergeStatus represents merge status information for a PR (for calculating merge rate).
+type PRMergeStatus struct {
+	State  string // "OPEN", "CLOSED", "MERGED"
+	Merged bool
+}
 
 // ExtrapolatedBreakdown represents cost estimates extrapolated from a sample
 // of PRs to estimate total costs across a larger population.
@@ -94,6 +103,12 @@ type ExtrapolatedBreakdown struct {
 	TotalCost  float64 `json:"total_cost"`
 	TotalHours float64 `json:"total_hours"`
 
+	// Merge rate statistics
+	MergedPRs     int     `json:"merged_prs"`      // Number of successfully merged PRs
+	UnmergedPRs   int     `json:"unmerged_prs"`    // Number of PRs not merged (closed or still open)
+	MergeRate     float64 `json:"merge_rate"`      // Percentage of PRs successfully merged (0-100)
+	MergeRateNote string  `json:"merge_rate_note"` // Explanation of what counts as merged/unmerged
+
 	// R2R cost savings calculation
 	UniqueNonBotUsers int     `json:"unique_non_bot_users"` // Count of unique non-bot users (authors + participants)
 	R2RSavings        float64 `json:"r2r_savings"`          // Annual savings if R2R cuts PR time to target merge time
@@ -106,8 +121,10 @@ type ExtrapolatedBreakdown struct {
 //   - breakdowns: Slice of Breakdown structs from successfully processed samples
 //   - totalPRs: Total number of PRs in the population
 //   - totalAuthors: Total number of unique authors across all PRs (not just samples)
+//   - actualOpenPRs: Count of actually open PRs (for tracking overhead)
 //   - daysInPeriod: Number of days the sample covers (for per-week calculations)
 //   - cfg: Configuration for hourly rate and hours per week calculation
+//   - prStatuses: Merge status for all PRs (for merge rate calculation)
 //
 // Returns:
 //   - ExtrapolatedBreakdown with averaged costs scaled to total population
@@ -116,12 +133,28 @@ type ExtrapolatedBreakdown struct {
 // by the total PR count to estimate population-wide costs.
 //
 //nolint:revive,maintidx // Complex calculation function benefits from cohesion
-func ExtrapolateFromSamples(breakdowns []Breakdown, totalPRs, totalAuthors, actualOpenPRs int, daysInPeriod int, cfg Config) ExtrapolatedBreakdown {
+func ExtrapolateFromSamples(breakdowns []Breakdown, totalPRs, totalAuthors, actualOpenPRs int, daysInPeriod int, cfg Config, prStatuses []PRMergeStatus) ExtrapolatedBreakdown {
 	if len(breakdowns) == 0 {
+		// Calculate merge rate even with no successful samples
+		mergedCount := 0
+		for _, status := range prStatuses {
+			if status.Merged {
+				mergedCount++
+			}
+		}
+		mergeRate := 0.0
+		if len(prStatuses) > 0 {
+			mergeRate = 100.0 * float64(mergedCount) / float64(len(prStatuses))
+		}
+
 		return ExtrapolatedBreakdown{
 			TotalPRs:          totalPRs,
 			SampledPRs:        0,
 			SuccessfulSamples: 0,
+			MergedPRs:         mergedCount,
+			UnmergedPRs:       len(prStatuses) - mergedCount,
+			MergeRate:         mergeRate,
+			MergeRateNote:     "Recently modified PRs successfully merged",
 		}
 	}
 
@@ -292,11 +325,21 @@ func ExtrapolateFromSamples(breakdowns []Breakdown, totalPRs, totalAuthors, actu
 	extCodeChurnCost := sumCodeChurnCost / samples * multiplier
 	extAutomatedUpdatesCost := sumAutomatedUpdatesCost / samples * multiplier
 	// Calculate Open PR Tracking cost based on actual open PRs (not from samples)
-	// Formula: actualOpenPRs × uniqueUsers × (tracking_minutes_per_day_per_person / 60) × daysInPeriod × hourlyRate
-	// This scales with team size: larger teams spend more total time tracking open PRs
+	// Formula: openPRs × log2(activeContributors + 1) × 0.005 × daysInPeriod × hourlyRate
+	// This represents planning/coordination overhead ONLY (excludes actual code review)
+	// - Linear with PR count: more PRs = more planning/triage overhead
+	// - Logarithmic with team size: larger teams have specialization/better processes
+	// - Constant 0.005: calibrated to ~20 seconds per PR per week of planning/coordination time
+	//   (excludes actual review time, which is counted separately in FutureReviewCost)
 	hourlyRate := cfg.AnnualSalary * cfg.BenefitsMultiplier / cfg.HoursPerYear
 	uniqueUserCount := len(uniqueNonBotUsers)
-	extPRTrackingHours := float64(actualOpenPRs) * float64(uniqueUserCount) * (cfg.PRTrackingMinutesPerDay / 60.0) * float64(daysInPeriod)
+	var extPRTrackingHours float64
+	if uniqueUserCount > 0 && actualOpenPRs > 0 {
+		// log2(n+1) to handle log(0) and provide smooth scaling
+		teamScaleFactor := math.Log2(float64(uniqueUserCount) + 1)
+		// 0.005 hours = 0.30 minutes per PR per day (organizational average for planning/coordination only)
+		extPRTrackingHours = float64(actualOpenPRs) * teamScaleFactor * 0.005 * float64(daysInPeriod)
+	}
 	extPRTrackingCost := extPRTrackingHours * hourlyRate
 	extFutureReviewCost := sumFutureReviewCost / samples * multiplier
 	extFutureMergeCost := sumFutureMergeCost / samples * multiplier
@@ -439,6 +482,28 @@ func ExtrapolateFromSamples(breakdowns []Breakdown, totalPRs, totalAuthors, actu
 		r2rSavings = 0 // Don't show negative savings
 	}
 
+	// Calculate merge rate from all PRs (not just samples)
+	mergedCount := 0
+	unmergedCount := 0
+	for _, status := range prStatuses {
+		if status.Merged {
+			mergedCount++
+		} else {
+			unmergedCount++
+		}
+	}
+
+	mergeRate := 0.0
+	if len(prStatuses) > 0 {
+		mergeRate = 100.0 * float64(mergedCount) / float64(len(prStatuses))
+	}
+
+	slog.Info("Calculated merge rate from all PRs",
+		"total_prs", len(prStatuses),
+		"merged", mergedCount,
+		"unmerged", unmergedCount,
+		"merge_rate_pct", mergeRate)
+
 	return ExtrapolatedBreakdown{
 		TotalPRs:                   totalPRs,
 		HumanPRs:                   extHumanPRs,
@@ -516,6 +581,11 @@ func ExtrapolateFromSamples(breakdowns []Breakdown, totalPRs, totalAuthors, actu
 
 		TotalCost:  extTotalCost,
 		TotalHours: extTotalHours,
+
+		MergedPRs:     mergedCount,
+		UnmergedPRs:   unmergedCount,
+		MergeRate:     mergeRate,
+		MergeRateNote: "Recently modified PRs successfully merged",
 
 		UniqueNonBotUsers: uniqueUserCount,
 		R2RSavings:        r2rSavings,

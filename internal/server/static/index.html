@@ -1410,7 +1410,21 @@
             }
         }
 
-        function formatEfficiencyHTML(efficiencyPct, grade, message, preventableCost, preventableHours, totalCost, totalHours, avgOpenHours, isAnnual = false, annualWasteCost = 0, annualWasteHours = 0, wasteHoursPerWeek = 0, wasteCostPerWeek = 0, wasteHoursPerAuthorPerWeek = 0, wasteCostPerAuthorPerWeek = 0, totalAuthors = 0, salary = 250000, benefitsMultiplier = 1.2, analysisType = 'project', sourceName = '') {
+        function mergeRateGrade(mergeRatePct) {
+            if (mergeRatePct > 90) {
+                return { grade: 'A', message: 'Excellent success rate' };
+            } else if (mergeRatePct > 80) {
+                return { grade: 'B', message: 'Good success rate' };
+            } else if (mergeRatePct > 70) {
+                return { grade: 'C', message: 'Acceptable success rate' };
+            } else if (mergeRatePct > 60) {
+                return { grade: 'D', message: 'Low success rate' };
+            } else {
+                return { grade: 'F', message: 'Poor success rate' };
+            }
+        }
+
+        function formatEfficiencyHTML(efficiencyPct, grade, message, preventableCost, preventableHours, totalCost, totalHours, avgOpenHours, isAnnual = false, annualWasteCost = 0, annualWasteHours = 0, wasteHoursPerWeek = 0, wasteCostPerWeek = 0, wasteHoursPerAuthorPerWeek = 0, wasteCostPerAuthorPerWeek = 0, totalAuthors = 0, salary = 250000, benefitsMultiplier = 1.2, analysisType = 'project', sourceName = '', mergeRate = 0, mergedPRs = 0, unmergedPRs = 0) {
             let html = '<div class="efficiency-section">';
 
             // Development Efficiency box
@@ -1434,6 +1448,20 @@
             html += '</div>';
             html += `<div class="efficiency-message">${velocityGradeObj.message}</div>`;
             html += '</div>'; // Close efficiency-box
+
+            // Merge Rate box (if data available)
+            if (mergedPRs + unmergedPRs > 0) {
+                const mergeRateGradeObj = mergeRateGrade(mergeRate);
+                html += '<div class="efficiency-box">';
+                html += '<h3 style="margin: 0 0 8px 0; font-size: 14px; font-weight: 600; color: #1d1d1f;">Merge Rate</h3>';
+                html += '<div style="display: flex; align-items: center; gap: 10px; margin-bottom: 4px;">';
+                html += `<span class="efficiency-grade grade-${mergeRateGradeObj.grade[0]}" style="display: inline-block; min-width: 38px; padding: 3px 7px; border-radius: 6px; font-size: 16px; font-weight: 700; text-align: center; background: rgba(0,0,0,0.06);">${mergeRateGradeObj.grade}</span>`;
+                html += `<span style="font-size: 28px; font-weight: 700; color: #1d1d1f;">${mergeRate.toFixed(1)}%</span>`;
+                html += '</div>';
+                html += `<div class="efficiency-message">${mergeRateGradeObj.message}</div>`;
+                html += '<div style="font-size: 11px; color: #86868b; margin-top: 4px;">Recently modified PRs successfully merged</div>';
+                html += '</div>'; // Close efficiency-box
+            }
 
             // Annual Impact box (only if annual)
             if (isAnnual && annualWasteCost > 0) {
@@ -1469,16 +1497,12 @@
             }
 
             const efficiencyDelta = modeledEfficiency - currentEfficiency;
-            let throughputText = '';
-            if (efficiencyDelta > 0) {
-                throughputText = ' (+' + efficiencyDelta.toFixed(1) + '% throughput)';
-            }
 
             // Format target merge time
             let targetText = targetMergeHours.toFixed(1) + 'h';
 
-            let html = '<div style="margin: 24px 0; padding: 12px 20px; background: linear-gradient(135deg, #e6f9f0 0%, #ffffff 100%); border: 1px solid #00c853; border-radius: 8px; font-size: 14px; color: #1d1d1f; line-height: 1.6;">';
-            html += 'Pro-Tip: Save <strong>' + savingsText + '/yr</strong> in lost development effort by reducing merge times to &lt;' + targetText + ' with ';
+            let html = '<div style="margin: 24px 0; padding: 12px 20px; background: linear-gradient(135deg, #e6f9f0 0%, #ffffff 100%); border: 1px solid #00c853; border-radius: 8px; font-size: 16px; color: #1d1d1f; line-height: 1.6; font-family: -apple-system, BlinkMacSystemFont, \'Segoe UI\', Helvetica, Arial, sans-serif, \'Apple Color Emoji\', \'Segoe UI Emoji\', \'Noto Color Emoji\';">';
+            html += '<span style="font-family: \'Apple Color Emoji\', \'Segoe UI Emoji\', \'Noto Color Emoji\', sans-serif; font-style: normal; font-weight: normal; text-rendering: optimizeLegibility;">\uD83D\uDCA1</span> <strong>Pro-Tip:</strong> Boost team throughput by <strong>' + efficiencyDelta.toFixed(1) + '%</strong> and save <strong>' + savingsText + '/yr</strong> by reducing merge times to &lt;' + targetText + ' with ';
             html += '<a href="https://codegroove.dev/products/ready-to-review/" target="_blank" rel="noopener" style="color: #00c853; font-weight: 600; text-decoration: none;">Ready to Review</a>. ';
             html += 'Free for open-source repositories, $6/user/org for private repos.';
             html += '</div>';
@@ -2374,7 +2398,10 @@
                                         const wasteCostPerAuthorPerWeek = e.waste_cost_per_author_per_week || 0;
                                         const totalAuthors = e.total_authors || 0;
                                         const avgPRDurationHours = e.avg_pr_duration_hours || 0;
-                                        html += formatEfficiencyHTML(extEfficiencyPct, extEfficiency.grade, extEfficiency.message, extPreventableCost, extPreventableHours, e.total_cost, e.total_hours, avgPRDurationHours, true, annualWasteCost, annualWasteHours, wasteHoursPerWeek, wasteCostPerWeek, wasteHoursPerAuthorPerWeek, wasteCostPerAuthorPerWeek, totalAuthors, salary, benefitsMultiplier, analysisType, sourceName);
+                                        const mergeRate = e.merge_rate || 0;
+                                        const mergedPRs = e.merged_prs || 0;
+                                        const unmergedPRs = e.unmerged_prs || 0;
+                                        html += formatEfficiencyHTML(extEfficiencyPct, extEfficiency.grade, extEfficiency.message, extPreventableCost, extPreventableHours, e.total_cost, e.total_hours, avgPRDurationHours, true, annualWasteCost, annualWasteHours, wasteHoursPerWeek, wasteCostPerWeek, wasteHoursPerAuthorPerWeek, wasteCostPerAuthorPerWeek, totalAuthors, salary, benefitsMultiplier, analysisType, sourceName, mergeRate, mergedPRs, unmergedPRs);
 
                                         // Add R2R callout if enabled, otherwise generic merge time callout
                                         // Calculate modeled efficiency (with 1.5h merge time)
