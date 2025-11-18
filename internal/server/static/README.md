@@ -6,7 +6,7 @@ This directory contains static assets for the prcost web UI, including JavaScrip
 
 Key functions are extracted into separate `.js` files for testing purposes:
 
-- `formatR2RCallout.js` - Renders the Ready-to-Review savings callout
+- `formatR2RCallout.js` - Renders the Ready to Review savings callout
 - `formatR2RCallout.test.js` - Tests for the callout rendering
 
 ### Running Tests
@@ -24,7 +24,7 @@ make test
 The JavaScript tests verify:
 - Correct rendering of the savings callout HTML
 - Proper formatting of dollar amounts ($50K, $2.5M, etc.)
-- Presence of key messaging ("Pro-Tip:", "Ready-to-Review", etc.)
+- Presence of key messaging ("Pro-Tip:", "Ready to Review", etc.)
 - Correct behavior for fast PRs (no callout for ≤1 hour)
 - HTML structure and styling
 

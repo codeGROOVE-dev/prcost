@@ -38,17 +38,18 @@ test('Contains "Pro-Tip:" text', () => {
     assert(result.includes('Pro-Tip:'), 'Should contain "Pro-Tip:"');
 });
 
-// Test 4: Should contain "Ready-to-Review" link
-test('Contains "Ready-to-Review" link', () => {
+// Test 4: Should contain "Ready to Review" link
+test('Contains "Ready to Review" link', () => {
     const result = formatR2RCallout(10, 50000, 60, 70);
-    assert(result.includes('Ready-to-Review'), 'Should contain "Ready-to-Review"');
-    assert(result.includes('href="https://codegroove.dev/"'), 'Should link to codegroove.dev');
+    assert(result.includes('Ready to Review'), 'Should contain "Ready to Review"');
+    assert(result.includes('href="https://codegroove.dev/products/ready-to-review/"'), 'Should link to Ready to Review page');
 });
 
 // Test 5: Should contain OSS pricing message
 test('Contains OSS pricing message', () => {
     const result = formatR2RCallout(10, 50000, 60, 70);
-    assert(result.includes('Free for OSS, cheap for everyone else'), 'Should contain OSS pricing message');
+    assert(result.includes('Free for open-source repositories'), 'Should contain OSS pricing message');
+    assert(result.includes('$6/user/org for private repos'), 'Should contain private repo pricing');
 });
 
 // Test 6: Should format savings in thousands (K)
