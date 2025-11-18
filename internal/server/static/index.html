@@ -2171,11 +2171,74 @@
             }
         });
 
-        async function handleStreamingRequest(endpoint, request, resultDiv) {
+        async function handleStreamingRequest(endpoint, request, resultDiv, maxRetries = 8) {
+            // Wrap streaming with automatic retry logic using exponential backoff with jitter
+            // Max retries = 8 allows for backoff up to 120s: 1s, 2s, 4s, 8s, 16s, 32s, 64s, 120s
+            for (let attempt = 1; attempt <= maxRetries; attempt++) {
+                try {
+                    await attemptStreamingRequest(endpoint, request, resultDiv, attempt, maxRetries);
+                    if (attempt > 1) {
+                        console.log(`Stream request succeeded after ${attempt} attempts`);
+                    }
+                    return; // Success, exit
+                } catch (error) {
+                    // Check if error is retryable (network/timeout errors)
+                    const isRetryable = error.message.includes('Failed to fetch') ||
+                                      error.message.includes('network') ||
+                                      error.message.includes('timeout') ||
+                                      error.message.includes('aborted') ||
+                                      error.name === 'TypeError' ||
+                                      error.name === 'AbortError';
+
+                    if (isRetryable && attempt < maxRetries) {
+                        // Exponential backoff with jitter: 1s, 2s, 4s, 8s, 16s, 32s, 64s, up to 120s
+                        const baseDelay = Math.min(1000 * Math.pow(2, attempt - 1), 120000);
+                        // Add jitter: random value between 0% and 25% of base delay
+                        const jitter = Math.random() * 0.25 * baseDelay;
+                        const delay = Math.floor(baseDelay + jitter);
+
+                        console.log(`Stream connection lost (attempt ${attempt}/${maxRetries}): ${error.message}`);
+                        console.log(`Retrying in ${delay}ms with exponential backoff + jitter`);
+
+                        // Show retry message to user
+                        const submitBtn = document.querySelector('button[type="submit"]');
+                        submitBtn.textContent = `Connection lost, retrying in ${Math.ceil(delay/1000)}s...`;
+
+                        await new Promise(resolve => setTimeout(resolve, delay));
+                        continue;
+                    }
+
+                    // Non-retryable error or max retries exceeded
+                    console.error(`Stream request failed permanently: ${error.message}`);
+                    throw error;
+                }
+            }
+        }
+
+        async function attemptStreamingRequest(endpoint, request, resultDiv, attempt, maxRetries) {
             // EventSource doesn't support POST, so we need a different approach
             // We'll use fetch to initiate, but handle it as a proper SSE stream
             return new Promise((resolve, reject) => {
                 let progressContainer;
+                let lastActivityTime = Date.now();
+                let timeoutId;
+                let reader; // Declare reader in outer scope to prevent race condition
+
+                // Set up activity timeout (10 seconds of no data = connection lost)
+                // Server sends updates every ~5s, so 10s allows for network latency
+                const resetTimeout = () => {
+                    if (timeoutId) clearTimeout(timeoutId);
+                    lastActivityTime = Date.now();
+                    timeoutId = setTimeout(() => {
+                        const elapsed = Date.now() - lastActivityTime;
+                        if (elapsed >= 10000) {
+                            if (reader) {
+                                reader.cancel().catch(() => {}); // Ignore cancel errors
+                            }
+                            reject(new Error('Stream timeout: no data received for 10 seconds'));
+                        }
+                    }, 10000);
+                };
 
                 // Make the POST request with fetch
                 fetch(endpoint, {
@@ -2186,22 +2249,28 @@
                     body: JSON.stringify(request)
                 }).then(response => {
                     if (!response.ok) {
+                        if (timeoutId) clearTimeout(timeoutId);
                         return response.text().then(error => {
                             throw new Error(error || `HTTP ${response.status}`);
                         });
                     }
 
                     // Use the proper streaming API with ReadableStream
-                    const reader = response.body.getReader();
+                    reader = response.body.getReader();
                     const decoder = new TextDecoder();
                     let buffer = '';
+
+                    resetTimeout(); // Start timeout monitoring
 
                     function read() {
                         reader.read().then(({done, value}) => {
                             if (done) {
+                                if (timeoutId) clearTimeout(timeoutId);
                                 resolve();
                                 return;
                             }
+
+                            resetTimeout(); // Reset timeout on data received
 
                             buffer += decoder.decode(value, {stream: true});
                             const lines = buffer.split('\n');
@@ -2215,7 +2284,8 @@
 
                                     if (data.type === 'error' && !data.pr) {
                                         // Global error
-                                        reader.cancel();
+                                        if (timeoutId) clearTimeout(timeoutId);
+                                        reader.cancel().catch(() => {}); // Ignore cancel errors
                                         reject(new Error(data.error));
                                         return;
                                     }
@@ -2365,6 +2435,7 @@
                             // Continue reading
                             read();
                         }).catch(error => {
+                            if (timeoutId) clearTimeout(timeoutId);
                             reject(error);
                         });
                     }
@@ -2372,6 +2443,7 @@
                     // Start reading
                     read();
                 }).catch(error => {
+                    if (timeoutId) clearTimeout(timeoutId);
                     reject(error);
                 });
             });
