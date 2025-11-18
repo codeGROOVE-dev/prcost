@@ -86,6 +86,29 @@ type Config struct {
 	// Modification is cheaper because architecture is established and patterns are known.
 	ModificationCostFactor float64
 
+	// WeeklyChurnRate is the probability that code becomes stale per week (default: 0.0229 = 2.29%)
+	// Used to calculate rework percentage for open PRs based on time since last commit.
+	// Formula: rework = 1 - (1 - weekly_rate)^weeks
+	//
+	// Default of 2.29% per week is based on empirical analysis across organizations:
+	// - 60% of analyzed organizations had churn rates of 2.29%/week or lower
+	// - 40% had higher churn rates
+	// - Younger companies tend to have higher churn rates
+	// - Results in 70% annual churn, reasonable for active development
+	//
+	// Examples from empirical data:
+	// - 0.0018 (0.18%/week) - Adobe (mature, stable codebase)
+	// - 0.0229 (2.29%/week) - 60th percentile (default)
+	// - 0.0831 (8.31%/week) - Chainguard (young company, fast-moving)
+	//
+	// Recommended values for different project types:
+	// - 0.010 (1.0%/week) → 41% annual churn - stable projects, mature codebases
+	// - 0.0229 (2.29%/week) → 70% annual churn - typical active development (default, 60th percentile)
+	// - 0.030 (3.0%/week) → 78% annual churn - fast-moving projects
+	// - 0.040 (4.0%/week) → 88% annual churn - very high churn
+	// - 0.080+ (8%+/week) → 99%+ annual churn - extremely fast-moving, younger companies
+	WeeklyChurnRate float64
+
 	// COCOMO configuration for estimating code writing effort
 	COCOMO cocomo.Config
 }
@@ -108,6 +131,7 @@ func DefaultConfig() Config {
 		MaxCodeDrift:             90 * 24 * time.Hour,             // 90 days
 		ReviewInspectionRate:     275.0,                           // 275 LOC/hour (average of optimal 150-400 range)
 		ModificationCostFactor:   0.4,                             // Modified code costs 40% of new code
+		WeeklyChurnRate:          0.0229,                          // 2.29% per week (70% annual, 60th percentile empirical)
 		COCOMO:                   cocomo.DefaultConfig(),
 	}
 }
@@ -347,29 +371,21 @@ func Calculate(data PRData, cfg Config) Breakdown {
 	// 2. Code Churn (Rework): Probability-based drift formula
 	// Only calculated for open PRs - closed PRs won't need future updates
 	//
-	// Research basis:
-	// - Windows Vista: 4-8% weekly code churn (Nagappan et al., Microsoft Research, 2008)
-	// - Using 4% weekly baseline for active repositories
-	//
 	// Formula: Probability that a line becomes stale over time
 	//   drift = 1 - (1 - weeklyChurn)^(weeks)
-	//   drift = 1 - (0.96)^(days/7)
+	//   Default: weeklyChurn = 2.29% (0.0229) - empirical 60th percentile
 	//
 	// This models the cumulative probability that any given line in the PR needs rework
-	// due to codebase changes. Unlike compounding formulas, this accounts for the fact
-	// that the same code areas often change multiple times.
+	// due to codebase changes. The weekly churn rate is configurable to match project velocity.
 	//
-	// Expected drift percentages:
-	// -  3 days: ~2% drift
-	// -  7 days: ~4% drift (matches weekly churn)
-	// - 14 days: ~8% drift
-	// - 30 days: ~16% drift
-	// - 60 days: ~29% drift
-	// - 90 days: ~41% drift (days capped at 90)
-	//
-	// Reference:
-	// Nagappan, N., Murphy, B., & Basili, V. (2008). The Influence of Organizational
-	// Structure on Software Quality. ACM/IEEE ICSE. DOI: 10.1145/1368088.1368160
+	// Default (2.29% per week) drift percentages:
+	// -  1 week: ~2.3% drift
+	// -  2 weeks: ~4.5% drift
+	// -  3 weeks: ~6.7% drift
+	// -  1 month: ~8.9% drift
+	// -  2 months: ~16.9% drift
+	// -  3 months: ~24.3% drift
+	// -  1 year: ~70% annual churn (empirical data from org analysis)
 
 	var reworkLOC int
 	var codeChurnHours float64
@@ -414,9 +430,11 @@ func Calculate(data PRData, cfg Config) Breakdown {
 			cappedDriftDays = maxDriftDays
 		}
 
-		// Probability-based drift: 1 - (1 - 0.04)^(days/7)
+		// Probability-based drift using configurable weekly churn rate
+		// Formula: rework = 1 - (1 - weekly_rate)^weeks
+		// Default: 1% per week → 41% annual churn
 		weeks := cappedDriftDays / 7.0
-		reworkPercentage = 1.0 - math.Pow(0.96, weeks)
+		reworkPercentage = 1.0 - math.Pow(1.0-cfg.WeeklyChurnRate, weeks)
 
 		reworkLOC = int(float64(data.LinesAdded) * reworkPercentage)
 
