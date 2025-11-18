@@ -96,7 +96,7 @@ type ExtrapolatedBreakdown struct {
 
 	// R2R cost savings calculation
 	UniqueNonBotUsers int     `json:"unique_non_bot_users"` // Count of unique non-bot users (authors + participants)
-	R2RSavings        float64 `json:"r2r_savings"`          // Annual savings if R2R cuts PR time to 40 minutes
+	R2RSavings        float64 `json:"r2r_savings"`          // Annual savings if R2R cuts PR time to target merge time
 }
 
 // ExtrapolateFromSamples calculates extrapolated cost estimates from a sample
@@ -324,7 +324,11 @@ func ExtrapolateFromSamples(breakdowns []Breakdown, totalPRs, totalAuthors, actu
 		avgReworkPercentage = sumReworkPercentage / float64(countCodeChurn)
 	}
 
-	extTotalCost := sumTotalCost / samples * multiplier
+	// Calculate total cost by summing components
+	// Note: We recalculate this instead of using sumTotalCost because PR tracking cost
+	// is computed org-wide (actualOpenPRs × uniqueUsers) rather than extrapolated from samples
+	extTotalCost := extAuthorTotal + extParticipantCost + extDeliveryDelayCost + extCodeChurnCost +
+		extAutomatedUpdatesCost + extPRTrackingCost + extFutureReviewCost + extFutureMergeCost + extFutureContextCost
 	extTotalHours := extAuthorHours + extParticipantHours + extDelayHours
 
 	// Calculate waste per week metrics
@@ -385,11 +389,11 @@ func ExtrapolateFromSamples(breakdowns []Breakdown, totalPRs, totalAuthors, actu
 	preventableCost := extCodeChurnCost + extDeliveryDelayCost + extAutomatedUpdatesCost + extPRTrackingCost
 	baselineAnnualWaste := preventableCost * (52.0 / (float64(daysInPeriod) / 7.0))
 
-	// Re-model with 40-minute PR merge times
-	// We need to recalculate delivery delay and future costs assuming all PRs take 40 minutes (2/3 hour)
-	const targetMergeTimeHours = 40.0 / 60.0 // 40 minutes in hours
+	// Re-model with target PR merge time from config
+	// We need to recalculate delivery delay and future costs assuming all PRs take the target merge time
+	targetMergeTimeHours := cfg.TargetMergeTimeHours
 
-	// Recalculate delivery delay cost with 40-minute PRs
+	// Recalculate delivery delay cost with target merge time PRs
 	// Delivery delay formula: hourlyRate × deliveryDelayFactor × PR duration
 	var remodelDeliveryDelayCost float64
 	for range breakdowns {
@@ -397,19 +401,19 @@ func ExtrapolateFromSamples(breakdowns []Breakdown, totalPRs, totalAuthors, actu
 	}
 	extRemodelDeliveryDelayCost := remodelDeliveryDelayCost / samples * multiplier
 
-	// Recalculate code churn with 40-minute PRs
+	// Recalculate code churn with target merge time PRs
 	// Code churn is proportional to PR duration (rework percentage increases with time)
-	// For 40 minutes, rework percentage would be minimal (< 1 day, so ~0%)
-	extRemodelCodeChurnCost := 0.0 // 40 minutes is too short for meaningful code churn
+	// For target merge times < 1 day, rework percentage would be minimal (~0%)
+	extRemodelCodeChurnCost := 0.0 // Target merge time is too short for meaningful code churn
 
 	// Recalculate automated updates cost
 	// Automated updates are calculated based on PR duration
-	// With 40-minute PRs, no bot updates would be needed (happens after 1 day)
-	extRemodelAutomatedUpdatesCost := 0.0 // 40 minutes is too short for automated updates
+	// With target merge time PRs, no bot updates would be needed (happens after 1 day)
+	extRemodelAutomatedUpdatesCost := 0.0 // Target merge time is too short for automated updates
 
 	// Recalculate PR tracking cost
 	// With faster merge times, we'd have fewer open PRs at any given time
-	// Estimate: if current avg is X hours, and we reduce to 40 min, open PRs would be (40min / X hours) of current
+	// Estimate: if current avg is X hours, and we reduce to target, open PRs would be (target / X hours) of current
 	var extRemodelPRTrackingCost float64
 	var currentAvgOpenTime float64
 	if successfulSamples > 0 {

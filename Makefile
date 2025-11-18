@@ -1,6 +1,14 @@
 .PHONY: test
-test:
+test: test-go test-js
+
+.PHONY: test-go
+test-go:
 	go test -race -cover ./...
+
+.PHONY: test-js
+test-js:
+	@echo "Running JavaScript tests..."
+	@node internal/server/static/formatR2RCallout.test.js
 
 # BEGIN: lint-install .
 # http://github.com/codeGROOVE-dev/lint-install

@@ -187,6 +187,8 @@ func TestCalculateWithRealPRData(t *testing.T) {
 		} `json:"events"`
 		PullRequest struct {
 			CreatedAt         string `json:"created_at"`
+			ClosedAt          string `json:"closed_at"`
+			MergedAt          string `json:"merged_at"`
 			Author            string `json:"author"`
 			Additions         int    `json:"additions"`
 			AuthorWriteAccess int    `json:"author_write_access"`
@@ -219,11 +221,20 @@ func TestCalculateWithRealPRData(t *testing.T) {
 		t.Fatalf("Failed to parse created_at: %v", err)
 	}
 
+	var closedAt time.Time
+	if prxData.PullRequest.ClosedAt != "" {
+		closedAt, err = time.Parse(time.RFC3339, prxData.PullRequest.ClosedAt)
+		if err != nil {
+			t.Fatalf("Failed to parse closed_at: %v", err)
+		}
+	}
+
 	prData := PRData{
 		LinesAdded: prxData.PullRequest.Additions,
 		Author:     prxData.PullRequest.Author,
 		Events:     events,
 		CreatedAt:  createdAt,
+		ClosedAt:   closedAt,
 	}
 
 	cfg := DefaultConfig()
@@ -1526,7 +1537,7 @@ func TestExtrapolateFromSamplesR2RSavings(t *testing.T) {
 	}
 
 	// For a 3-day PR, there should be significant savings
-	// (R2R targets 40-minute PRs, which would eliminate most delay costs)
+	// (R2R targets 1.5-hour PRs, which would eliminate most delay costs)
 	if result.R2RSavings == 0 {
 		t.Error("Expected positive R2R savings for long-duration PRs")
 	}
