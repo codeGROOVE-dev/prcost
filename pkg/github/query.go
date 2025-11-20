@@ -14,18 +14,64 @@ import (
 
 // PRSummary holds minimal information about a PR for sampling and fetching.
 type PRSummary struct {
-	UpdatedAt time.Time
-	Owner     string
-	Repo      string
-	Author    string
-	State     string // "OPEN", "CLOSED", "MERGED"
-	Number    int
-	Merged    bool // Whether the PR was merged
+	UpdatedAt  time.Time
+	CreatedAt  time.Time
+	ClosedAt   *time.Time // Nil if still open
+	Owner      string
+	Repo       string
+	Author     string
+	AuthorType string // "Bot", "User", or empty if unknown
+	State      string // "OPEN", "CLOSED", "MERGED"
+	Number     int
+	Merged     bool // Whether the PR was merged
 }
 
 // ProgressCallback is called during PR fetching to report progress.
 // Parameters: queryName (e.g., "recent", "old", "early"), currentPage, totalPRsSoFar.
 type ProgressCallback func(queryName string, page int, prCount int)
+
+// IsBot determines if a PR author is likely a bot based on AuthorType and common naming patterns.
+func IsBot(authorType, authorLogin string) bool {
+	// Primary check: GitHub's __typename field
+	if authorType == "Bot" {
+		return true
+	}
+
+	// Fallback: Common bot naming patterns
+	login := strings.ToLower(authorLogin)
+
+	// Check for [bot] suffix
+	if strings.HasSuffix(login, "[bot]") {
+		return true
+	}
+
+	// Check for word-boundary bot patterns to avoid false positives like "robot"
+	// Match bot with specific separators or as a suffix/prefix
+	if strings.HasPrefix(login, "bot-") || strings.HasPrefix(login, "bot_") {
+		return true
+	}
+	if strings.Contains(login, "-bot-") || strings.Contains(login, "_bot_") ||
+		strings.Contains(login, "-bot") || strings.Contains(login, "_bot") {
+		return true
+	}
+
+	// Specific bot names
+	botNames := []string{
+		"dependabot", "renovate", "greenkeeper",
+		"github-actions", "codecov", "coveralls",
+		"mergify", "snyk", "imgbot",
+		"allcontributors", "stalebot",
+		"netlify", "vercel",
+		"codefactor-io", "deepsource-autofix",
+		"pre-commit-ci", "ready-to-review",
+	}
+	for _, name := range botNames {
+		if strings.Contains(login, name) {
+			return true
+		}
+	}
+	return false
+}
 
 // FetchPRsFromRepo queries GitHub GraphQL API for all PRs in a repository
 // modified since the specified date.
@@ -144,11 +190,14 @@ func fetchPRsFromRepoWithSort(ctx context.Context, params repoSortParams) ([]PRS
 				}
 				nodes {
 					number
+					createdAt
 					updatedAt
+					closedAt
 					state
 					merged
 					author {
 						login
+						__typename
 					}
 				}
 			}
@@ -217,10 +266,15 @@ func fetchPRsFromRepoWithSort(ctx context.Context, params repoSortParams) ([]PRS
 						}
 						Nodes []struct {
 							Number    int
+							CreatedAt time.Time
 							UpdatedAt time.Time
+							ClosedAt  *time.Time
 							State     string
 							Merged    bool
-							Author    struct{ Login string }
+							Author    struct {
+								Login    string
+								TypeName string `json:"__typename"`
+							}
 						}
 						TotalCount int
 					}
@@ -267,13 +321,16 @@ func fetchPRsFromRepoWithSort(ctx context.Context, params repoSortParams) ([]PRS
 				continue
 			}
 			allPRs = append(allPRs, PRSummary{
-				Owner:     owner,
-				Repo:      repo,
-				Number:    node.Number,
-				Author:    node.Author.Login,
-				UpdatedAt: node.UpdatedAt,
-				State:     node.State,
-				Merged:    node.Merged,
+				Owner:      owner,
+				Repo:       repo,
+				Number:     node.Number,
+				Author:     node.Author.Login,
+				AuthorType: node.Author.TypeName,
+				CreatedAt:  node.CreatedAt,
+				UpdatedAt:  node.UpdatedAt,
+				ClosedAt:   node.ClosedAt,
+				State:      node.State,
+				Merged:     node.Merged,
 			})
 
 			// Check if we've hit the maxPRs limit
@@ -307,10 +364,10 @@ func deduplicatePRs(prs []PRSummary) []PRSummary {
 	seen := make(map[int]bool)
 	var unique []PRSummary
 
-	for _, pr := range prs {
-		if !seen[pr.Number] {
-			seen[pr.Number] = true
-			unique = append(unique, pr)
+	for i := range prs {
+		if !seen[prs[i].Number] {
+			seen[prs[i].Number] = true
+			unique = append(unique, prs[i])
 		}
 	}
 
@@ -447,11 +504,14 @@ func fetchPRsFromOrgWithSort(ctx context.Context, params orgSortParams) ([]PRSum
 			nodes {
 				... on PullRequest {
 					number
+					createdAt
 					updatedAt
+					closedAt
 					state
 					merged
 					author {
 						login
+						__typename
 					}
 					repository {
 						owner {
@@ -523,11 +583,16 @@ func fetchPRsFromOrgWithSort(ctx context.Context, params orgSortParams) ([]PRSum
 						EndCursor   string
 					}
 					Nodes []struct {
-						Number     int
-						UpdatedAt  time.Time
-						State      string
-						Merged     bool
-						Author     struct{ Login string }
+						Number    int
+						CreatedAt time.Time
+						UpdatedAt time.Time
+						ClosedAt  *time.Time
+						State     string
+						Merged    bool
+						Author    struct {
+							Login    string
+							TypeName string `json:"__typename"`
+						}
 						Repository struct {
 							Owner struct{ Login string }
 							Name  string
@@ -564,13 +629,16 @@ func fetchPRsFromOrgWithSort(ctx context.Context, params orgSortParams) ([]PRSum
 		// Collect PRs from this page
 		for _, node := range result.Data.Search.Nodes {
 			allPRs = append(allPRs, PRSummary{
-				Owner:     node.Repository.Owner.Login,
-				Repo:      node.Repository.Name,
-				Number:    node.Number,
-				Author:    node.Author.Login,
-				UpdatedAt: node.UpdatedAt,
-				State:     node.State,
-				Merged:    node.Merged,
+				Owner:      node.Repository.Owner.Login,
+				Repo:       node.Repository.Name,
+				Number:     node.Number,
+				Author:     node.Author.Login,
+				AuthorType: node.Author.TypeName,
+				CreatedAt:  node.CreatedAt,
+				UpdatedAt:  node.UpdatedAt,
+				ClosedAt:   node.ClosedAt,
+				State:      node.State,
+				Merged:     node.Merged,
 			})
 
 			// Check if we've hit the maxPRs limit
@@ -625,49 +693,11 @@ func deduplicatePRsByOwnerRepoNumber(prs []PRSummary) []PRSummary {
 	return unique
 }
 
-// IsBot returns true if the author name indicates a bot account.
-func IsBot(author string) bool {
-	lowerAuthor := strings.ToLower(author)
-
-	// Check for [bot] suffix
-	if strings.HasSuffix(lowerAuthor, "[bot]") {
-		return true
-	}
-
-	// Common bot account name patterns
-	botPatterns := []string{
-		"dependabot",
-		"renovate",
-		"github-actions",
-		"codecov",
-		"greenkeeper",
-		"snyk",
-		"allcontributors",
-		"imgbot",
-		"stalebot",
-		"mergify",
-		"netlify",
-		"vercel",
-		"codefactor-io",
-		"deepsource-autofix",
-		"pre-commit-ci",
-		"ready-to-review",
-	}
-
-	for _, pattern := range botPatterns {
-		if strings.Contains(lowerAuthor, pattern) {
-			return true
-		}
-	}
-
-	return false
-}
-
 // CountBotPRs counts how many PRs in the list are authored by bots.
 func CountBotPRs(prs []PRSummary) int {
 	count := 0
 	for _, pr := range prs {
-		if IsBot(pr.Author) {
+		if IsBot(pr.AuthorType, pr.Author) {
 			count++
 		}
 	}
@@ -781,7 +811,7 @@ func SamplePRs(prs []PRSummary, sampleSize int) []PRSummary {
 func CountUniqueAuthors(prs []PRSummary) int {
 	uniqueAuthors := make(map[string]bool)
 	for _, pr := range prs {
-		if !IsBot(pr.Author) {
+		if !IsBot(pr.AuthorType, pr.Author) {
 			uniqueAuthors[pr.Author] = true
 		}
 	}

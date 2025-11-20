@@ -39,7 +39,7 @@ func PRDataFromPRX(prData *prx.PullRequestData) cost.PRData {
 	// Fallback bot detection: if prx didn't mark it as a bot, check common bot names
 	authorBot := pr.AuthorBot
 	if !authorBot {
-		authorBot = IsBot(pr.Author)
+		authorBot = IsBot("", pr.Author)
 		if authorBot {
 			slog.Info("Bot detected by name pattern (prx missed it)",
 				"author", pr.Author,
@@ -204,9 +204,9 @@ func extractParticipantEvents(events []prx.Event) []cost.ParticipantEvent {
 		}
 
 		// Skip bots: check both prx's Bot field and common bot patterns
-		isBotEvent := event.Bot || event.Actor == "github" || IsBot(event.Actor)
+		isBotEvent := event.Bot || event.Actor == "github" || IsBot("", event.Actor)
 		if isBotEvent {
-			if !event.Bot && IsBot(event.Actor) {
+			if !event.Bot && IsBot("", event.Actor) {
 				slog.Debug("Bot event detected by name pattern (prx missed it)",
 					"actor", event.Actor,
 					"kind", event.Kind,

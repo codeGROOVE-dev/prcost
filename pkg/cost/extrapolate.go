@@ -3,7 +3,52 @@ package cost
 import (
 	"log/slog"
 	"math"
+	"strings"
+	"time"
 )
+
+// isAuthorBot determines if a PR author is likely a bot based on AuthorType and common naming patterns.
+func isAuthorBot(authorType, authorLogin string) bool {
+	// Primary check: GitHub's __typename field
+	if authorType == "Bot" {
+		return true
+	}
+
+	// Fallback: Common bot naming patterns
+	login := strings.ToLower(authorLogin)
+
+	// Check for [bot] suffix
+	if strings.HasSuffix(login, "[bot]") {
+		return true
+	}
+
+	// Check for word-boundary bot patterns to avoid false positives like "robot"
+	// Match bot with specific separators or as a suffix/prefix
+	if strings.HasPrefix(login, "bot-") || strings.HasPrefix(login, "bot_") {
+		return true
+	}
+	if strings.Contains(login, "-bot-") || strings.Contains(login, "_bot_") ||
+		strings.Contains(login, "-bot") || strings.Contains(login, "_bot") {
+		return true
+	}
+
+	// Specific bot names
+	botNames := []string{
+		"dependabot", "renovate", "greenkeeper",
+		"github-actions", "codecov", "coveralls",
+		"mergify", "snyk", "imgbot",
+		"allcontributors", "stalebot",
+		"netlify", "vercel",
+		"codefactor-io", "deepsource-autofix",
+		"pre-commit-ci", "ready-to-review",
+	}
+	for _, name := range botNames {
+		if strings.Contains(login, name) {
+			return true
+		}
+	}
+	return false
+}
 
 // PRMergeStatus represents merge status information for a PR (for calculating merge rate).
 type PRMergeStatus struct {
@@ -153,8 +198,8 @@ func ExtrapolateFromSamples(breakdowns []Breakdown, totalPRs, totalAuthors, actu
 	publicCount := 0
 	privateCount := 0
 
-	for _, pr := range prs {
-		repoKey := pr.Owner + "/" + pr.Repo
+	for i := range prs {
+		repoKey := prs[i].Owner + "/" + prs[i].Repo
 		if uniqueRepos[repoKey] {
 			continue // Already counted this repo
 		}
@@ -162,7 +207,7 @@ func ExtrapolateFromSamples(breakdowns []Breakdown, totalPRs, totalAuthors, actu
 
 		// Check visibility - if repoVisibility is nil or doesn't have this repo, assume public
 		if repoVisibility != nil {
-			if isPrivate, ok := repoVisibility[pr.Repo]; ok && isPrivate {
+			if isPrivate, ok := repoVisibility[prs[i].Repo]; ok && isPrivate {
 				privateCount++
 			} else {
 				publicCount++
@@ -173,27 +218,88 @@ func ExtrapolateFromSamples(breakdowns []Breakdown, totalPRs, totalAuthors, actu
 	}
 
 	if len(breakdowns) == 0 {
-		// Calculate merge rate even with no successful samples
+		// Calculate merge rate, avg duration, and bot/human stats even with no successful samples
+		// Apply same filtering logic as main path to avoid ancient open PRs
 		mergedCount := 0
-		for _, pr := range prs {
-			if pr.Merged {
+		var sumPRDuration float64
+		var humanCount, botCount int
+		var humanDuration, botDuration float64
+		var countedPRs int
+		createdCutoff := time.Now().AddDate(0, 0, -daysInPeriod*2) // 2x the analysis period
+
+		var skippedOpen int
+		for i := range prs {
+			// For open PRs: only include if created within 2x the period
+			// For closed PRs: include all (they were modified/closed in the period)
+			if prs[i].ClosedAt == nil {
+				if prs[i].CreatedAt.Before(createdCutoff) {
+					skippedOpen++
+					continue
+				}
+			}
+
+			countedPRs++
+			if prs[i].Merged {
 				mergedCount++
 			}
+
+			// Calculate PR duration from CreatedAt to ClosedAt (or now if still open)
+			var duration float64
+			if prs[i].ClosedAt != nil {
+				duration = prs[i].ClosedAt.Sub(prs[i].CreatedAt).Hours()
+			} else {
+				duration = time.Since(prs[i].CreatedAt).Hours()
+			}
+			sumPRDuration += duration
+
+			// Track human/bot breakdown
+			if isAuthorBot(prs[i].AuthorType, prs[i].Author) {
+				botCount++
+				botDuration += duration
+			} else {
+				humanCount++
+				humanDuration += duration
+			}
 		}
+
+		slog.Info("PR duration calculation filtering (no samples path)",
+			"total_prs", len(prs),
+			"skipped_old_open_prs", skippedOpen,
+			"counted_prs", countedPRs,
+			"human_prs", humanCount,
+			"bot_prs", botCount,
+			"cutoff_date", createdCutoff.Format(time.RFC3339))
 		mergeRate := 0.0
-		if len(prs) > 0 {
-			mergeRate = 100.0 * float64(mergedCount) / float64(len(prs))
+		if countedPRs > 0 {
+			mergeRate = 100.0 * float64(mergedCount) / float64(countedPRs)
+		}
+		avgPRDuration := 0.0
+		if countedPRs > 0 {
+			avgPRDuration = sumPRDuration / float64(countedPRs)
+		}
+		avgHumanDuration := 0.0
+		if humanCount > 0 {
+			avgHumanDuration = humanDuration / float64(humanCount)
+		}
+		avgBotDuration := 0.0
+		if botCount > 0 {
+			avgBotDuration = botDuration / float64(botCount)
 		}
 
 		return ExtrapolatedBreakdown{
-			TotalPRs:           totalPRs,
-			SampledPRs:         0,
-			SuccessfulSamples:  0,
-			UniqueRepositories: len(uniqueRepos),
-			MergedPRs:          mergedCount,
-			UnmergedPRs:        len(prs) - mergedCount,
-			MergeRate:          mergeRate,
-			MergeRateNote:      "Recently modified PRs successfully merged",
+			TotalPRs:                totalPRs,
+			SampledPRs:              0,
+			SuccessfulSamples:       0,
+			UniqueRepositories:      len(uniqueRepos),
+			MergedPRs:               mergedCount,
+			UnmergedPRs:             len(prs) - mergedCount,
+			MergeRate:               mergeRate,
+			MergeRateNote:           "Recently modified PRs successfully merged",
+			AvgPRDurationHours:      avgPRDuration,
+			HumanPRs:                humanCount,
+			BotPRs:                  botCount,
+			AvgHumanPRDurationHours: avgHumanDuration,
+			AvgBotPRDurationHours:   avgBotDuration,
 		}
 	}
 
@@ -450,19 +556,80 @@ func ExtrapolateFromSamples(breakdowns []Breakdown, totalPRs, totalAuthors, actu
 			"waste_cost_per_author_per_week", wasteCostPerAuthorPerWeek)
 	}
 
-	// Calculate average PR durations
-	avgPRDuration := sumPRDuration / samples
-	var avgHumanPRDuration, avgBotPRDuration float64
-	if humanPRCount > 0 {
-		avgHumanPRDuration = sumHumanPRDuration / float64(humanPRCount)
-	}
-	if botPRCount > 0 {
-		avgBotPRDuration = sumBotPRDuration / float64(botPRCount)
+	// Calculate average PR durations and human/bot breakdown from ALL PRs (not just samples)
+	// This provides more accurate merge velocity and bot/human metrics
+	//
+	// Include:
+	// - All closed PRs (modified in the period)
+	// - Open PRs created within 2x the period (to avoid ancient zombies skewing data)
+	//
+	// This gives a fair view of "PRs active in this period" without 5-year-old open PRs
+	// that got a bot comment last week showing up as "292 years average".
+	var totalPRDuration float64
+	var allHumanPRCount, allBotPRCount int
+	var allHumanPRDuration, allBotPRDuration float64
+	createdCutoff := time.Now().AddDate(0, 0, -daysInPeriod*2) // 2x the analysis period
+
+	var skippedOpen, skippedClosed int
+	for i := range prs {
+		// For open PRs: only include if created within 2x the period
+		// For closed PRs: include all (they were modified/closed in the period)
+		if prs[i].ClosedAt == nil {
+			if prs[i].CreatedAt.Before(createdCutoff) {
+				skippedOpen++
+				continue
+			}
+		}
+
+		// Calculate PR duration from CreatedAt to ClosedAt (or now if still open)
+		var duration float64
+		if prs[i].ClosedAt != nil {
+			duration = prs[i].ClosedAt.Sub(prs[i].CreatedAt).Hours()
+		} else {
+			duration = time.Since(prs[i].CreatedAt).Hours()
+		}
+		totalPRDuration += duration
+
+		// Determine if this is a bot PR based on AuthorType and naming patterns
+		isBot := isAuthorBot(prs[i].AuthorType, prs[i].Author)
+		if isBot {
+			allBotPRCount++
+			allBotPRDuration += duration
+		} else {
+			allHumanPRCount++
+			allHumanPRDuration += duration
+		}
 	}
 
-	// Extrapolate bot vs human PR counts
-	extHumanPRs := int(float64(humanPRCount) / samples * multiplier)
-	extBotPRs := int(float64(botPRCount) / samples * multiplier)
+	slog.Info("PR duration calculation filtering",
+		"total_prs", len(prs),
+		"skipped_old_open_prs", skippedOpen,
+		"skipped_old_closed_prs", skippedClosed,
+		"counted_prs", allHumanPRCount+allBotPRCount,
+		"human_prs", allHumanPRCount,
+		"bot_prs", allBotPRCount,
+		"cutoff_date", createdCutoff.Format(time.RFC3339))
+
+	// Calculate totals from PRs we actually counted (within the period)
+	totalCountedPRs := allHumanPRCount + allBotPRCount
+
+	avgPRDuration := 0.0
+	if totalCountedPRs > 0 {
+		avgPRDuration = totalPRDuration / float64(totalCountedPRs)
+	}
+
+	// Calculate average durations for human/bot PRs from PRs within the period
+	var avgHumanPRDuration, avgBotPRDuration float64
+	if allHumanPRCount > 0 {
+		avgHumanPRDuration = allHumanPRDuration / float64(allHumanPRCount)
+	}
+	if allBotPRCount > 0 {
+		avgBotPRDuration = allBotPRDuration / float64(allBotPRCount)
+	}
+
+	// Use actual human/bot counts from PRs created within the period
+	extHumanPRs := allHumanPRCount
+	extBotPRs := allBotPRCount
 
 	// Calculate R2R savings
 	// Formula: baseline annual waste - (re-modeled waste with 40min PRs) - (R2R subscription cost)
@@ -524,8 +691,8 @@ func ExtrapolateFromSamples(breakdowns []Breakdown, totalPRs, totalAuthors, actu
 	// Calculate merge rate from all PRs (not just samples)
 	mergedCount := 0
 	unmergedCount := 0
-	for _, pr := range prs {
-		if pr.Merged {
+	for i := range prs {
+		if prs[i].Merged {
 			mergedCount++
 		} else {
 			unmergedCount++

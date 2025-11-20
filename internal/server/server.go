@@ -144,7 +144,7 @@ type CalculateResponse struct {
 type RepoSampleRequest struct {
 	Owner      string       `json:"owner"`
 	Repo       string       `json:"repo"`
-	SampleSize int          `json:"sample_size,omitempty"` // Default: 100
+	SampleSize int          `json:"sample_size,omitempty"` // Default: 250
 	Days       int          `json:"days,omitempty"`        // Default: 60
 	Config     *cost.Config `json:"config,omitempty"`
 }
@@ -154,7 +154,7 @@ type RepoSampleRequest struct {
 //nolint:govet // fieldalignment: API struct field order optimized for readability
 type OrgSampleRequest struct {
 	Org        string       `json:"org"`
-	SampleSize int          `json:"sample_size,omitempty"` // Default: 100
+	SampleSize int          `json:"sample_size,omitempty"` // Default: 250
 	Days       int          `json:"days,omitempty"`        // Default: 60
 	Config     *cost.Config `json:"config,omitempty"`
 }
@@ -1478,18 +1478,18 @@ func (s *Server) parseRepoSampleRequest(ctx context.Context, r *http.Request) (*
 
 	// Set defaults
 	if req.SampleSize == 0 {
-		req.SampleSize = 100
+		req.SampleSize = 250
 	}
 	if req.Days == 0 {
 		req.Days = 60
 	}
 
-	// Validate reasonable limits (silently cap at 100)
+	// Validate reasonable limits (silently cap at 250)
 	if req.SampleSize < 1 {
 		return nil, errors.New("sample_size must be at least 1")
 	}
-	if req.SampleSize > 100 {
-		req.SampleSize = 100
+	if req.SampleSize > 250 {
+		req.SampleSize = 250
 	}
 	if req.Days < 1 || req.Days > 365 {
 		return nil, errors.New("days must be between 1 and 365")
@@ -1536,18 +1536,18 @@ func (s *Server) parseOrgSampleRequest(ctx context.Context, r *http.Request) (*O
 
 	// Set defaults
 	if req.SampleSize == 0 {
-		req.SampleSize = 100
+		req.SampleSize = 250
 	}
 	if req.Days == 0 {
 		req.Days = 60
 	}
 
-	// Validate reasonable limits (silently cap at 100)
+	// Validate reasonable limits (silently cap at 250)
 	if req.SampleSize < 1 {
 		return nil, errors.New("sample_size must be at least 1")
 	}
-	if req.SampleSize > 100 {
-		req.SampleSize = 100
+	if req.SampleSize > 250 {
+		req.SampleSize = 250
 	}
 	if req.Days < 1 || req.Days > 365 {
 		return nil, errors.New("days must be between 1 and 365")
@@ -1663,10 +1663,15 @@ func (s *Server) processRepoSample(ctx context.Context, req *RepoSampleRequest, 
 	prSummaryInfos := make([]cost.PRSummaryInfo, len(prs))
 	for i, pr := range prs {
 		prSummaryInfos[i] = cost.PRSummaryInfo{
-			Owner:  pr.Owner,
-			Repo:   pr.Repo,
-			Merged: pr.Merged,
-			State:  pr.State,
+			Owner:      pr.Owner,
+			Repo:       pr.Repo,
+			Author:     pr.Author,
+			AuthorType: pr.AuthorType,
+			CreatedAt:  pr.CreatedAt,
+			UpdatedAt:  pr.UpdatedAt,
+			ClosedAt:   pr.ClosedAt,
+			Merged:     pr.Merged,
+			State:      pr.State,
 		}
 	}
 
@@ -1811,10 +1816,15 @@ func (s *Server) processOrgSample(ctx context.Context, req *OrgSampleRequest, to
 	prSummaryInfos := make([]cost.PRSummaryInfo, len(prs))
 	for i, pr := range prs {
 		prSummaryInfos[i] = cost.PRSummaryInfo{
-			Owner:  pr.Owner,
-			Repo:   pr.Repo,
-			Merged: pr.Merged,
-			State:  pr.State,
+			Owner:      pr.Owner,
+			Repo:       pr.Repo,
+			Author:     pr.Author,
+			AuthorType: pr.AuthorType,
+			CreatedAt:  pr.CreatedAt,
+			UpdatedAt:  pr.UpdatedAt,
+			ClosedAt:   pr.ClosedAt,
+			Merged:     pr.Merged,
+			State:      pr.State,
 		}
 	}
 
@@ -2219,10 +2229,15 @@ func (s *Server) processRepoSampleWithProgress(ctx context.Context, req *RepoSam
 	prSummaryInfos := make([]cost.PRSummaryInfo, len(prs))
 	for i, pr := range prs {
 		prSummaryInfos[i] = cost.PRSummaryInfo{
-			Owner:  pr.Owner,
-			Repo:   pr.Repo,
-			Merged: pr.Merged,
-			State:  pr.State,
+			Owner:      pr.Owner,
+			Repo:       pr.Repo,
+			Author:     pr.Author,
+			AuthorType: pr.AuthorType,
+			CreatedAt:  pr.CreatedAt,
+			UpdatedAt:  pr.UpdatedAt,
+			ClosedAt:   pr.ClosedAt,
+			Merged:     pr.Merged,
+			State:      pr.State,
 		}
 	}
 
@@ -2380,10 +2395,15 @@ func (s *Server) processOrgSampleWithProgress(ctx context.Context, req *OrgSampl
 	prSummaryInfos := make([]cost.PRSummaryInfo, len(prs))
 	for i, pr := range prs {
 		prSummaryInfos[i] = cost.PRSummaryInfo{
-			Owner:  pr.Owner,
-			Repo:   pr.Repo,
-			Merged: pr.Merged,
-			State:  pr.State,
+			Owner:      pr.Owner,
+			Repo:       pr.Repo,
+			Author:     pr.Author,
+			AuthorType: pr.AuthorType,
+			CreatedAt:  pr.CreatedAt,
+			UpdatedAt:  pr.UpdatedAt,
+			ClosedAt:   pr.ClosedAt,
+			Merged:     pr.Merged,
+			State:      pr.State,
 		}
 	}
 

@@ -34,12 +34,16 @@ type AnalysisRequest struct {
 
 // PRSummaryInfo contains basic PR information needed for fetching and analysis.
 type PRSummaryInfo struct {
-	UpdatedAt time.Time
-	Owner     string
-	Repo      string
-	State     string // "OPEN", "CLOSED", "MERGED"
-	Number    int
-	Merged    bool // Whether the PR was merged
+	UpdatedAt  time.Time
+	CreatedAt  time.Time
+	ClosedAt   *time.Time // Nil if still open
+	Owner      string
+	Repo       string
+	Author     string
+	AuthorType string // "Bot", "User", or empty if unknown
+	State      string // "OPEN", "CLOSED", "MERGED"
+	Number     int
+	Merged     bool // Whether the PR was merged
 }
 
 // AnalysisResult contains the breakdowns from analyzed PRs.

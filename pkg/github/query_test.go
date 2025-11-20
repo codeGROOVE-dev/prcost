@@ -40,7 +40,7 @@ func TestIsBot(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := IsBot(tt.prAuthor)
+			got := IsBot("", tt.prAuthor)
 			if got != tt.want {
 				t.Errorf("IsBot(%q) = %v, want %v", tt.prAuthor, got, tt.want)
 			}
@@ -215,7 +215,7 @@ func TestIsBotEdgeCases(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := IsBot(tt.author)
+			got := IsBot("", tt.author)
 			if got != tt.want {
 				t.Errorf("IsBot(%q) = %v, want %v", tt.author, got, tt.want)
 			}
