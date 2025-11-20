@@ -1370,10 +1370,24 @@ func TestExtrapolateFromSamplesMultiple(t *testing.T) {
 	// Create merge status for 20 PRs: 17 merged, 3 open
 	prStatuses := make([]PRSummaryInfo, 20)
 	for i := range 17 {
-		prStatuses[i] = PRSummaryInfo{Owner: "test", Repo: "test", Merged: true, State: "MERGED"}
+		closedAt := now.Add(-time.Duration(i) * time.Hour)
+		prStatuses[i] = PRSummaryInfo{
+			Owner:     "test",
+			Repo:      "test",
+			Merged:    true,
+			State:     "MERGED",
+			CreatedAt: closedAt.Add(-24 * time.Hour),
+			ClosedAt:  &closedAt,
+		}
 	}
 	for i := 17; i < 20; i++ {
-		prStatuses[i] = PRSummaryInfo{Owner: "test", Repo: "test", Merged: false, State: "OPEN"}
+		prStatuses[i] = PRSummaryInfo{
+			Owner:     "test",
+			Repo:      "test",
+			Merged:    false,
+			State:     "OPEN",
+			CreatedAt: now.Add(-time.Duration(i-17+1) * 24 * time.Hour), // Open PRs created 1-3 days ago
+		}
 	}
 	result := ExtrapolateFromSamples(breakdowns, 20, 5, 3, 14, cfg, prStatuses, nil)
 
@@ -1445,10 +1459,36 @@ func TestExtrapolateFromSamplesBotVsHuman(t *testing.T) {
 		},
 	}
 
-	// Create merge status for 10 PRs: all merged
+	// Create merge status for 10 PRs: 5 human, 5 bot (all merged)
 	prStatuses := make([]PRSummaryInfo, 10)
+	now := time.Now()
 	for i := range 10 {
-		prStatuses[i] = PRSummaryInfo{Owner: "test", Repo: "test", Merged: true, State: "MERGED"}
+		if i < 5 {
+			// Human PRs
+			prStatuses[i] = PRSummaryInfo{
+				Owner:      "test",
+				Repo:       "test",
+				Author:     "human-author",
+				AuthorType: "User",
+				CreatedAt:  now.Add(-24 * time.Hour),
+				ClosedAt:   &now,
+				Merged:     true,
+				State:      "MERGED",
+			}
+		} else {
+			// Bot PRs
+			closedTime := now.Add(-2 * time.Hour)
+			prStatuses[i] = PRSummaryInfo{
+				Owner:      "test",
+				Repo:       "test",
+				Author:     "dependabot[bot]",
+				AuthorType: "Bot",
+				CreatedAt:  now.Add(-4 * time.Hour),
+				ClosedAt:   &closedTime,
+				Merged:     true,
+				State:      "MERGED",
+			}
+		}
 	}
 	result := ExtrapolateFromSamples(breakdowns, 10, 5, 0, 7, cfg, prStatuses, nil)
 

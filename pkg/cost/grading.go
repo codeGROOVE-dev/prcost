@@ -6,23 +6,23 @@ package cost
 func EfficiencyGrade(efficiencyPct float64) (grade, message string) {
 	switch {
 	case efficiencyPct >= 97:
-		return "A+", "Impeccable"
+		return "A+", "Outstanding efficiency"
 	case efficiencyPct >= 93:
-		return "A", "Excellent"
+		return "A", "Excellent efficiency"
 	case efficiencyPct >= 90:
-		return "A-", "Nearly excellent"
+		return "A-", "Very good efficiency"
 	case efficiencyPct >= 87:
-		return "B+", "Acceptable+"
+		return "B+", "Above average"
 	case efficiencyPct >= 83:
-		return "B", "Acceptable"
+		return "B", "Good efficiency"
 	case efficiencyPct >= 80:
-		return "B-", "Nearly acceptable"
+		return "B-", "Acceptable efficiency"
 	case efficiencyPct >= 70:
-		return "C", "Average"
+		return "C", "Average efficiency"
 	case efficiencyPct >= 60:
-		return "D", "Not good my friend."
+		return "D", "Below average"
 	default:
-		return "F", "Failing"
+		return "F", "Needs improvement"
 	}
 }
 
@@ -31,17 +31,17 @@ func EfficiencyGrade(efficiencyPct float64) (grade, message string) {
 func MergeVelocityGrade(avgOpenHours float64) (grade, message string) {
 	switch {
 	case avgOpenHours <= 4: // 4 hours
-		return "A+", "World-class velocity"
+		return "A+", "Exceptional velocity"
 	case avgOpenHours <= 24: // 1 day
-		return "A", "High-performing team"
+		return "A", "Excellent velocity"
 	case avgOpenHours <= 84: // 3.5 days
-		return "B", "Room for improvement"
+		return "B", "Good velocity"
 	case avgOpenHours <= 132: // 5.5 days
-		return "C", "Sluggish"
+		return "C", "Average velocity"
 	case avgOpenHours <= 168: // 7 days (1 week)
-		return "D", "Slow"
+		return "D", "Below average"
 	default:
-		return "F", "Failing"
+		return "F", "Needs improvement"
 	}
 }
 
@@ -50,14 +50,14 @@ func MergeVelocityGrade(avgOpenHours float64) (grade, message string) {
 func MergeRateGrade(mergeRatePct float64) (grade, message string) {
 	switch {
 	case mergeRatePct > 90:
-		return "A", "Excellent"
+		return "A", "Excellent merge rate"
 	case mergeRatePct > 80:
-		return "B", "Good"
+		return "B", "Good merge rate"
 	case mergeRatePct > 70:
-		return "C", "Acceptable"
+		return "C", "Average merge rate"
 	case mergeRatePct > 60:
-		return "D", "Low"
+		return "D", "Below average"
 	default:
-		return "F", "Poor"
+		return "F", "Needs improvement"
 	}
 }

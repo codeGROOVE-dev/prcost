@@ -103,10 +103,15 @@ func analyzeRepository(ctx context.Context, owner, repo string, sampleSize, days
 	prSummaryInfos := make([]cost.PRSummaryInfo, len(prs))
 	for i, pr := range prs {
 		prSummaryInfos[i] = cost.PRSummaryInfo{
-			Owner:  pr.Owner,
-			Repo:   pr.Repo,
-			Merged: pr.Merged,
-			State:  pr.State,
+			Owner:      pr.Owner,
+			Repo:       pr.Repo,
+			Author:     pr.Author,
+			AuthorType: pr.AuthorType,
+			CreatedAt:  pr.CreatedAt,
+			UpdatedAt:  pr.UpdatedAt,
+			ClosedAt:   pr.ClosedAt,
+			Merged:     pr.Merged,
+			State:      pr.State,
 		}
 	}
 
@@ -214,10 +219,15 @@ func analyzeOrganization(ctx context.Context, org string, sampleSize, days int, 
 	prSummaryInfos := make([]cost.PRSummaryInfo, len(prs))
 	for i, pr := range prs {
 		prSummaryInfos[i] = cost.PRSummaryInfo{
-			Owner:  pr.Owner,
-			Repo:   pr.Repo,
-			Merged: pr.Merged,
-			State:  pr.State,
+			Owner:      pr.Owner,
+			Repo:       pr.Repo,
+			Author:     pr.Author,
+			AuthorType: pr.AuthorType,
+			CreatedAt:  pr.CreatedAt,
+			UpdatedAt:  pr.UpdatedAt,
+			ClosedAt:   pr.ClosedAt,
+			Merged:     pr.Merged,
+			State:      pr.State,
 		}
 	}
 
