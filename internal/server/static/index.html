@@ -556,14 +556,14 @@
             border: 2px solid #e5e5ea;
             margin-bottom: 32px;
             box-shadow: 0 4px 12px rgba(0, 0, 0, 0.06);
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-            gap: 12px;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
         }
 
         @media (max-width: 768px) {
             .efficiency-section {
-                grid-template-columns: 1fr;
+                flex-direction: column;
             }
         }
 
@@ -641,11 +641,13 @@
 
         .efficiency-box {
             background: #ffffff;
-            padding: 14px 16px;
+            padding: 10px 12px;
             border-radius: 10px;
             border: 1.5px solid #e5e5ea;
             box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
             margin: 0;
+            flex: 1;
+            min-width: 165px;
         }
 
         .efficiency-callout {
@@ -1061,7 +1063,7 @@
                             id="repoSampleSize"
                             value="50"
                             min="1"
-                            max="50"
+                            max="100"
                         >
                         <div class="help-text">50 (recommended, ±14% accuracy) or 30 (faster, ±18% accuracy)</div>
                     </div>
@@ -1101,7 +1103,7 @@
                             id="orgSampleSize"
                             value="50"
                             min="1"
-                            max="50"
+                            max="100"
                         >
                         <div class="help-text">50 (recommended, ±14% accuracy) or 30 (faster, ±18% accuracy)</div>
                     </div>
@@ -1424,41 +1426,44 @@
             }
         }
 
-        function formatEfficiencyHTML(efficiencyPct, grade, message, preventableCost, preventableHours, totalCost, totalHours, avgOpenHours, isAnnual = false, annualWasteCost = 0, annualWasteHours = 0, wasteHoursPerWeek = 0, wasteCostPerWeek = 0, wasteHoursPerAuthorPerWeek = 0, wasteCostPerAuthorPerWeek = 0, totalAuthors = 0, salary = 250000, benefitsMultiplier = 1.2, analysisType = 'project', sourceName = '', mergeRate = 0, mergedPRs = 0, unmergedPRs = 0) {
+        function formatEfficiencyHTML(efficiencyPct, grade, message, preventableCost, preventableHours, totalCost, totalHours, avgOpenHours, isAnnual = false, annualWasteCost = 0, annualWasteHours = 0, wasteHoursPerWeek = 0, wasteCostPerWeek = 0, wasteHoursPerAuthorPerWeek = 0, wasteCostPerAuthorPerWeek = 0, totalAuthors = 0, salary = 250000, benefitsMultiplier = 1.2, analysisType = 'project', sourceName = '', mergeRate = 0, mergedPRs = 0, unmergedPRs = 0, velocityGrade = '', velocityMessage = '', mergeRateGrade = '', mergeRateMessage = '') {
             let html = '<div class="efficiency-section">';
 
             // Development Efficiency box
             html += '<div class="efficiency-box">';
-            html += '<h3 style="margin: 0 0 8px 0; font-size: 14px; font-weight: 600; color: #1d1d1f;">Development Efficiency</h3>';
-            html += '<div style="display: flex; align-items: center; gap: 10px; margin-bottom: 4px;">';
-            html += `<span class="efficiency-grade grade-${grade[0]}" style="display: inline-block; min-width: 38px; padding: 3px 7px; border-radius: 6px; font-size: 16px; font-weight: 700; text-align: center; background: rgba(0,0,0,0.06);">${grade}</span>`;
-            html += `<span style="font-size: 28px; font-weight: 700; color: #1d1d1f;">${efficiencyPct.toFixed(1)}%</span>`;
+            html += '<h3 style="margin: 0 0 6px 0; font-size: 12px; font-weight: 600; color: #1d1d1f;">Development Efficiency</h3>';
+            html += '<div style="display: flex; align-items: center; gap: 8px; margin-bottom: 2px;">';
+            html += `<span class="efficiency-grade grade-${grade[0]}" style="display: inline-block; min-width: 32px; padding: 2px 6px; border-radius: 5px; font-size: 14px; font-weight: 700; text-align: center; background: rgba(0,0,0,0.06);">${grade}</span>`;
+            html += `<span style="font-size: 22px; font-weight: 700; color: #1d1d1f;">${efficiencyPct.toFixed(1)}%</span>`;
             html += '</div>';
-            html += `<div class="efficiency-message">${message}</div>`;
-            html += '<div style="font-size: 11px; color: #86868b; margin-top: 4px;">Time spent coding vs. waiting</div>';
+            html += `<div class="efficiency-message" style="font-size: 11px;">${message}</div>`;
             html += '</div>'; // Close efficiency-box
 
-            // Merge Velocity box
-            const velocityGradeObj = mergeVelocityGrade(avgOpenHours);
+            // Merge Velocity box - use backend-computed grades if provided, fallback to client calculation
+            const velocityGradeObj = velocityGrade && velocityMessage
+                ? { grade: velocityGrade, message: velocityMessage }
+                : mergeVelocityGrade(avgOpenHours);
             html += '<div class="efficiency-box">';
-            html += '<h3 style="margin: 0 0 8px 0; font-size: 14px; font-weight: 600; color: #1d1d1f;">Average Merge Velocity</h3>';
-            html += '<div style="display: flex; align-items: center; gap: 10px; margin-bottom: 4px;">';
-            html += `<span class="efficiency-grade grade-${velocityGradeObj.grade[0]}" style="display: inline-block; min-width: 38px; padding: 3px 7px; border-radius: 6px; font-size: 16px; font-weight: 700; text-align: center; background: rgba(0,0,0,0.06);">${velocityGradeObj.grade}</span>`;
-            html += `<span style="font-size: 28px; font-weight: 700; color: #1d1d1f;">${formatTimeUnit(avgOpenHours)}</span>`;
+            html += '<h3 style="margin: 0 0 6px 0; font-size: 12px; font-weight: 600; color: #1d1d1f;">Merge Velocity</h3>';
+            html += '<div style="display: flex; align-items: center; gap: 8px; margin-bottom: 2px;">';
+            html += `<span class="efficiency-grade grade-${velocityGradeObj.grade[0]}" style="display: inline-block; min-width: 32px; padding: 2px 6px; border-radius: 5px; font-size: 14px; font-weight: 700; text-align: center; background: rgba(0,0,0,0.06);">${velocityGradeObj.grade}</span>`;
+            html += `<span style="font-size: 22px; font-weight: 700; color: #1d1d1f;">${formatTimeUnit(avgOpenHours)}</span>`;
             html += '</div>';
-            html += `<div class="efficiency-message">${velocityGradeObj.message}</div>`;
+            html += `<div class="efficiency-message" style="font-size: 11px;">${velocityGradeObj.message}</div>`;
             html += '</div>'; // Close efficiency-box
 
-            // Merge Rate box (if data available)
+            // Merge Success Rate box (if data available) - use backend-computed grades if provided
             if (mergedPRs + unmergedPRs > 0) {
-                const mergeRateGradeObj = mergeRateGrade(mergeRate);
+                const mergeRateGradeObj = mergeRateGrade && mergeRateMessage
+                    ? { grade: mergeRateGrade, message: mergeRateMessage }
+                    : mergeRateGrade(mergeRate);
                 html += '<div class="efficiency-box">';
-                html += '<h3 style="margin: 0 0 8px 0; font-size: 14px; font-weight: 600; color: #1d1d1f;">Merge Rate</h3>';
-                html += '<div style="display: flex; align-items: center; gap: 10px; margin-bottom: 4px;">';
-                html += `<span class="efficiency-grade grade-${mergeRateGradeObj.grade[0]}" style="display: inline-block; min-width: 38px; padding: 3px 7px; border-radius: 6px; font-size: 16px; font-weight: 700; text-align: center; background: rgba(0,0,0,0.06);">${mergeRateGradeObj.grade}</span>`;
-                html += `<span style="font-size: 28px; font-weight: 700; color: #1d1d1f;">${mergeRate.toFixed(1)}%</span>`;
+                html += '<h3 style="margin: 0 0 6px 0; font-size: 12px; font-weight: 600; color: #1d1d1f;">Merge Success</h3>';
+                html += '<div style="display: flex; align-items: center; gap: 8px; margin-bottom: 2px;">';
+                html += `<span class="efficiency-grade grade-${mergeRateGradeObj.grade[0]}" style="display: inline-block; min-width: 32px; padding: 2px 6px; border-radius: 5px; font-size: 14px; font-weight: 700; text-align: center; background: rgba(0,0,0,0.06);">${mergeRateGradeObj.grade}</span>`;
+                html += `<span style="font-size: 22px; font-weight: 700; color: #1d1d1f;">${mergeRate.toFixed(1)}%</span>`;
                 html += '</div>';
-                html += `<div class="efficiency-message">${mergeRateGradeObj.message}</div>`;
+                html += `<div class="efficiency-message" style="font-size: 11px;">${mergeRateGradeObj.message}</div>`;
                 html += '<div style="font-size: 11px; color: #86868b; margin-top: 4px;">Recently modified PRs successfully merged</div>';
                 html += '</div>'; // Close efficiency-box
             }
@@ -2366,7 +2371,12 @@
 
                                         // Build elegant HTML structure
                                         let html = '<div class="result-summary">';
-                                        html += `<h2>${sourceName}</h2>`;
+                                        const repoCount = e.unique_repositories || 0;
+                                        const publicCount = e.public_repositories || 0;
+                                        const privateCount = e.private_repositories || 0;
+                                        const repoText = repoCount === 1 ? 'repository' : 'repositories';
+                                        const visibilityText = privateCount > 0 ? `(${publicCount} public, ${privateCount} private)` : 'public';
+                                        html += `<h2>${sourceName} - ${repoCount} ${visibilityText} ${repoText} analyzed</h2>`;
                                         html += '<div class="meta">';
                                         html += `<strong>Period:</strong> Last ${days} days &nbsp;•&nbsp; `;
                                         html += `<strong>Total public PRs:</strong> ${e.total_prs} (${e.human_prs} human, ${e.bot_prs} bot) &nbsp;•&nbsp; `;
@@ -2382,7 +2392,8 @@
                                         const extPreventableHours = e.code_churn_hours + e.delivery_delay_hours + e.automated_updates_hours + e.pr_tracking_hours;
                                         const extPreventableCost = e.code_churn_cost + e.delivery_delay_cost + e.automated_updates_cost + e.pr_tracking_cost;
                                         const extEfficiencyPct = e.total_hours > 0 ? 100.0 * (e.total_hours - extPreventableHours) / e.total_hours : 100.0;
-                                        const extEfficiency = efficiencyGrade(extEfficiencyPct);
+                                        // Use grades computed by backend (single source of truth)
+                                        const extEfficiency = { grade: e.efficiency_grade, message: e.efficiency_message };
                                         const annualMultiplier = 365.0 / parseInt(days);
                                         const annualWasteHours = extPreventableHours * annualMultiplier;
                                         const annualWasteCost = extPreventableCost * annualMultiplier;
@@ -2401,7 +2412,12 @@
                                         const mergeRate = e.merge_rate || 0;
                                         const mergedPRs = e.merged_prs || 0;
                                         const unmergedPRs = e.unmerged_prs || 0;
-                                        html += formatEfficiencyHTML(extEfficiencyPct, extEfficiency.grade, extEfficiency.message, extPreventableCost, extPreventableHours, e.total_cost, e.total_hours, avgPRDurationHours, true, annualWasteCost, annualWasteHours, wasteHoursPerWeek, wasteCostPerWeek, wasteHoursPerAuthorPerWeek, wasteCostPerAuthorPerWeek, totalAuthors, salary, benefitsMultiplier, analysisType, sourceName, mergeRate, mergedPRs, unmergedPRs);
+                                        // Use backend-computed grades (single source of truth)
+                                        const velocityGrade = e.merge_velocity_grade || '';
+                                        const velocityMessage = e.merge_velocity_message || '';
+                                        const mergeRateGrade = e.merge_rate_grade || '';
+                                        const mergeRateMessage = e.merge_rate_grade_message || '';
+                                        html += formatEfficiencyHTML(extEfficiencyPct, extEfficiency.grade, extEfficiency.message, extPreventableCost, extPreventableHours, e.total_cost, e.total_hours, avgPRDurationHours, true, annualWasteCost, annualWasteHours, wasteHoursPerWeek, wasteCostPerWeek, wasteHoursPerAuthorPerWeek, wasteCostPerAuthorPerWeek, totalAuthors, salary, benefitsMultiplier, analysisType, sourceName, mergeRate, mergedPRs, unmergedPRs, velocityGrade, velocityMessage, mergeRateGrade, mergeRateMessage);
 
                                         // Add R2R callout if enabled, otherwise generic merge time callout
                                         // Calculate modeled efficiency (with 1.5h merge time)

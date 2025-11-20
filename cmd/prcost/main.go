@@ -481,72 +481,6 @@ func formatLOC(kloc float64) string {
 	return fmt.Sprintf("%.0fk LOC", kloc)
 }
 
-// efficiencyGrade returns a letter grade and message based on efficiency percentage (MIT scale).
-func efficiencyGrade(efficiencyPct float64) (grade, message string) {
-	switch {
-	case efficiencyPct >= 97:
-		return "A+", "Impeccable"
-	case efficiencyPct >= 93:
-		return "A", "Excellent"
-	case efficiencyPct >= 90:
-		return "A-", "Nearly excellent"
-	case efficiencyPct >= 87:
-		return "B+", "Acceptable+"
-	case efficiencyPct >= 83:
-		return "B", "Acceptable"
-	case efficiencyPct >= 80:
-		return "B-", "Nearly acceptable"
-	case efficiencyPct >= 70:
-		return "C", "Average"
-	case efficiencyPct >= 60:
-		return "D", "Not good my friend."
-	default:
-		return "F", "Failing"
-	}
-}
-
-// mergeVelocityGrade returns a grade based on average PR open time in days.
-// A+: 4h, A: 8h, A-: 12h, B+: 18h, B: 24h, B-: 36h, C: 100h, D: 120h, F: 120h+.
-func mergeVelocityGrade(avgOpenDays float64) (grade, message string) {
-	switch {
-	case avgOpenDays <= 0.1667: // 4 hours
-		return "A+", "Impeccable"
-	case avgOpenDays <= 0.3333: // 8 hours
-		return "A", "Excellent"
-	case avgOpenDays <= 0.5: // 12 hours
-		return "A-", "Nearly excellent"
-	case avgOpenDays <= 0.75: // 18 hours
-		return "B+", "Acceptable+"
-	case avgOpenDays <= 1.0: // 24 hours
-		return "B", "Acceptable"
-	case avgOpenDays <= 1.5: // 36 hours
-		return "B-", "Nearly acceptable"
-	case avgOpenDays <= 4.1667: // 100 hours
-		return "C", "Average"
-	case avgOpenDays <= 5.0: // 120 hours
-		return "D", "Not good my friend."
-	default:
-		return "F", "Failing"
-	}
-}
-
-// mergeRateGrade returns a grade based on merge success rate percentage.
-// A: >90%, B: >80%, C: >70%, D: >60%, F: ≤60%.
-func mergeRateGrade(mergeRatePct float64) (grade, message string) {
-	switch {
-	case mergeRatePct > 90:
-		return "A", "Excellent"
-	case mergeRatePct > 80:
-		return "B", "Good"
-	case mergeRatePct > 70:
-		return "C", "Acceptable"
-	case mergeRatePct > 60:
-		return "D", "Low"
-	default:
-		return "F", "Poor"
-	}
-}
-
 // printMergeTimeModelingCallout prints a callout showing potential savings from reduced merge time.
 func printMergeTimeModelingCallout(breakdown *cost.Breakdown, cfg cost.Config) {
 	targetHours := cfg.TargetMergeTimeHours
@@ -649,11 +583,10 @@ func printEfficiency(breakdown *cost.Breakdown) {
 		efficiencyPct = 100.0
 	}
 
-	grade, message := efficiencyGrade(efficiencyPct)
+	grade, message := cost.EfficiencyGrade(efficiencyPct)
 
-	// Calculate merge velocity grade based on PR duration
-	prDurationDays := breakdown.PRDuration / 24.0
-	velocityGrade, velocityMessage := mergeVelocityGrade(prDurationDays)
+	// Calculate merge velocity grade based on PR duration (in hours)
+	velocityGrade, velocityMessage := cost.MergeVelocityGrade(breakdown.PRDuration)
 
 	fmt.Println("  ┌─────────────────────────────────────────────────────────────┐")
 	headerText := fmt.Sprintf("DEVELOPMENT EFFICIENCY: %s (%.1f%%) - %s", grade, efficiencyPct, message)

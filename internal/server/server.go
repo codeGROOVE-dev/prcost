@@ -144,7 +144,7 @@ type CalculateResponse struct {
 type RepoSampleRequest struct {
 	Owner      string       `json:"owner"`
 	Repo       string       `json:"repo"`
-	SampleSize int          `json:"sample_size,omitempty"` // Default: 50
+	SampleSize int          `json:"sample_size,omitempty"` // Default: 100
 	Days       int          `json:"days,omitempty"`        // Default: 60
 	Config     *cost.Config `json:"config,omitempty"`
 }
@@ -154,7 +154,7 @@ type RepoSampleRequest struct {
 //nolint:govet // fieldalignment: API struct field order optimized for readability
 type OrgSampleRequest struct {
 	Org        string       `json:"org"`
-	SampleSize int          `json:"sample_size,omitempty"` // Default: 50
+	SampleSize int          `json:"sample_size,omitempty"` // Default: 100
 	Days       int          `json:"days,omitempty"`        // Default: 60
 	Config     *cost.Config `json:"config,omitempty"`
 }
@@ -1478,18 +1478,18 @@ func (s *Server) parseRepoSampleRequest(ctx context.Context, r *http.Request) (*
 
 	// Set defaults
 	if req.SampleSize == 0 {
-		req.SampleSize = 50
+		req.SampleSize = 100
 	}
 	if req.Days == 0 {
 		req.Days = 60
 	}
 
-	// Validate reasonable limits (silently cap at 50)
+	// Validate reasonable limits (silently cap at 100)
 	if req.SampleSize < 1 {
 		return nil, errors.New("sample_size must be at least 1")
 	}
-	if req.SampleSize > 50 {
-		req.SampleSize = 50
+	if req.SampleSize > 100 {
+		req.SampleSize = 100
 	}
 	if req.Days < 1 || req.Days > 365 {
 		return nil, errors.New("days must be between 1 and 365")
@@ -1536,18 +1536,18 @@ func (s *Server) parseOrgSampleRequest(ctx context.Context, r *http.Request) (*O
 
 	// Set defaults
 	if req.SampleSize == 0 {
-		req.SampleSize = 50
+		req.SampleSize = 100
 	}
 	if req.Days == 0 {
 		req.Days = 60
 	}
 
-	// Validate reasonable limits (silently cap at 50)
+	// Validate reasonable limits (silently cap at 100)
 	if req.SampleSize < 1 {
 		return nil, errors.New("sample_size must be at least 1")
 	}
-	if req.SampleSize > 50 {
-		req.SampleSize = 50
+	if req.SampleSize > 100 {
+		req.SampleSize = 100
 	}
 	if req.Days < 1 || req.Days > 365 {
 		return nil, errors.New("days must be between 1 and 365")
@@ -1659,17 +1659,19 @@ func (s *Server) processRepoSample(ctx context.Context, req *RepoSampleRequest, 
 		openPRCount = 0
 	}
 
-	// Convert PRSummary to PRMergeStatus for merge rate calculation
-	prStatuses := make([]cost.PRMergeStatus, len(prs))
+	// Convert PRSummary to PRSummaryInfo for extrapolation
+	prSummaryInfos := make([]cost.PRSummaryInfo, len(prs))
 	for i, pr := range prs {
-		prStatuses[i] = cost.PRMergeStatus{
+		prSummaryInfos[i] = cost.PRSummaryInfo{
+			Owner:  pr.Owner,
+			Repo:   pr.Repo,
 			Merged: pr.Merged,
 			State:  pr.State,
 		}
 	}
 
 	// Extrapolate costs from samples
-	extrapolated := cost.ExtrapolateFromSamples(breakdowns, len(prs), totalAuthors, openPRCount, actualDays, cfg, prStatuses)
+	extrapolated := cost.ExtrapolateFromSamples(breakdowns, len(prs), totalAuthors, openPRCount, actualDays, cfg, prSummaryInfos, nil)
 
 	// Only include seconds_in_state if we have data (turnserver only)
 	var secondsInState map[string]int
@@ -1719,6 +1721,23 @@ func (s *Server) processOrgSample(ctx context.Context, req *OrgSampleRequest, to
 
 	if len(prs) == 0 {
 		return nil, fmt.Errorf("no PRs found in the last %d days", req.Days)
+	}
+
+	// Fetch repository visibility for the organization (2x the time period for comprehensive coverage)
+	reposSince := time.Now().AddDate(0, 0, -req.Days*2)
+	repoVisibilityData, err := github.FetchOrgRepositoriesWithActivity(ctx, req.Org, reposSince, token)
+	if err != nil {
+		s.logger.WarnContext(ctx, "Failed to fetch repository visibility, assuming all public", "error", err)
+		repoVisibilityData = nil
+	}
+
+	// Convert RepoVisibility map to bool map (repo name -> isPrivate)
+	var repoVisibility map[string]bool
+	if repoVisibilityData != nil {
+		repoVisibility = make(map[string]bool, len(repoVisibilityData))
+		for name, visibility := range repoVisibilityData {
+			repoVisibility[name] = visibility.IsPrivate
+		}
 	}
 
 	// Calculate actual time window (may be less than requested if we hit API limit)
@@ -1788,17 +1807,19 @@ func (s *Server) processOrgSample(ctx context.Context, req *OrgSampleRequest, to
 	}
 	s.logger.InfoContext(ctx, "Counted total open PRs across organization", "org", req.Org, "open_prs", totalOpenPRs)
 
-	// Convert PRSummary to PRMergeStatus for merge rate calculation
-	prStatuses := make([]cost.PRMergeStatus, len(prs))
+	// Convert PRSummary to PRSummaryInfo for extrapolation
+	prSummaryInfos := make([]cost.PRSummaryInfo, len(prs))
 	for i, pr := range prs {
-		prStatuses[i] = cost.PRMergeStatus{
+		prSummaryInfos[i] = cost.PRSummaryInfo{
+			Owner:  pr.Owner,
+			Repo:   pr.Repo,
 			Merged: pr.Merged,
 			State:  pr.State,
 		}
 	}
 
 	// Extrapolate costs from samples
-	extrapolated := cost.ExtrapolateFromSamples(breakdowns, len(prs), totalAuthors, totalOpenPRs, actualDays, cfg, prStatuses)
+	extrapolated := cost.ExtrapolateFromSamples(breakdowns, len(prs), totalAuthors, totalOpenPRs, actualDays, cfg, prSummaryInfos, repoVisibility)
 
 	// Only include seconds_in_state if we have data (turnserver only)
 	var secondsInState map[string]int
@@ -2194,17 +2215,19 @@ func (s *Server) processRepoSampleWithProgress(ctx context.Context, req *RepoSam
 		openPRCount = 0
 	}
 
-	// Convert PRSummary to PRMergeStatus for merge rate calculation
-	prStatuses := make([]cost.PRMergeStatus, len(prs))
+	// Convert PRSummary to PRSummaryInfo for extrapolation
+	prSummaryInfos := make([]cost.PRSummaryInfo, len(prs))
 	for i, pr := range prs {
-		prStatuses[i] = cost.PRMergeStatus{
+		prSummaryInfos[i] = cost.PRSummaryInfo{
+			Owner:  pr.Owner,
+			Repo:   pr.Repo,
 			Merged: pr.Merged,
 			State:  pr.State,
 		}
 	}
 
 	// Extrapolate costs from samples
-	extrapolated := cost.ExtrapolateFromSamples(breakdowns, len(prs), totalAuthors, openPRCount, actualDays, cfg, prStatuses)
+	extrapolated := cost.ExtrapolateFromSamples(breakdowns, len(prs), totalAuthors, openPRCount, actualDays, cfg, prSummaryInfos, nil)
 
 	// Only include seconds_in_state if we have data (turnserver only)
 	var secondsInState map[string]int
@@ -2353,17 +2376,19 @@ func (s *Server) processOrgSampleWithProgress(ctx context.Context, req *OrgSampl
 	}
 	s.logger.InfoContext(ctx, "Counted total open PRs across organization", "open_prs", totalOpenPRs, "org", req.Org)
 
-	// Convert PRSummary to PRMergeStatus for merge rate calculation
-	prStatuses := make([]cost.PRMergeStatus, len(prs))
+	// Convert PRSummary to PRSummaryInfo for extrapolation
+	prSummaryInfos := make([]cost.PRSummaryInfo, len(prs))
 	for i, pr := range prs {
-		prStatuses[i] = cost.PRMergeStatus{
+		prSummaryInfos[i] = cost.PRSummaryInfo{
+			Owner:  pr.Owner,
+			Repo:   pr.Repo,
 			Merged: pr.Merged,
 			State:  pr.State,
 		}
 	}
 
 	// Extrapolate costs from samples
-	extrapolated := cost.ExtrapolateFromSamples(breakdowns, len(prs), totalAuthors, totalOpenPRs, actualDays, cfg, prStatuses)
+	extrapolated := cost.ExtrapolateFromSamples(breakdowns, len(prs), totalAuthors, totalOpenPRs, actualDays, cfg, prSummaryInfos, nil)
 
 	// Only include seconds_in_state if we have data (turnserver only)
 	var secondsInState map[string]int

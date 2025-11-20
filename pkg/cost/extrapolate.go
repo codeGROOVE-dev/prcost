@@ -13,6 +13,8 @@ type PRMergeStatus struct {
 
 // ExtrapolatedBreakdown represents cost estimates extrapolated from a sample
 // of PRs to estimate total costs across a larger population.
+//
+//nolint:govet // fieldalignment: struct optimized for API clarity over memory layout
 type ExtrapolatedBreakdown struct {
 	// Sample metadata
 	TotalPRs                   int     `json:"total_prs"`                       // Total number of PRs in the population
@@ -22,6 +24,9 @@ type ExtrapolatedBreakdown struct {
 	SuccessfulSamples          int     `json:"successful_samples"`              // Number of samples that processed successfully
 	UniqueAuthors              int     `json:"unique_authors"`                  // Number of unique PR authors (excluding bots) in sample
 	TotalAuthors               int     `json:"total_authors"`                   // Total unique authors across all PRs (not just samples)
+	UniqueRepositories         int     `json:"unique_repositories"`             // Number of unique repositories with PRs
+	PublicRepositories         int     `json:"public_repositories"`             // Number of public repositories analyzed
+	PrivateRepositories        int     `json:"private_repositories"`            // Number of private repositories analyzed
 	WasteHoursPerWeek          float64 `json:"waste_hours_per_week"`            // Preventable hours wasted per week (organizational)
 	WasteCostPerWeek           float64 `json:"waste_cost_per_week"`             // Preventable cost wasted per week (organizational)
 	WasteHoursPerAuthorPerWeek float64 `json:"waste_hours_per_author_per_week"` // Preventable hours wasted per author per week
@@ -109,6 +114,14 @@ type ExtrapolatedBreakdown struct {
 	MergeRate     float64 `json:"merge_rate"`      // Percentage of PRs successfully merged (0-100)
 	MergeRateNote string  `json:"merge_rate_note"` // Explanation of what counts as merged/unmerged
 
+	// Grading (computed from metrics above)
+	EfficiencyGrade       string `json:"efficiency_grade"`         // Letter grade for development efficiency
+	EfficiencyMessage     string `json:"efficiency_message"`       // Description of efficiency grade
+	MergeVelocityGrade    string `json:"merge_velocity_grade"`     // Letter grade for merge velocity
+	MergeVelocityMessage  string `json:"merge_velocity_message"`   // Description of merge velocity grade
+	MergeRateGrade        string `json:"merge_rate_grade"`         // Letter grade for merge rate
+	MergeRateGradeMessage string `json:"merge_rate_grade_message"` // Description of merge rate grade
+
 	// R2R cost savings calculation
 	UniqueNonBotUsers int     `json:"unique_non_bot_users"` // Count of unique non-bot users (authors + participants)
 	R2RSavings        float64 `json:"r2r_savings"`          // Annual savings if R2R cuts PR time to target merge time
@@ -124,7 +137,8 @@ type ExtrapolatedBreakdown struct {
 //   - actualOpenPRs: Count of actually open PRs (for tracking overhead)
 //   - daysInPeriod: Number of days the sample covers (for per-week calculations)
 //   - cfg: Configuration for hourly rate and hours per week calculation
-//   - prStatuses: Merge status for all PRs (for merge rate calculation)
+//   - prs: Slice of PR summaries (for merge rate and repository counting)
+//   - repoVisibility: Map of repository name to visibility status (nil = assume all public)
 //
 // Returns:
 //   - ExtrapolatedBreakdown with averaged costs scaled to total population
@@ -133,28 +147,53 @@ type ExtrapolatedBreakdown struct {
 // by the total PR count to estimate population-wide costs.
 //
 //nolint:revive,maintidx // Complex calculation function benefits from cohesion
-func ExtrapolateFromSamples(breakdowns []Breakdown, totalPRs, totalAuthors, actualOpenPRs int, daysInPeriod int, cfg Config, prStatuses []PRMergeStatus) ExtrapolatedBreakdown {
+func ExtrapolateFromSamples(breakdowns []Breakdown, totalPRs, totalAuthors, actualOpenPRs int, daysInPeriod int, cfg Config, prs []PRSummaryInfo, repoVisibility map[string]bool) ExtrapolatedBreakdown {
+	// Count unique repositories and their visibility
+	uniqueRepos := make(map[string]bool)
+	publicCount := 0
+	privateCount := 0
+
+	for _, pr := range prs {
+		repoKey := pr.Owner + "/" + pr.Repo
+		if uniqueRepos[repoKey] {
+			continue // Already counted this repo
+		}
+		uniqueRepos[repoKey] = true
+
+		// Check visibility - if repoVisibility is nil or doesn't have this repo, assume public
+		if repoVisibility != nil {
+			if isPrivate, ok := repoVisibility[pr.Repo]; ok && isPrivate {
+				privateCount++
+			} else {
+				publicCount++
+			}
+		} else {
+			publicCount++
+		}
+	}
+
 	if len(breakdowns) == 0 {
 		// Calculate merge rate even with no successful samples
 		mergedCount := 0
-		for _, status := range prStatuses {
-			if status.Merged {
+		for _, pr := range prs {
+			if pr.Merged {
 				mergedCount++
 			}
 		}
 		mergeRate := 0.0
-		if len(prStatuses) > 0 {
-			mergeRate = 100.0 * float64(mergedCount) / float64(len(prStatuses))
+		if len(prs) > 0 {
+			mergeRate = 100.0 * float64(mergedCount) / float64(len(prs))
 		}
 
 		return ExtrapolatedBreakdown{
-			TotalPRs:          totalPRs,
-			SampledPRs:        0,
-			SuccessfulSamples: 0,
-			MergedPRs:         mergedCount,
-			UnmergedPRs:       len(prStatuses) - mergedCount,
-			MergeRate:         mergeRate,
-			MergeRateNote:     "Recently modified PRs successfully merged",
+			TotalPRs:           totalPRs,
+			SampledPRs:         0,
+			SuccessfulSamples:  0,
+			UniqueRepositories: len(uniqueRepos),
+			MergedPRs:          mergedCount,
+			UnmergedPRs:        len(prs) - mergedCount,
+			MergeRate:          mergeRate,
+			MergeRateNote:      "Recently modified PRs successfully merged",
 		}
 	}
 
@@ -485,8 +524,8 @@ func ExtrapolateFromSamples(breakdowns []Breakdown, totalPRs, totalAuthors, actu
 	// Calculate merge rate from all PRs (not just samples)
 	mergedCount := 0
 	unmergedCount := 0
-	for _, status := range prStatuses {
-		if status.Merged {
+	for _, pr := range prs {
+		if pr.Merged {
 			mergedCount++
 		} else {
 			unmergedCount++
@@ -494,15 +533,29 @@ func ExtrapolateFromSamples(breakdowns []Breakdown, totalPRs, totalAuthors, actu
 	}
 
 	mergeRate := 0.0
-	if len(prStatuses) > 0 {
-		mergeRate = 100.0 * float64(mergedCount) / float64(len(prStatuses))
+	if len(prs) > 0 {
+		mergeRate = 100.0 * float64(mergedCount) / float64(len(prs))
 	}
 
 	slog.Info("Calculated merge rate from all PRs",
-		"total_prs", len(prStatuses),
+		"total_prs", len(prs),
 		"merged", mergedCount,
 		"unmerged", unmergedCount,
 		"merge_rate_pct", mergeRate)
+
+	// Calculate efficiency percentage and grade
+	productiveCost := extAuthorTotal + extParticipantCost
+	efficiencyPct := 0.0
+	if extTotalCost > 0 {
+		efficiencyPct = 100.0 * productiveCost / extTotalCost
+	}
+	efficiencyGrade, efficiencyMessage := EfficiencyGrade(efficiencyPct)
+
+	// Calculate merge velocity grade
+	mergeVelocityGrade, mergeVelocityMessage := MergeVelocityGrade(avgPRDuration)
+
+	// Calculate merge rate grade
+	mergeRateGrade, mergeRateGradeMessage := MergeRateGrade(mergeRate)
 
 	return ExtrapolatedBreakdown{
 		TotalPRs:                   totalPRs,
@@ -587,7 +640,17 @@ func ExtrapolateFromSamples(breakdowns []Breakdown, totalPRs, totalAuthors, actu
 		MergeRate:     mergeRate,
 		MergeRateNote: "Recently modified PRs successfully merged",
 
-		UniqueNonBotUsers: uniqueUserCount,
-		R2RSavings:        r2rSavings,
+		EfficiencyGrade:       efficiencyGrade,
+		EfficiencyMessage:     efficiencyMessage,
+		MergeVelocityGrade:    mergeVelocityGrade,
+		MergeVelocityMessage:  mergeVelocityMessage,
+		MergeRateGrade:        mergeRateGrade,
+		MergeRateGradeMessage: mergeRateGradeMessage,
+
+		UniqueNonBotUsers:   uniqueUserCount,
+		UniqueRepositories:  len(uniqueRepos),
+		PublicRepositories:  publicCount,
+		PrivateRepositories: privateCount,
+		R2RSavings:          r2rSavings,
 	}
 }

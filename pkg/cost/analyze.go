@@ -32,12 +32,14 @@ type AnalysisRequest struct {
 	Concurrency int             // Number of concurrent fetches (0 = sequential)
 }
 
-// PRSummaryInfo contains basic PR information needed for fetching.
+// PRSummaryInfo contains basic PR information needed for fetching and analysis.
 type PRSummaryInfo struct {
 	UpdatedAt time.Time
 	Owner     string
 	Repo      string
+	State     string // "OPEN", "CLOSED", "MERGED"
 	Number    int
+	Merged    bool // Whether the PR was merged
 }
 
 // AnalysisResult contains the breakdowns from analyzed PRs.

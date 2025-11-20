@@ -99,17 +99,19 @@ func analyzeRepository(ctx context.Context, owner, repo string, sampleSize, days
 		openPRCount = 0
 	}
 
-	// Convert PRSummary to PRMergeStatus for merge rate calculation
-	prStatuses := make([]cost.PRMergeStatus, len(prs))
+	// Convert PRSummary to PRSummaryInfo for extrapolation
+	prSummaryInfos := make([]cost.PRSummaryInfo, len(prs))
 	for i, pr := range prs {
-		prStatuses[i] = cost.PRMergeStatus{
+		prSummaryInfos[i] = cost.PRSummaryInfo{
+			Owner:  pr.Owner,
+			Repo:   pr.Repo,
 			Merged: pr.Merged,
 			State:  pr.State,
 		}
 	}
 
-	// Extrapolate costs from samples using library function
-	extrapolated := cost.ExtrapolateFromSamples(breakdowns, len(prs), totalAuthors, openPRCount, actualDays, cfg, prStatuses)
+	// Extrapolate costs from samples using library function (pass nil for visibility since single-repo = public)
+	extrapolated := cost.ExtrapolateFromSamples(breakdowns, len(prs), totalAuthors, openPRCount, actualDays, cfg, prSummaryInfos, nil)
 
 	// Display results in itemized format
 	printExtrapolatedResults(fmt.Sprintf("%s/%s", owner, repo), actualDays, &extrapolated, cfg)
@@ -208,17 +210,19 @@ func analyzeOrganization(ctx context.Context, org string, sampleSize, days int, 
 	}
 	slog.Info("Counted total open PRs across organization", "org", org, "open_prs", totalOpenPRs)
 
-	// Convert PRSummary to PRMergeStatus for merge rate calculation
-	prStatuses := make([]cost.PRMergeStatus, len(prs))
+	// Convert PRSummary to PRSummaryInfo for extrapolation
+	prSummaryInfos := make([]cost.PRSummaryInfo, len(prs))
 	for i, pr := range prs {
-		prStatuses[i] = cost.PRMergeStatus{
+		prSummaryInfos[i] = cost.PRSummaryInfo{
+			Owner:  pr.Owner,
+			Repo:   pr.Repo,
 			Merged: pr.Merged,
 			State:  pr.State,
 		}
 	}
 
-	// Extrapolate costs from samples using library function
-	extrapolated := cost.ExtrapolateFromSamples(breakdowns, len(prs), totalAuthors, totalOpenPRs, actualDays, cfg, prStatuses)
+	// Extrapolate costs from samples using library function (CLI doesn't fetch visibility, assume public)
+	extrapolated := cost.ExtrapolateFromSamples(breakdowns, len(prs), totalAuthors, totalOpenPRs, actualDays, cfg, prSummaryInfos, nil)
 
 	// Display results in itemized format
 	printExtrapolatedResults(fmt.Sprintf("%s (organization)", org), actualDays, &extrapolated, cfg)
@@ -637,7 +641,7 @@ func printExtrapolatedEfficiency(ext *cost.ExtrapolatedBreakdown, days int, cfg 
 	preventableHours := ext.CodeChurnHours + ext.DeliveryDelayHours + ext.AutomatedUpdatesHours + ext.PRTrackingHours
 	preventableCost := ext.CodeChurnCost + ext.DeliveryDelayCost + ext.AutomatedUpdatesCost + ext.PRTrackingCost
 
-	// Calculate efficiency
+	// Calculate efficiency (for display purposes - grade comes from backend)
 	var efficiencyPct float64
 	if ext.TotalHours > 0 {
 		efficiencyPct = 100.0 * (ext.TotalHours - preventableHours) / ext.TotalHours
@@ -645,11 +649,11 @@ func printExtrapolatedEfficiency(ext *cost.ExtrapolatedBreakdown, days int, cfg 
 		efficiencyPct = 100.0
 	}
 
-	grade, message := efficiencyGrade(efficiencyPct)
-
-	// Calculate merge velocity grade based on average PR duration
-	avgDurationDays := ext.AvgPRDurationHours / 24.0
-	velocityGrade, velocityMessage := mergeVelocityGrade(avgDurationDays)
+	// Use grades computed by backend (single source of truth)
+	grade := ext.EfficiencyGrade
+	message := ext.EfficiencyMessage
+	velocityGrade := ext.MergeVelocityGrade
+	velocityMessage := ext.MergeVelocityMessage
 
 	// Calculate annual waste
 	annualMultiplier := 365.0 / float64(days)
@@ -674,11 +678,11 @@ func printExtrapolatedEfficiency(ext *cost.ExtrapolatedBreakdown, days int, cfg 
 	fmt.Printf("  │ %-60s│\n", velocityHeader)
 	fmt.Println("  └─────────────────────────────────────────────────────────────┘")
 
-	// Merge Rate box (if data available)
+	// Merge Success Rate box (if data available)
 	if ext.MergedPRs+ext.UnmergedPRs > 0 {
-		mergeRateGradeStr, mergeRateMessage := mergeRateGrade(ext.MergeRate)
+		// Use grade computed by backend (single source of truth)
 		fmt.Println("  ┌─────────────────────────────────────────────────────────────┐")
-		mergeRateHeader := fmt.Sprintf("MERGE RATE: %s (%.1f%%) - %s", mergeRateGradeStr, ext.MergeRate, mergeRateMessage)
+		mergeRateHeader := fmt.Sprintf("MERGE SUCCESS RATE: %s (%.1f%%) - %s", ext.MergeRateGrade, ext.MergeRate, ext.MergeRateGradeMessage)
 		if len(mergeRateHeader) > innerWidth {
 			mergeRateHeader = mergeRateHeader[:innerWidth]
 		}
